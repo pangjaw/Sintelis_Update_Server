@@ -64,12 +64,12 @@ function InlineTimemarkBox({
     let hasMoved = false;
 
     setDragging(true);
-    try { boxEl.setPointerCapture(e.pointerId); } catch (_) {}
 
     const onPointerMove = (ev) => {
+      ev.preventDefault();
       const dx = ev.clientX - startPointerX;
       const dy = ev.clientY - startPointerY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
         hasMoved = true;
       }
       const maxLeft = containerEl.clientWidth - boxEl.offsetWidth;
@@ -82,10 +82,9 @@ function InlineTimemarkBox({
     };
 
     const onPointerUp = async (ev) => {
-      boxEl.removeEventListener('pointermove', onPointerMove);
-      boxEl.removeEventListener('pointerup', onPointerUp);
-      boxEl.removeEventListener('pointercancel', onPointerUp);
-      try { boxEl.releasePointerCapture(e.pointerId); } catch (_) {}
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
       setDragging(false);
 
       if (!hasMoved) {
@@ -133,9 +132,9 @@ function InlineTimemarkBox({
       }
     };
 
-    boxEl.addEventListener('pointermove', onPointerMove);
-    boxEl.addEventListener('pointerup', onPointerUp);
-    boxEl.addEventListener('pointercancel', onPointerUp);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
   };
 
   const displayText = photo?.meta?.dateText || (
@@ -146,33 +145,36 @@ function InlineTimemarkBox({
 
   return (
     <div
+      className="inline-timemark-box"
+      draggable={false}
+      onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onPointerDown={handlePointerDown}
       style={{
         position: 'absolute',
         top: `${(pos.y / 300) * 100}%`,
         left: `${(pos.x / 300) * 100}%`,
-        width: '52%',
-        height: '8%',
-        minHeight: '16px',
-        maxHeight: '26px',
-        border: dragging ? '1.5px solid #f0883e' : saving ? '1.5px solid #eab308' : savedFlash ? '1.5px solid #22c55e' : '1.5px solid #38bdf8',
-        background: dragging ? 'rgba(240, 136, 62, 0.55)' : saving ? 'rgba(234, 179, 8, 0.55)' : savedFlash ? 'rgba(34, 197, 94, 0.7)' : 'rgba(56, 189, 248, 0.42)',
-        boxShadow: dragging ? '0 0 12px rgba(240, 136, 62, 0.95)' : savedFlash ? '0 0 14px rgba(34, 197, 94, 0.95)' : '0 0 8px rgba(56, 189, 248, 0.65)',
+        width: '36%',
+        height: '5.2%',
+        minHeight: '12px',
+        maxHeight: '18px',
+        border: dragging ? '1.5px solid #f0883e' : saving ? '1.5px solid #eab308' : savedFlash ? '1.5px solid #22c55e' : '1px solid #38bdf8',
+        background: dragging ? 'rgba(240, 136, 62, 0.65)' : saving ? 'rgba(234, 179, 8, 0.65)' : savedFlash ? 'rgba(34, 197, 94, 0.75)' : 'rgba(56, 189, 248, 0.45)',
+        boxShadow: dragging ? '0 0 10px rgba(240, 136, 62, 0.95)' : savedFlash ? '0 0 10px rgba(34, 197, 94, 0.95)' : '0 0 6px rgba(56, 189, 248, 0.6)',
         borderRadius: '3px',
         cursor: dragging ? 'grabbing' : 'grab',
         zIndex: 25,
         display: 'flex',
         alignItems: 'center',
-        padding: '0 5px',
+        padding: '0 4px',
         userSelect: 'none',
         touchAction: 'none',
         boxSizing: 'border-box'
       }}
-      title="✥ Geser (drag) langsung kotak timemark ini untuk memindahkan posisinya di foto. Klik untuk edit teks."
+      title="✥ Geser (drag) langsung kotak timemark ini untuk memindahkan posisinya di foto. Klik untuk buka editor modal."
     >
       <span
         style={{
-          fontSize: '9px',
+          fontSize: '7.5px',
           fontWeight: 700,
           color: '#ffffff',
           textShadow: '0 1px 2px #000',
@@ -180,10 +182,11 @@ function InlineTimemarkBox({
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           pointerEvents: 'none',
-          lineHeight: 1.2
+          lineHeight: 1,
+          letterSpacing: '-0.2px'
         }}
       >
-        {saving ? '⏳ Menyimpan...' : savedFlash ? '✓ Posisi Disimpan' : displayText}
+        {saving ? '⏳...' : savedFlash ? '✓ Disimpan' : displayText}
       </span>
     </div>
   );
@@ -221,6 +224,51 @@ function TimemarkEditorModal({
   const [processingAuto, setProcessingAuto] = useState(false);
   const [remerging, setRemerging] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [isModalDragging, setIsModalDragging] = useState(false);
+
+  // Drag Pointer Handler untuk Kotak Timemark di Modal Preview
+  const handleModalPointerDown = (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    const boxEl = e.currentTarget;
+    const containerEl = boxEl.parentElement;
+    if (!containerEl) return;
+
+    const startPointerX = e.clientX;
+    const startPointerY = e.clientY;
+    const startLeft = boxEl.offsetLeft;
+    const startTop = boxEl.offsetTop;
+
+    setIsModalDragging(true);
+
+    const onPointerMove = (ev) => {
+      ev.preventDefault();
+      const dx = ev.clientX - startPointerX;
+      const dy = ev.clientY - startPointerY;
+      const maxLeft = containerEl.clientWidth - boxEl.offsetWidth;
+      const maxTop = containerEl.clientHeight - boxEl.offsetHeight;
+      const newLeft = Math.max(0, Math.min(maxLeft, startLeft + dx));
+      const newTop = Math.max(0, Math.min(maxTop, startTop + dy));
+
+      const normX = Math.min(280, Math.max(0, Math.round((newLeft / containerEl.clientWidth) * 300)));
+      const normY = Math.min(280, Math.max(0, Math.round((newTop / containerEl.clientHeight) * 300)));
+      setXPos(normX);
+      setYPos(normY);
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      setIsModalDragging(false);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  };
 
   // Quick Time Adjuster Helper
   const adjustMinutes = (deltaMin) => {
@@ -431,18 +479,85 @@ function TimemarkEditorModal({
                   <span style={{ fontSize: '0.68rem', background: detector === 'google_vision' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(2, 132, 199, 0.2)', color: detector === 'google_vision' ? '#c084fc' : '#38bdf8', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, border: `1px solid ${detector === 'google_vision' ? '#a855f7' : '#0284c7'}` }}>
                     {detector === 'google_vision' ? '✨ Vision AI' : '🎨 HSV'}
                   </span>
-                  <span style={{ fontSize: '0.7rem', background: 'rgba(52, 211, 153, 0.15)', color: '#34d399', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                    Y:{yPos}px
+                  <span style={{ fontSize: '0.7rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                    X:{xPos}px · Y:{yPos}px
                   </span>
                 </div>
               </div>
               <div style={{ width: '100%', height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '6px', background: '#000000', position: 'relative' }}>
-                {previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt="Foto Hasil Timemark"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
+                {previewUrl || photo.rawUrl ? (
+                  <>
+                    <img
+                      src={previewUrl || photo.rawUrl}
+                      alt="Foto Preview Timemark"
+                      draggable={false}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none', pointerEvents: 'none' }}
+                    />
+
+                    {/* Draggable Timemark Box di Modal Preview */}
+                    <div
+                      className="modal-timemark-box"
+                      draggable={false}
+                      onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onPointerDown={handleModalPointerDown}
+                      style={{
+                        position: 'absolute',
+                        top: `${(yPos / 300) * 100}%`,
+                        left: `${(xPos / 300) * 100}%`,
+                        width: '38%',
+                        height: '6%',
+                        minHeight: '16px',
+                        maxHeight: '24px',
+                        border: isModalDragging ? '2px solid #f0883e' : '2px solid #38bdf8',
+                        background: isModalDragging ? 'rgba(240, 136, 62, 0.65)' : 'rgba(56, 189, 248, 0.45)',
+                        boxShadow: isModalDragging ? '0 0 14px rgba(240, 136, 62, 0.95)' : '0 0 10px rgba(56, 189, 248, 0.75)',
+                        borderRadius: '4px',
+                        cursor: isModalDragging ? 'grabbing' : 'grab',
+                        zIndex: 20,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0 6px',
+                        userSelect: 'none',
+                        touchAction: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                      title="✥ Klik & geser kotak ini langsung di foto untuk memindahkan posisi timemark (X & Y)"
+                    >
+                      <span
+                        style={{
+                          fontSize: '8px',
+                          fontWeight: 700,
+                          color: '#ffffff',
+                          textShadow: '0 1px 2px #000',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          pointerEvents: 'none'
+                        }}
+                      >
+                        {dateText || 'Timemark'}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '7.5px',
+                          color: '#ffffff',
+                          opacity: 0.9,
+                          fontWeight: 700,
+                          pointerEvents: 'none',
+                          marginLeft: '4px'
+                        }}
+                      >
+                        ✥ {xPos},{yPos}
+                      </span>
+                    </div>
+
+                    {!previewUrl && (
+                      <div style={{ position: 'absolute', top: '8px', left: '8px', zIndex: 15, background: 'rgba(0,0,0,0.65)', padding: '2px 8px', borderRadius: '4px', color: '#fbbf24', fontSize: '0.68rem', fontWeight: 600 }}>
+                        📷 Menampilkan foto mentah sebagai panduan posisi
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div style={{ textAlign: 'center', color: '#f59e0b', fontSize: '0.75rem', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
                     <div style={{ fontSize: '1.75rem' }}>⚠️</div>
@@ -473,7 +588,7 @@ function TimemarkEditorModal({
                 )}
 
                 {processingAuto && (
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#4ade80', zIndex: 10, gap: '0.4rem' }}>
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#4ade80', zIndex: 30, gap: '0.4rem' }}>
                     <span style={{ fontSize: '1.75rem', animation: 'spin 1s linear infinite' }}>⏳</span>
                     <strong style={{ fontSize: '0.8rem' }}>Memproses Timemark ({detector === 'google_vision' ? 'Vision AI' : 'HSV'})...</strong>
                   </div>
@@ -583,50 +698,30 @@ function TimemarkEditorModal({
               </div>
             </div>
 
-            {/* Slider Y-Offset Watermark (100 px - 280 px) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  📏 Posisi Vertikal Watermark (Y-Offset):
-                </label>
-                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '4px' }}>
-                  {yPos} px
+            {/* Posisi Koordinat & Panduan Geser Timemark */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span>✥</span> Posisi Watermark:
+                </span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                  X: {xPos} px
+                </span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#34d399', background: 'rgba(52, 211, 153, 0.15)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(52, 211, 153, 0.3)' }}>
+                  Y: {yPos} px
+                </span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  (Geser langsung kotak timemark pada foto preview di atas)
                 </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>100px (Atas)</span>
-                <input
-                  type="range"
-                  min="100"
-                  max="280"
-                  step="1"
-                  value={yPos}
-                  onChange={e => setYPos(Number(e.target.value))}
-                  style={{ flex: 1, accentColor: '#38bdf8', cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>280px (Bawah)</span>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.2rem' }}>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
                 <button
                   type="button"
-                  onClick={() => setYPos(220)}
-                  style={{ padding: '0.25rem 0.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem' }}
+                  onClick={() => { setXPos(14); setYPos(220); }}
+                  style={{ padding: '0.3rem 0.65rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '5px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                  title="Kembalikan posisi timemark ke default (X: 14, Y: 220)"
                 >
-                  Standar (220px)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setYPos(prev => Math.max(100, prev - 10))}
-                  style={{ padding: '0.25rem 0.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem' }}
-                >
-                  Naik (-10px)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setYPos(prev => Math.min(280, prev + 10))}
-                  style={{ padding: '0.25rem 0.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem' }}
-                >
-                  Turun (+10px)
+                  ↺ Reset Posisi Standar
                 </button>
               </div>
             </div>
