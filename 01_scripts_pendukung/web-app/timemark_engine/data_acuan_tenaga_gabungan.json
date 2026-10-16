@@ -1,0 +1,319 @@
+{
+  "dokumen": "Gabungan Pedoman Perawatan Sinyal dan Telekomunikasi - PT KAI (Persero)",
+  "keterangan": "Data kebutuhan minimal Tenaga Perawatan Fasilitas Operasi Kereta Api per jenis aset",
+  "aset": [
+    {
+      "id": 1,
+      "nama": "Peralatan Dalam Sinyal Mekanik",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 180
+    },
+    {
+      "id": 2,
+      "nama": "Peraga Sinyal Mekanik",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 30
+    },
+    {
+      "id": 3,
+      "nama": "Penggerak Wesel Mekanik",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 45
+    },
+    {
+      "id": 4,
+      "nama": "Saluran Kawat",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Sinyal",
+      "waktu_menit": 60
+    },
+    {
+      "id": 5,
+      "nama": "Peralatan Dalam Sinyal Elektrik",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 420
+    },
+    {
+      "id": 6,
+      "nama": "Peraga Sinyal Elektrik",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 30
+    },
+    {
+      "id": 7,
+      "nama": "Peralatan CTC/CTS",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 30
+    },
+    {
+      "id": 8,
+      "nama": "Axle Counter Siemens",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 45
+    },
+    {
+      "id": 9,
+      "nama": "Axle Counter Altpro",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 45
+    },
+    {
+      "id": 10,
+      "nama": "Axle Counter Frausher",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 45
+    },
+    {
+      "id": 11,
+      "nama": "Axle Counter Thales",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 60
+    },
+    {
+      "id": 12,
+      "nama": "Axle Counter ESSO-M",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 45
+    },
+    {
+      "id": 13,
+      "nama": "Track Circuit",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Sinyal",
+      "waktu_menit": 60
+    },
+    {
+      "id": 14,
+      "nama": "Location Case",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 30
+    },
+    {
+      "id": 15,
+      "nama": "Point Lock / Perintang / Pelalau",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 30
+    },
+    {
+      "id": 16,
+      "nama": "Pintu Perlintasan",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 45
+    },
+    {
+      "id": 17,
+      "nama": "Catu Daya",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Sinyal",
+      "waktu_menit": 45
+    },
+    {
+      "id": 18,
+      "nama": "Penggerak Wesel Elektrik",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 45
+    },
+    {
+      "id": 19,
+      "nama": "Kontak Rel dan WSR (Wheel Sensor)",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 30
+    },
+    {
+      "id": 20,
+      "nama": "Wesel Terlayan Setempat Elektrik",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Sinyal",
+      "waktu_menit": 45
+    },
+    {
+      "id": 21,
+      "nama": "Radio Lokomotif",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 30
+    },
+    {
+      "id": 22,
+      "nama": "Radio Waystation",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 40
+    },
+    {
+      "id": 23,
+      "nama": "Sistem Waystation",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 80
+    },
+    {
+      "id": 24,
+      "nama": "Radio Base Station",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 65
+    },
+    {
+      "id": 25,
+      "nama": "Pusat Kendali (PK)",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 60
+    },
+    {
+      "id": 26,
+      "nama": "Radio Waystation Digital",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 60
+    },
+    {
+      "id": 27,
+      "nama": "Sistem Radio Base Station Digital",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 60
+    },
+    {
+      "id": 28,
+      "nama": "Pusat Kendali (PK) Digital",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 60
+    },
+    {
+      "id": 29,
+      "nama": "Radio Lokomotif TAIT",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 60
+    },
+    {
+      "id": 30,
+      "nama": "Radio Waystation TAIT",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 60
+    },
+    {
+      "id": 31,
+      "nama": "Sistem Waystation TAIT",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 60
+    },
+    {
+      "id": 32,
+      "nama": "Radio Base Station TAIT",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 90
+    },
+    {
+      "id": 33,
+      "nama": "Pusat Kendali (PK) TAIT",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 60
+    },
+    {
+      "id": 34,
+      "nama": "Telekomunikasi Di Stasiun",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 60
+    },
+    {
+      "id": 35,
+      "nama": "Telekomunikasi Di Luar Stasiun",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 120
+    },
+    {
+      "id": 36,
+      "nama": "Telekomunikasi Di Pintu Perlintasan",
+      "pelaksana": 1,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 45
+    },
+    {
+      "id": 37,
+      "nama": "Serat Optik",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 0,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 6
+    },
+    {
+      "id": 38,
+      "nama": "Saluran Blok",
+      "pelaksana": 2,
+      "pelaksana_lanjutan": 1,
+      "kategori": "Telekomunikasi",
+      "waktu_menit": 90
+    }
+  ],
+  "ringkasan": {
+    "total_aset": 38,
+    "total_pelaksana": 58,
+    "total_pelaksana_lanjutan": 26,
+    "total_seluruh_tenaga": 84,
+    "total_waktu_sinyal_menit": 1365,
+    "total_waktu_telekom_menit": 1106,
+    "total_waktu_gabungan_menit": 2471
+  }
+}

@@ -1,0 +1,307 @@
+{
+  "_metadata": {
+    "description": "Mapping folder detail 03_photos_export → asset id di data_acuan_tenaga_gabungan.json",
+    "sumber": "Judul halaman 1 PDF di 02_pdf_target",
+    "tanggal_scan": "2026-07-13"
+  },
+  "AXC": {
+    "ZP 10A BOO": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens - dari judul PDF PERAWATAN AXLE COUNTER SIEMENS"
+    },
+    "ZP 10B BOO": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 20A BOO": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 20B BOO": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 20C BOO": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 25 BOP": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 26A BOP": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 46A BOP": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 10A BTT-BOP": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 20A BTT-BOP": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 10B BTT": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 14B MSG": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 10A BTT-MSG": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 20A BTT-MSG": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 101A MSG-CCR": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 101B MSG-CCR": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 201A CCR-MSG": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 207 CLT-BJD": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 206 CLT-BJD": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 213 BOO-CLT": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 212 BOO-CLT": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 60 BOO": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    },
+    "ZP 61 BOO": {
+      "asset_id": 8,
+      "catatan": "Axle Counter Siemens"
+    }
+  },
+  "WESEL": {
+    "PENGGERAK WESEL W23A BOO": {
+      "asset_id": 18,
+      "catatan": "Penggerak Wesel Elektrik - dari judul PDF PERAWATAN WESEL ELEKTRIK"
+    },
+    "PENGGERAK WESEL W41 BOO": {
+      "asset_id": 18,
+      "catatan": "Penggerak Wesel Elektrik"
+    },
+    "PENGGERAK WESEL W43 BOO": {
+      "asset_id": 18,
+      "catatan": "Penggerak Wesel Elektrik"
+    },
+    "PENGGERAK WESEL W61A1 BOO": {
+      "asset_id": 18,
+      "catatan": "Penggerak Wesel Elektrik"
+    },
+    "PENGGERAK WESEL W61A2 BOO": {
+      "asset_id": 18,
+      "catatan": "Penggerak Wesel Elektrik"
+    }
+  },
+  "SINYAL": {
+    "KELUAR DAN LANGSIR JL22A BOO": {
+      "asset_id": 6,
+      "catatan": "Peraga Sinyal Elektrik - dari judul PDF PERAWATAN PERAGA SINYAL ELEKTRIK"
+    },
+    "KELUAR DAN LANGSIR JL42A BOO": {
+      "asset_id": 6,
+      "catatan": "Peraga Sinyal Elektrik"
+    },
+    "LANGSIR L20 BOO": {
+      "asset_id": 6,
+      "catatan": "Peraga Sinyal Elektrik"
+    },
+    "MASUK J10 BOO": {
+      "asset_id": 6,
+      "catatan": "Peraga Sinyal Elektrik"
+    },
+    "MASUK J20 BOO": {
+      "asset_id": 6,
+      "catatan": "Peraga Sinyal Elektrik"
+    }
+  },
+  "CATU_DAYA": {
+    "GENSET ER SINYAL CLT": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Genset ER Sinyal"
+    },
+    "UPS ER SINYAL CLT": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - UPS ER Sinyal"
+    },
+    "BATTERE ER SINYAL CLT": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Battery Bank ER Sinyal"
+    },
+    "GENSET ER RADIO BOO": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Genset ER Radio"
+    },
+    "UPS ER RADIO BOO": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - UPS ER Radio"
+    },
+    "GENSET ER SINYAL BOP": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Genset ER Sinyal"
+    },
+    "UPS ER SINYAL BOP": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - UPS ER Sinyal"
+    },
+    "BATTERE BANK ER SINYAL BOP": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Battery Bank ER Sinyal"
+    },
+    "GENSET ER SINYAL BTT": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Genset ER Sinyal"
+    },
+    "UPS ER SINYAL BTT": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - UPS ER Sinyal"
+    },
+    "BATTERE ER SINYAL BTT": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Battery ER Sinyal"
+    },
+    "GENSET ER RADIO COS": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Genset ER Radio"
+    },
+    "UPS ER RADIO COS": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - UPS ER Radio"
+    },
+    "BATTERE BANK ER RADIO COS": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Battery Bank ER Radio"
+    },
+    "GENSET ER SINYAL CS": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Genset ER Sinyal"
+    },
+    "UPS ER SINYAL CS": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - UPS ER Sinyal"
+    },
+    "BATTERE ER SINYAL CS": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Battery ER Sinyal"
+    },
+    "GENSET ER SINYAL MSG": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Genset ER Sinyal"
+    },
+    "UPS ER SINYAL MSG": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - UPS ER Sinyal"
+    },
+    "BATTERE ER SINYAL MSG": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Battery ER Sinyal"
+    },
+    "GENSET ER SINYAL CGB": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Genset ER Sinyal"
+    },
+    "UPS ER SINYAL CGB": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - UPS ER Sinyal"
+    },
+    "BATTERE ER SINYAL CGB": {
+      "asset_id": 17,
+      "catatan": "Catu Daya - Battery ER Sinyal"
+    }
+  },
+  "PINTU_PERLINTASAN": {
+    "PESAWAT TELEPON JPL 07 BOP - BTT": {
+      "asset_id": 16,
+      "catatan": "Pintu Perlintasan - Telepon JPL"
+    },
+    "PESAWAT TELEPON JPL BNR BOP - BTT": {
+      "asset_id": 16,
+      "catatan": "Pintu Perlintasan - Telepon JPL"
+    },
+    "JPL ELEKTRIK NO 07 BOP - BTT": {
+      "asset_id": 16,
+      "catatan": "Pintu Perlintasan - JPL Elektrik"
+    },
+    "JPL ELEKTRIK BNR BOP - BTT": {
+      "asset_id": 16,
+      "catatan": "Pintu Perlintasan - JPL Elektrik"
+    },
+    "GENTANIK JPL 07 BOP - BTT": {
+      "asset_id": 16,
+      "catatan": "Pintu Perlintasan - Gentanik JPL"
+    },
+    "GENTANIK JPL BNR BOP-BTT": {
+      "asset_id": 16,
+      "catatan": "Pintu Perlintasan - Gentanik JPL"
+    },
+    "OTB FO JPL 07 BOO-BOP": {
+      "asset_id": 16,
+      "catatan": "Pintu Perlintasan - Serat Optik"
+    }
+  },
+  "TELEKOMUNIKASI": {
+    "TELEPON ER SINYAL CLT": {
+      "asset_id": 34,
+      "catatan": "Telekomunikasi Di Stasiun - Telepon ER Sinyal"
+    },
+    "PESAWAT TELEPON JPL 07 BOP - BTT": {
+      "asset_id": 36,
+      "catatan": "Telekomunikasi Di Pintu Perlintasan"
+    }
+  },
+  "TELEKOM_STASIUN": {
+    "TELEPON ER SINYAL CLT": {
+      "asset_id": 34,
+      "catatan": "Telekomunikasi Di Stasiun"
+    }
+  },
+  "TELEKOM_LUAR": {
+    "TELEPON JPL 07 BOP - BTT": {
+      "asset_id": 35,
+      "catatan": "Telekomunikasi Di Luar Stasiun"
+    }
+  },
+  "TELEKOM_PINTU": {
+    "PESAWAT TELEPON JPL 07 BOP - BTT": {
+      "asset_id": 36,
+      "catatan": "Telekomunikasi Di Pintu Perlintasan"
+    }
+  },
+  "PERSINYALAN_ELEKTRIK": {
+    "OTB FO JPL 07 BOO-BOP": {
+      "asset_id": 37,
+      "catatan": "Serat Optik"
+    },
+    "BANGUNAN ER SINYAL CLT": {
+      "asset_id": 5,
+      "catatan": "Peralatan Dalam Sinyal Elektrik"
+    }
+  }
+}

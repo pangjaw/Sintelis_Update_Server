@@ -1,0 +1,32 @@
+# Dependencies & Package Managers
+node_modules/
+package-lock.json
+
+# Build Outputs & Bundles
+dist/
+build/
+*.egg-info/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec.bak
+
+# Large Release Binaries (> 100MB exceeds GitHub limits)
+*.exe
+*.pkg
+*.pyz
+
+# Logs & Temporary Files
+*.log
+access.log
+tmp_uploads/
+.DS_Store
+Thumbs.db
+
+# Local Cache & Secrets
+.env
+.env.local
+audit_personnel_cache.json
+file_personnel_cache.json

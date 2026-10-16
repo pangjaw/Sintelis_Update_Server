@@ -1,0 +1,153 @@
+{
+  "active_preset_id": "preset_1789357717409",
+  "presets": [
+    {
+      "id": "preset_default",
+      "name": "Resort 1.21 Bogor (Standar)",
+      "created_at": "2026-09-13T17:20:00Z",
+      "data": {
+        "resor": {
+          "nama": "FURQON SUSILO WARDOYO",
+          "nipp": "64465",
+          "no_sc": "PRP.090190.126696"
+        },
+        "kaur": [
+          {
+            "nama": "SUTISNA",
+            "nipp": "45677",
+            "no_sc": "PRP.080175.126093"
+          },
+          {
+            "nama": "YATIYO",
+            "nipp": "49957",
+            "no_sc": "PRP.260287.39992"
+          }
+        ],
+        "pnc": [
+          {
+            "nama": "RAIHAN HERPIAN",
+            "nipp": "75276",
+            "no_sc": "PRP.170204.72256"
+          },
+          {
+            "nama": "IWAN SETIAWAN",
+            "nipp": "69810",
+            "no_sc": "PRP.03071990.36476"
+          },
+          {
+            "nama": "JUJUN JUNAEDI",
+            "nipp": "69699",
+            "no_sc": "PRP.02021990.36540"
+          },
+          {
+            "nama": "DIKA ARMANSYAH",
+            "nipp": "72347",
+            "no_sc": "PRP.020899.122293"
+          }
+        ]
+      }
+    },
+    {
+      "id": "preset_1789357717409",
+      "name": "2025",
+      "created_at": "2026-09-14T03:48:37.409Z",
+      "data": {
+        "resor": {
+          "nama": "S. SLAMET RIYADI",
+          "nipp": "-",
+          "no_sc": "PRP.070474.126088"
+        },
+        "kaur": [
+          {
+            "nama": "AGUS PRIYONO",
+            "nipp": "-",
+            "no_sc": "PRP.030886.126116"
+          },
+          {
+            "nama": "DEDI SURYADI",
+            "nipp": "-",
+            "no_sc": "PRP.181271.126074"
+          }
+        ],
+        "pnc": [
+          {
+            "nama": "RAIHAN HERPIAN",
+            "nipp": "75276",
+            "no_sc": "PRP.170204.72256"
+          },
+          {
+            "nama": "IWAN SETIAWAN",
+            "nipp": "69810",
+            "no_sc": "PRP.03071990.36476"
+          },
+          {
+            "nama": "MUHAMAD SOFYAN",
+            "nipp": "-",
+            "no_sc": "PRP.06011993.36452"
+          },
+          {
+            "nama": "DONI FREDIANSYAH",
+            "nipp": "-",
+            "no_sc": "PRP.291288.00136"
+          },
+          {
+            "nama": "SADDAM YUSUF FATHIR",
+            "nipp": "-",
+            "no_sc": "PRP.181002.72321"
+          }
+        ]
+      }
+    },
+    {
+      "id": "preset_1789371661771",
+      "name": "2025 BARU",
+      "created_at": "2026-09-14T07:41:01.771Z",
+      "data": {
+        "resor": {
+          "nama": "FURQON SUSILO WARDOYO",
+          "nipp": "-",
+          "no_sc": "PRP.090190.126696"
+        },
+        "kaur": [
+          {
+            "nama": "AGUS PRIYONO",
+            "nipp": "-",
+            "no_sc": "PRP.030886.126116"
+          },
+          {
+            "nama": "DEDI SURYADI",
+            "nipp": "-",
+            "no_sc": "PRP.181271.126074"
+          }
+        ],
+        "pnc": [
+          {
+            "nama": "RAIHAN HERPIAN",
+            "nipp": "75276",
+            "no_sc": "PRP.170204.72256"
+          },
+          {
+            "nama": "IWAN SETIAWAN",
+            "nipp": "69810",
+            "no_sc": "PRP.03071990.36476"
+          },
+          {
+            "nama": "MUHAMAD SOFYAN",
+            "nipp": "-",
+            "no_sc": "PRP.06011993.36452"
+          },
+          {
+            "nama": "DONI FREDIANSYAH",
+            "nipp": "-",
+            "no_sc": "PRP.291288.00136"
+          },
+          {
+            "nama": "SADDAM YUSUF FATHIR",
+            "nipp": "-",
+            "no_sc": "PRP.181002.72321"
+          }
+        ]
+      }
+    }
+  ]
+}

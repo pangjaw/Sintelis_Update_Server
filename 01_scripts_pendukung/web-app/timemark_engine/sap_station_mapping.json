@@ -1,0 +1,2190 @@
+{
+  "AXL11468": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 60 BOO"
+  },
+  "AXL11469": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 61 BOO"
+  },
+  "AXL11470": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 62A BOO"
+  },
+  "AXL11471": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 42C BOO"
+  },
+  "AXL11472": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 41 BOO"
+  },
+  "AXL11473": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 42A BOO"
+  },
+  "AXL11474": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 42B BOO"
+  },
+  "AXL11475": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 62B BOO"
+  },
+  "AXL11476": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 23A BOO"
+  },
+  "AXL11477": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 23B BOO"
+  },
+  "AXL11478": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 24B BOO"
+  },
+  "AXL11479": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 24A BOO"
+  },
+  "AXL11480": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 12A BOO"
+  },
+  "AXL11481": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 13 BOO"
+  },
+  "AXL11482": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 12B BOO"
+  },
+  "AXL11483": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 22A BOO"
+  },
+  "AXL11484": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 22B BOO"
+  },
+  "AXL11485": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 32B BOO"
+  },
+  "AXL11486": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 32A BOO"
+  },
+  "AXL11487": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 31E BOO"
+  },
+  "AXL11488": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 52 BOO"
+  },
+  "AXL11489": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 72 BOO"
+  },
+  "AXL11490": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 92 BOO"
+  },
+  "AXL11491": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 31D BOO"
+  },
+  "AXL11492": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 31C BOO"
+  },
+  "AXL11493": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 31B BOO"
+  },
+  "AXL11494": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 21C BOO"
+  },
+  "AXL11495": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 31A BOO"
+  },
+  "AXL11496": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 10B BOO"
+  },
+  "AXL11497": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 10A BOO"
+  },
+  "AXL11498": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 213 BOO-CLT"
+  },
+  "AXL11499": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 20A BOO"
+  },
+  "AXL11500": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 20B BOO"
+  },
+  "AXL11501": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 20C BOO"
+  },
+  "AXL11502": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 21A BOO"
+  },
+  "AXL11503": {
+    "station": "BOO",
+    "description": "AXLE COUNTER ZP 21B BOO"
+  },
+  "AXL11504": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 212 BOO-CLT"
+  },
+  "AXL11505": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 25 BOP"
+  },
+  "AXL11506": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 26A BOP"
+  },
+  "AXL11507": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 46A BOP"
+  },
+  "AXL11508": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 66A BOP"
+  },
+  "AXL11509": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 26B BOP"
+  },
+  "AXL11510": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 46B BOP"
+  },
+  "AXL11511": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 66B BOP"
+  },
+  "AXL11512": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 47A BOP"
+  },
+  "AXL11513": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 68 BOP"
+  },
+  "AXL11514": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 47B BOP"
+  },
+  "AXL11515": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 47C BOP"
+  },
+  "AXL11516": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 26C BOP"
+  },
+  "AXL11517": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 27A BOP"
+  },
+  "AXL11518": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 27B BOP"
+  },
+  "AXL11519": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 47D BOP"
+  },
+  "AXL11520": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 27C BOP"
+  },
+  "AXL11521": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 28A BOP"
+  },
+  "AXL11522": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 48A BOP"
+  },
+  "AXL11523": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 48B BOP"
+  },
+  "AXL11524": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 48C BTT - BOP"
+  },
+  "AXL11525": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 28C BTT - BOP"
+  },
+  "AXL11526": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 10A BTT - BOP"
+  },
+  "AXL11527": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 20A BTT - BOP"
+  },
+  "AXL11528": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 10B BTT"
+  },
+  "AXL11529": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 20B BTT"
+  },
+  "AXL11530": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 12A BTT"
+  },
+  "AXL11531": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 22A BTT"
+  },
+  "AXL11532": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 12B BTT"
+  },
+  "AXL11533": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 22B BTT"
+  },
+  "AXL11534": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 14A BTT"
+  },
+  "AXL11535": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 24A BTT"
+  },
+  "AXL11536": {
+    "station": "COS",
+    "description": "AXLE COUNTER ZP 101A BTT - MSG"
+  },
+  "AXL11537": {
+    "station": "COS",
+    "description": "AXLE COUNTER ZP 101B BTT - MSG"
+  },
+  "AXL11538": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 14B BTT - MSG"
+  },
+  "AXL11539": {
+    "station": "BTT",
+    "description": "AXLE COUNTER ZP 24B MSG - BTT"
+  },
+  "AXL11540": {
+    "station": "COS",
+    "description": "AXLE COUNTER ZP 201A MSG - BTT"
+  },
+  "AXL11541": {
+    "station": "COS",
+    "description": "AXLE COUNTER ZP 201B MSG - BTT"
+  },
+  "AXL11562": {
+    "station": "BOP",
+    "description": "AXLE COUNTER ZP 28B BOP"
+  },
+  "AXL11563": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 10A BTT - MSG"
+  },
+  "AXL11564": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 20A BTT - MSG"
+  },
+  "AXL11565": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 10B MSG"
+  },
+  "AXL11566": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 20B MSG"
+  },
+  "AXL11567": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 10C MSG"
+  },
+  "AXL11568": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 20C MSG"
+  },
+  "AXL11569": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 11 MSG"
+  },
+  "AXL11570": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 12A MSG"
+  },
+  "AXL11571": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 22A MSG"
+  },
+  "AXL11572": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 12B MSG"
+  },
+  "AXL11573": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 22B MSG"
+  },
+  "AXL11574": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 13 MSG"
+  },
+  "AXL11575": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 14A MSG"
+  },
+  "AXL11576": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 24A MSG"
+  },
+  "AXL11577": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 14B MSG"
+  },
+  "AXL11578": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 24B MSG"
+  },
+  "AXL11579": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 14C CCR - MSG"
+  },
+  "AXL11580": {
+    "station": "MSG",
+    "description": "AXLE COUNTER ZP 24C CCR - MSG"
+  },
+  "AXL11581": {
+    "station": "CGB",
+    "description": "AXLE COUNTER ZP 101A MSG - CCR"
+  },
+  "AXL11582": {
+    "station": "CGB",
+    "description": "AXLE COUNTER ZP 101B MSG - CCR"
+  },
+  "AXL11583": {
+    "station": "CGB",
+    "description": "AXLE COUNTER ZP 201A CCR - MSG"
+  },
+  "AXL11584": {
+    "station": "CGB",
+    "description": "AXLE COUNTER ZP 201B CCR - MSG"
+  },
+  "AXL11601": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 211 BOO-CLT"
+  },
+  "AXL11602": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 210 BOO-CLT"
+  },
+  "AXL11603": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 209 BOO-CLT"
+  },
+  "AXL11604": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 208 BOO-CLT"
+  },
+  "AXL11605": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 207 BOO-CLT"
+  },
+  "AXL11606": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 206 BOO-CLT"
+  },
+  "AXL11607": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 205 BOO-CLT"
+  },
+  "AXL11608": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 204 BOO-CLT"
+  },
+  "AXL11609": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 203 BOO-CLT"
+  },
+  "AXL11610": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 202 BOO-CLT"
+  },
+  "AXL11611": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 201 BOO-CLT"
+  },
+  "AXL11612": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 112 CLT-BOO"
+  },
+  "AXL11613": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 111 CLT-BOO"
+  },
+  "AXL11614": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 110 CLT-BOO"
+  },
+  "AXL11615": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 109 CLT-BOO"
+  },
+  "AXL11616": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 108 CLT-BOO"
+  },
+  "AXL11617": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 107 CLT-BOO"
+  },
+  "AXL11618": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 106 CLT-BOO"
+  },
+  "AXL11619": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 105 CLT-BOO"
+  },
+  "AXL11620": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 104 CLT-BOO"
+  },
+  "AXL11621": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 103 CLT-BOO"
+  },
+  "AXL11622": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 102 CLT-BOO"
+  },
+  "AXL11623": {
+    "station": "CLT-BOO",
+    "description": "AXLE COUNTER ZP 101 CLT-BOO"
+  },
+  "AXL11624": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 11 CLT"
+  },
+  "AXL11625": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 12A CLT"
+  },
+  "AXL11626": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 12B CLT"
+  },
+  "AXL11627": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 13 CLT"
+  },
+  "AXL11628": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 14A CLT"
+  },
+  "AXL11629": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 14B CLT"
+  },
+  "AXL11630": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 24B CLT"
+  },
+  "AXL11631": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 24A CLT"
+  },
+  "AXL11632": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 22B CLT"
+  },
+  "AXL11633": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 22A CLT"
+  },
+  "AXL11634": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 20B CLT"
+  },
+  "AXL11635": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 20A CLT"
+  },
+  "AXL11636": {
+    "station": "BJD-CLT",
+    "description": "AXLE COUNTER ZP 207 CLT-BJD"
+  },
+  "AXL11637": {
+    "station": "BJD-CLT",
+    "description": "AXLE COUNTER ZP 206 CLT-BJD"
+  },
+  "AXL11638": {
+    "station": "BJD-CLT",
+    "description": "AXLE COUNTER ZP 205 CLT-BJD"
+  },
+  "AXL11639": {
+    "station": "BJD-CLT",
+    "description": "AXLE COUNTER ZP 102 BJD-CLT"
+  },
+  "AXL11640": {
+    "station": "BJD-CLT",
+    "description": "AXLE COUNTER ZP 101 BJD-CLT"
+  },
+  "AXL11706": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 10A CLT"
+  },
+  "AXL11707": {
+    "station": "CLT",
+    "description": "AXLE COUNTER ZP 10B CLT"
+  },
+  "CDA10136": {
+    "station": "BOO",
+    "description": "GENSET ER RADIO BOO"
+  },
+  "CDA10137": {
+    "station": "COS",
+    "description": "GENSET ER RADIO CS"
+  },
+  "CDA10145": {
+    "station": "BOO",
+    "description": "GENSET ER SINYAL BOO"
+  },
+  "CDA10146": {
+    "station": "BOP",
+    "description": "GENSET ER SINYAL BOP"
+  },
+  "CDA10147": {
+    "station": "BTT",
+    "description": "GENSET ER SINYAL BTT"
+  },
+  "CDA10148": {
+    "station": "CGB",
+    "description": "GENSET ER SINYAL CGB"
+  },
+  "CDA10150": {
+    "station": "COS",
+    "description": "GENSET ER SINYAL CS"
+  },
+  "CDA10151": {
+    "station": "CLT",
+    "description": "GENSET ER SINYAL CLT"
+  },
+  "CDA10154": {
+    "station": "MSG",
+    "description": "GENSET ER SINYAL MSG"
+  },
+  "CDA10246": {
+    "station": "BOO",
+    "description": "UPS ER RADIO BOO"
+  },
+  "CDA10247": {
+    "station": "COS",
+    "description": "UPS ER RADIO CS"
+  },
+  "CDA10251": {
+    "station": "BOO",
+    "description": "UPS ER SINYAL BOO"
+  },
+  "CDA10252": {
+    "station": "BOP",
+    "description": "UPS ER SINYAL BOP"
+  },
+  "CDA10253": {
+    "station": "BTT",
+    "description": "UPS ER SINYAL BTT"
+  },
+  "CDA10254": {
+    "station": "CGB",
+    "description": "UPS ER SINYAL CGB"
+  },
+  "CDA10256": {
+    "station": "COS",
+    "description": "UPS ER SINYAL CS"
+  },
+  "CDA10257": {
+    "station": "CLT",
+    "description": "UPS ER SINYAL CLT"
+  },
+  "CDA10260": {
+    "station": "MSG",
+    "description": "UPS ER SINYAL MSG"
+  },
+  "CDA10332": {
+    "station": "BOO",
+    "description": "BATTERE BANK ER RADIO BOO"
+  },
+  "CDA10333": {
+    "station": "COS",
+    "description": "BATTERE BANK ER RADIO CS"
+  },
+  "CDA10336": {
+    "station": "BOO",
+    "description": "BATTERE BANK ER SINYAL BOO"
+  },
+  "CDA10337": {
+    "station": "BOP",
+    "description": "BATTERE BANK ER SINYAL BOP"
+  },
+  "CDA10392": {
+    "station": "BTT",
+    "description": "BATTERE ER SINYAL BTT"
+  },
+  "CDA10393": {
+    "station": "CGB",
+    "description": "BATTERE ER SINYAL CGB"
+  },
+  "CDA10394": {
+    "station": "COS",
+    "description": "BATTERE ER SINYAL CS"
+  },
+  "CDA10395": {
+    "station": "CLT",
+    "description": "BATTERE ER SINYAL CLT"
+  },
+  "CDA10396": {
+    "station": "MSG",
+    "description": "BATTERE ER SINYAL MSG"
+  },
+  "Fiber Optik Sinyal = 6": {
+    "station": "COS",
+    "description": ""
+  },
+  "INB10512": {
+    "station": "BOO",
+    "description": "PANEL PELAYANAN VDU 1 BOO"
+  },
+  "INB10513": {
+    "station": "BOO",
+    "description": "PANEL PELAYANAN VDU 2 BOO"
+  },
+  "INB10514": {
+    "station": "BOP",
+    "description": "PANEL PELAYANAN VDU 1 BOP"
+  },
+  "INB10515": {
+    "station": "BOP",
+    "description": "PANEL PELAYANAN VDU 2 BOP"
+  },
+  "INB10516": {
+    "station": "BTT",
+    "description": "PANEL PELAYANAN VDU BTT"
+  },
+  "INB10517": {
+    "station": "MSG",
+    "description": "PANEL PELAYANAN VDU 1 MSG"
+  },
+  "INB10518": {
+    "station": "MSG",
+    "description": "PANEL PELAYANAN VDU 2 MSG"
+  },
+  "INB10519": {
+    "station": "BOO",
+    "description": "INTERLOCKING SIL SAFE 4000 BOO"
+  },
+  "INB10520": {
+    "station": "BOP",
+    "description": "INTERLOCKING SIL SAFE 4000 BOP"
+  },
+  "INB10521": {
+    "station": "BTT",
+    "description": "INTERLOCKING SIL SAFE 4000 BTT"
+  },
+  "INB10522": {
+    "station": "MSG",
+    "description": "INTERLOCKING SIL SAFE 4000 MSG"
+  },
+  "INB10523": {
+    "station": "COS",
+    "description": "INTERMEDIATE BLOK SIL SAFE 4000 COS"
+  },
+  "INB10524": {
+    "station": "CGB",
+    "description": "INTERMEDIATE BLOK SIL SAFE 4000 CGB"
+  },
+  "INB10529": {
+    "station": "BOO",
+    "description": "PANEL DISPLAY  DALWAS PERKA BOO"
+  },
+  "INB10530": {
+    "station": "BOO",
+    "description": "DATA LOGGER  BOO"
+  },
+  "INB10531": {
+    "station": "BOP",
+    "description": "DATA LOGGER BOP"
+  },
+  "INB10532": {
+    "station": "BTT",
+    "description": "DATA LOGGER BTT"
+  },
+  "INB10533": {
+    "station": "MSG",
+    "description": "DATA LOGGER MSG"
+  },
+  "INB10538": {
+    "station": "CLT",
+    "description": "INTERLOCKING SIL SAFE 4000 CLT"
+  },
+  "INB10539": {
+    "station": "CLT",
+    "description": "DATA LOGGER CLT"
+  },
+  "INB10541": {
+    "station": "CLT",
+    "description": "PANEL PELAYANAN VDU 1 CLT"
+  },
+  "INB10542": {
+    "station": "CLT",
+    "description": "PANEL PELAYANAN VDU 2 CLT"
+  },
+  "INB10543": {
+    "station": "CLT",
+    "description": "PANEL DISPLAY  DALWAS PERKA CLT"
+  },
+  "INB10544": {
+    "station": "CLT",
+    "description": "PERALATAN BLOK CLT - BJD"
+  },
+  "INB10545": {
+    "station": "CLT",
+    "description": "PERALATAN BLOK CLT - BOO"
+  },
+  "INB10546": {
+    "station": "BOO",
+    "description": "PERALATAN BLOK BOO - CLT"
+  },
+  "INB10547": {
+    "station": "BOO",
+    "description": "PERALATAN BLOK BOO - BOP"
+  },
+  "INB10640": {
+    "station": "BOO",
+    "description": "PANEL PELAYANAN VDU 1 BTT"
+  },
+  "INB10641": {
+    "station": "BOO",
+    "description": "PANEL PELAYANAN VDU 2 BTT"
+  },
+  "INB10642": {
+    "station": "MSG",
+    "description": "PERALATAN BLOK MSG-CCR"
+  },
+  "INB10643": {
+    "station": "BOP",
+    "description": "PERALATAN BLOK BOP-BOO"
+  },
+  "INB10644": {
+    "station": "BOP",
+    "description": "PERALATAN BLOK BOP-BTT"
+  },
+  "INB10710": {
+    "station": "MSG",
+    "description": "PERALATAN BLOK MSG-BTT"
+  },
+  "JPL10338": {
+    "station": "CLT",
+    "description": "JPL ELEKTRIK NO 26N CLT"
+  },
+  "JPL10341": {
+    "station": "CLT-BOO",
+    "description": "JPL ELEKTRIK NO 27 CLT-BOO"
+  },
+  "JPL10344": {
+    "station": "CLT-BOO",
+    "description": "JPL ELEKTRIK NO 28 CLT-BOO"
+  },
+  "JPL10350": {
+    "station": "BOO",
+    "description": "JPL ELEKTRIK NO 2 BOO"
+  },
+  "JPL10485": {
+    "station": "BOO",
+    "description": "PESAWAT TELEPON JPL 02 BOO"
+  },
+  "JPL10486": {
+    "station": "BOO",
+    "description": "PESAWAT TELEPON JPL 01 BOO"
+  },
+  "JPL10487": {
+    "station": "BOP",
+    "description": "PESAWAT TELEPON JPL 04 BOP"
+  },
+  "JPL10488": {
+    "station": "BOP-BTT",
+    "description": "PESAWAT TELEPON JPL 07 BOP - BTT"
+  },
+  "JPL10489": {
+    "station": "BOP-BTT",
+    "description": "PESAWAT TELEPON JPL BNR BOP - BTT"
+  },
+  "JPL10491": {
+    "station": "BTT",
+    "description": "PESAWAT TELEPON JPL 11 BTT"
+  },
+  "JPL10493": {
+    "station": "CGB",
+    "description": "PESAWAT TELEPON JPL 15 MSG - CCR"
+  },
+  "JPL10494": {
+    "station": "CGB",
+    "description": "PESAWAT TELEPON JPL 16 MSG - CCR"
+  },
+  "JPL10495": {
+    "station": "CGB",
+    "description": "JPL ELEKTRIK NO 15 MSG - CCR"
+  },
+  "JPL10496": {
+    "station": "CGB",
+    "description": "JPL ELEKTRIK NO 16 MSG - CCR"
+  },
+  "JPL10498": {
+    "station": "BOP",
+    "description": "JPL ELEKTRIK NO 04 BOP"
+  },
+  "JPL10499": {
+    "station": "BOP-BTT",
+    "description": "JPL ELEKTRIK NO 07 BOP - BTT"
+  },
+  "JPL10500": {
+    "station": "BOP-BTT",
+    "description": "JPL ELEKTRIK BNR BOP - BTT"
+  },
+  "JPL10502": {
+    "station": "BTT",
+    "description": "JPL ELEKTRIK NO 11 BTT"
+  },
+  "JPL10503": {
+    "station": "BOO",
+    "description": "GENTANIK JPL 02 BOO"
+  },
+  "JPL10504": {
+    "station": "BOP",
+    "description": "GENTANIK JPL 04 BOP"
+  },
+  "JPL10505": {
+    "station": "BOP-BTT",
+    "description": "GENTANIK JPL 07 BOP - BTT"
+  },
+  "JPL10506": {
+    "station": "BOP-BTT",
+    "description": "GENTANIK JPL BNR BOP-BTT"
+  },
+  "JPL10508": {
+    "station": "BTT",
+    "description": "GENTANIK JPL 11 BTT"
+  },
+  "JPL10510": {
+    "station": "CGB",
+    "description": "GENTANIK JPL 15 MSG - CCR"
+  },
+  "JPL10511": {
+    "station": "CGB",
+    "description": "GENTANIK JPL 16 MSG - CCR"
+  },
+  "JPL10512": {
+    "station": "BOO",
+    "description": "SENTRANIK PAP BOO"
+  },
+  "JPL10513": {
+    "station": "BOP",
+    "description": "SENTRANIK PPKA BOP"
+  },
+  "JPL10514": {
+    "station": "BTT",
+    "description": "SENTRANIK PPKA BTT"
+  },
+  "JPL10515": {
+    "station": "MSG",
+    "description": "SENTRANIK PPKA MSG"
+  },
+  "JPL10520": {
+    "station": "CLT-BOO",
+    "description": "PESAWAT TELEPON JPL 28 BOO-CLT"
+  },
+  "JPL10521": {
+    "station": "CLT-BOO",
+    "description": "PESAWAT TELEPON JPL 27 BOO-CLT"
+  },
+  "JPL10522": {
+    "station": "CLT",
+    "description": "TELEPON JPL 26N CLT-BJD"
+  },
+  "JPL10523": {
+    "station": "BOO",
+    "description": "GENTANIK JPL 01 BOO"
+  },
+  "JPL10524": {
+    "station": "CLT-BOO",
+    "description": "GENTANIK JPL 28 BOO-CLT"
+  },
+  "JPL10525": {
+    "station": "CLT-BOO",
+    "description": "GENTANIK JPL 27 BOO-CLT"
+  },
+  "JPL10526": {
+    "station": "CLT",
+    "description": "GENTANIK JPL 26N CLT-BJD"
+  },
+  "SIN11691": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL92 BOO"
+  },
+  "SIN11692": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL72 BOO"
+  },
+  "SIN11693": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL52 BOO"
+  },
+  "SIN11694": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL32A BOO"
+  },
+  "SIN11695": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL32B BOO"
+  },
+  "SIN11696": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL12A BOO"
+  },
+  "SIN11697": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL12B BOO"
+  },
+  "SIN11698": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL22A BOO"
+  },
+  "SIN11699": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL22B BOO"
+  },
+  "SIN11700": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL42A BOO"
+  },
+  "SIN11701": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL42B BOO"
+  },
+  "SIN11702": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL42C BOO"
+  },
+  "SIN11703": {
+    "station": "BOO",
+    "description": "SINYAL KELUAR DAN LANGSIR JL62B BOO"
+  },
+  "SIN11704": {
+    "station": "BOO",
+    "description": "SINYAL MASUK J10 BOO"
+  },
+  "SIN11705": {
+    "station": "BOO",
+    "description": "SINYAL MASUK J20 BOO"
+  },
+  "SIN11706": {
+    "station": "BOO",
+    "description": "SINYAL MUKA MJ20 BOO"
+  },
+  "SIN11707": {
+    "station": "BOO",
+    "description": "SINYAL LANGSIR L80 BOO"
+  },
+  "SIN11708": {
+    "station": "BOO",
+    "description": "SINYAL LANGSIR L60 BOO"
+  },
+  "SIN11709": {
+    "station": "BOO",
+    "description": "SINYAL LANGSIR L62A BOO"
+  },
+  "SIN11710": {
+    "station": "BOO",
+    "description": "SINYAL LANGSIR L20 BOO"
+  },
+  "SIN11711": {
+    "station": "BOP",
+    "description": "SINYAL ULANG JALAN UJ26B BOP"
+  },
+  "SIN11712": {
+    "station": "BOP",
+    "description": "SINYAL KELUAR DAN LANGSIR JL26A BOP"
+  },
+  "SIN11713": {
+    "station": "BOP",
+    "description": "SINYAL KELUAR DAN LANGSIR JL46A BOP"
+  },
+  "SIN11714": {
+    "station": "BOP",
+    "description": "SINYAL KELUAR DAN LANGSIR JL26B BOP"
+  },
+  "SIN11715": {
+    "station": "BOP",
+    "description": "SINYAL KELUAR DAN LANGSIR JL46B BOP"
+  },
+  "SIN11716": {
+    "station": "BOP",
+    "description": "SINYAL KELUAR DAN LANGSIR JL66B BOP"
+  },
+  "SIN11717": {
+    "station": "BOP",
+    "description": "SINYAL LANGSIR L68 BOP"
+  },
+  "SIN11718": {
+    "station": "BOP",
+    "description": "SINYAL LANGSIR L47A BOP"
+  },
+  "SIN11719": {
+    "station": "BOP",
+    "description": "SINYAL LANGSIR L47B BOP"
+  },
+  "SIN11720": {
+    "station": "BOP",
+    "description": "SINYAL LANGSIR L28 BOP"
+  },
+  "SIN11721": {
+    "station": "BOP",
+    "description": "SINYAL MASUK J48 BOP"
+  },
+  "SIN11722": {
+    "station": "BOP",
+    "description": "SINYAL MASUK J28 BOP"
+  },
+  "SIN11723": {
+    "station": "BOP",
+    "description": "SINYAL MUKA MJ28 BOP - BTT"
+  },
+  "SIN11724": {
+    "station": "BOP",
+    "description": "SINYAL MUKA MJ48 BOP - BTT"
+  },
+  "SIN11725": {
+    "station": "BTT",
+    "description": "SINYAL MASUK J10 BTT"
+  },
+  "SIN11726": {
+    "station": "BTT",
+    "description": "SINYAL MASUK J20 BTT"
+  },
+  "SIN11727": {
+    "station": "BTT",
+    "description": "SINYAL MASUK J14 BTT"
+  },
+  "SIN11728": {
+    "station": "BTT",
+    "description": "SINYAL MASUK J24 BTT"
+  },
+  "SIN11729": {
+    "station": "BTT",
+    "description": "SINYAL KELUAR J12A BTT"
+  },
+  "SIN11730": {
+    "station": "BTT",
+    "description": "SINYAL KELUAR J22A BTT"
+  },
+  "SIN11731": {
+    "station": "BTT",
+    "description": "SINYAL KELUAR J12B BTT"
+  },
+  "SIN11732": {
+    "station": "BTT",
+    "description": "SINYAL KELUAR J22B BTT"
+  },
+  "SIN11733": {
+    "station": "BTT",
+    "description": "SINYAL MUKA MJ10 BOP - BTT"
+  },
+  "SIN11734": {
+    "station": "BTT",
+    "description": "SINYAL MUKA MJ20 BOP - BTT"
+  },
+  "SIN11735": {
+    "station": "BTT",
+    "description": "SINYAL MUKA MJ14 MSG - BTT"
+  },
+  "SIN11736": {
+    "station": "BTT",
+    "description": "SINYAL MUKA MJ24 MSG - BTT"
+  },
+  "SIN11737": {
+    "station": "COS",
+    "description": "SINYAL BLOK B101 BTT - MSG"
+  },
+  "SIN11738": {
+    "station": "COS",
+    "description": "SINYAL BLOK B201 MSG - BTT"
+  },
+  "SIN11739": {
+    "station": "COS",
+    "description": "SINYAL MUKA BLOK MB101 BTT - MSG"
+  },
+  "SIN11740": {
+    "station": "COS",
+    "description": "SINYAL MUKA BLOK MB201 MSG - BTT"
+  },
+  "SIN11741": {
+    "station": "MSG",
+    "description": "SINYAL MUKA MJ10 BTT - MSG"
+  },
+  "SIN11742": {
+    "station": "MSG",
+    "description": "SINYAL MUKA MJ20 BTT - MSG"
+  },
+  "SIN11743": {
+    "station": "MSG",
+    "description": "SINYAL MASUK J10 MSG"
+  },
+  "SIN11744": {
+    "station": "MSG",
+    "description": "SINYAL MASUK J20 MSG"
+  },
+  "SIN11745": {
+    "station": "MSG",
+    "description": "SINYAL KELUAR J22A MSG"
+  },
+  "SIN11746": {
+    "station": "MSG",
+    "description": "SINYAL KELUAR J22B MSG"
+  },
+  "SIN11747": {
+    "station": "MSG",
+    "description": "SINYAL KELUAR J12B MSG"
+  },
+  "SIN11748": {
+    "station": "MSG",
+    "description": "SINYAL MASUK J14 MSG"
+  },
+  "SIN11749": {
+    "station": "MSG",
+    "description": "SINYAL MASUK J24 MSG"
+  },
+  "SIN11750": {
+    "station": "MSG",
+    "description": "SINYAL ULANG JALAN UJ22B MSG"
+  },
+  "SIN11751": {
+    "station": "MSG",
+    "description": "SINYAL ULANG JALAN UJ12 MSG"
+  },
+  "SIN11752": {
+    "station": "MSG",
+    "description": "SINYAL MUKA MJ14 CCR - MSG"
+  },
+  "SIN11753": {
+    "station": "CGB",
+    "description": "SINYAL MUKA BLOK MB101 MSG - CCR"
+  },
+  "SIN11754": {
+    "station": "CGB",
+    "description": "SINYAL BLOK B101 MSG - CCR"
+  },
+  "SIN11755": {
+    "station": "MSG",
+    "description": "SINYAL MUKA MJ24 CCR - MSG"
+  },
+  "SIN11756": {
+    "station": "CGB",
+    "description": "SINYAL BLOK B201 CCR - MSG"
+  },
+  "SIN11757": {
+    "station": "CGB",
+    "description": "SINYAL MUKA BLOK MB201 CCR - MSG"
+  },
+  "SIN11775": {
+    "station": "BJD-CLT",
+    "description": "SINYAL ULANG BLOK UB.101 BJD-CLT"
+  },
+  "SIN11776": {
+    "station": "BJD-CLT",
+    "description": "SINYAL BLOK B.205 CLT-BJD"
+  },
+  "SIN11777": {
+    "station": "BJD-CLT",
+    "description": "SINYAL ULANG BLOK UB.205 CLT-BJD"
+  },
+  "SIN11778": {
+    "station": "BJD-CLT",
+    "description": "SINYAL BLOK B.206 CLT-BJD"
+  },
+  "SIN11779": {
+    "station": "BJD-CLT",
+    "description": "SINYAL ULANG BLOK UB.206 CLT-BJD"
+  },
+  "SIN11780": {
+    "station": "BJD-CLT",
+    "description": "SINYAL BLOK B.207 CLT-BJD"
+  },
+  "SIN11781": {
+    "station": "CLT",
+    "description": "SINYAL MASUK J20 CLT"
+  },
+  "SIN11782": {
+    "station": "CLT",
+    "description": "SINYAL MUKA  MJ20 CLT"
+  },
+  "SIN11783": {
+    "station": "CLT",
+    "description": "SINYAL MASUK J14 CLT"
+  },
+  "SIN11784": {
+    "station": "CLT",
+    "description": "SINYAL MUKA MJ14 CLT"
+  },
+  "SIN11785": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.214 BOO-CLT"
+  },
+  "SIN11786": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.213 BOO-CLT"
+  },
+  "SIN11787": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.212 BOO-CLT"
+  },
+  "SIN11788": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.212 BOO-CLT"
+  },
+  "SIN11789": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.211 BOO-CLT"
+  },
+  "SIN11790": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.211 BOO-CLT"
+  },
+  "SIN11791": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.210 BOO-CLT"
+  },
+  "SIN11792": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.210 BOO-CLT"
+  },
+  "SIN11793": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.209 BOO-CLT"
+  },
+  "SIN11794": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.209 BOO-CLT"
+  },
+  "SIN11795": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.208 BOO-CLT"
+  },
+  "SIN11796": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.208 BOO-CLT"
+  },
+  "SIN11797": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.207 BOO-CLT"
+  },
+  "SIN11798": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.207 BOO-CLT"
+  },
+  "SIN11799": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.206 BOO-CLT"
+  },
+  "SIN11800": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.206 BOO-CLT"
+  },
+  "SIN11801": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.205 BOO-CLT"
+  },
+  "SIN11802": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.204 BOO-CLT"
+  },
+  "SIN11803": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.203 BOO-CLT"
+  },
+  "SIN11804": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.202 BOO-CLT"
+  },
+  "SIN11805": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.202 BOO-CLT"
+  },
+  "SIN11806": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.201 BOO-CLT"
+  },
+  "SIN11807": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.112 CLT-BOO"
+  },
+  "SIN11808": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.111 CLT-BOO"
+  },
+  "SIN11809": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.110 CLT-BOO"
+  },
+  "SIN11810": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.110 CLT-BOO"
+  },
+  "SIN11811": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.109 CLT-BOO"
+  },
+  "SIN11812": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.108 CLT-BOO"
+  },
+  "SIN11813": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.107 CLT-BOO"
+  },
+  "SIN11814": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.106 CLT-BOO"
+  },
+  "SIN11815": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.106 CLT-BOO"
+  },
+  "SIN11816": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.105 CLT-BOO"
+  },
+  "SIN11817": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.105 CLT-BOO"
+  },
+  "SIN11818": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.104 CLT-BOO"
+  },
+  "SIN11819": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.104 CLT-BOO"
+  },
+  "SIN11820": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.103 CLT-BOO"
+  },
+  "SIN11821": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.103 CLT-BOO"
+  },
+  "SIN11822": {
+    "station": "CLT-BOO",
+    "description": "SINYAL ULANG BLOK UB.102 CLT-BOO"
+  },
+  "SIN11823": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.102 CLT-BOO"
+  },
+  "SIN11824": {
+    "station": "CLT-BOO",
+    "description": "SINYAL BLOK B.101 CLT-BOO"
+  },
+  "SIN11858": {
+    "station": "BJD-CLT",
+    "description": "SINYAL BLOK B.101 BJD-CLT"
+  },
+  "SIN11859": {
+    "station": "BJD-CLT",
+    "description": "SINYAL BLOK B.102 BJD-CLT"
+  },
+  "SIN11860": {
+    "station": "BJD-CLT",
+    "description": "SINYAL ULANG BLOK UB.102 BJD-CLT"
+  },
+  "SIN11861": {
+    "station": "CLT",
+    "description": "SINYAL MASUK J10 CLT"
+  },
+  "SIN11862": {
+    "station": "CLT",
+    "description": "SINYAL KELUAR J12A CLT"
+  },
+  "SIN11863": {
+    "station": "CLT",
+    "description": "SINYAL KELUAR J12B CLT"
+  },
+  "SIN11864": {
+    "station": "CLT",
+    "description": "SINYAL MASUK J24 CLT"
+  },
+  "SIN11865": {
+    "station": "CLT",
+    "description": "SINYAL KELUAR J22 CLT"
+  },
+  "TLK10300": {
+    "station": "CLT",
+    "description": "WS DIGITAL S26 CLT"
+  },
+  "TLK10302": {
+    "station": "BOO",
+    "description": "VOICE LOGGER LANGSIRAN BOO"
+  },
+  "TLK10303": {
+    "station": "BOO",
+    "description": "RIG BOO"
+  },
+  "TLK10305": {
+    "station": "BOO",
+    "description": "WS DIGITAL S26 BOO"
+  },
+  "TLK10309": {
+    "station": "BTT",
+    "description": "PERALATAN BLOK BTT - MSG"
+  },
+  "TLK10310": {
+    "station": "BTT",
+    "description": "PERALATAN BLOK BTT - BOP"
+  },
+  "TLK10313": {
+    "station": "MSG",
+    "description": "VOICE LOGGER 1 BLOK MSG"
+  },
+  "TLK10314": {
+    "station": "MSG",
+    "description": "RIG MSG"
+  },
+  "TLK10316": {
+    "station": "MSG",
+    "description": "SENTRAL TELEPON ANTAR STASIUN MSG"
+  },
+  "TLK10388": {
+    "station": "BOO",
+    "description": "PESAWAT TELP IP PHONE JPL 1 CLT-BOO"
+  },
+  "TLK10663": {
+    "station": "CGB",
+    "description": "PESAWAT TOKA CGB"
+  },
+  "TLK10664": {
+    "station": "CGB",
+    "description": "BASE STATION ANALOG S23 CGB"
+  },
+  "TLK10665": {
+    "station": "CLT",
+    "description": "WS S23 CLT"
+  },
+  "TLK10666": {
+    "station": "CLT",
+    "description": "PESAWAT TOKA CLT"
+  },
+  "TLK10667": {
+    "station": "BOO",
+    "description": "WS S23 BOO"
+  },
+  "TLK10668": {
+    "station": "BOO",
+    "description": "PESAWAT TOKA BOO"
+  },
+  "TLK10669": {
+    "station": "BOO",
+    "description": "BASE STATION ANALOG S23 BOO"
+  },
+  "TLK10670": {
+    "station": "BTT",
+    "description": "PESAWAT TOKA BTT"
+  },
+  "TLK10671": {
+    "station": "MSG",
+    "description": "PESAWAT TOKA MSG"
+  },
+  "TLK10672": {
+    "station": "CLT",
+    "description": "PESAWAT TELEPON  JPL 26N BJD-CLT"
+  },
+  "TLK10705": {
+    "station": "BOO",
+    "description": "SENTRAL TOKA LIM 1 BOO"
+  },
+  "TLK10743": {
+    "station": "BOO",
+    "description": "PESAWAT TELEPON WARTA KA BOO"
+  },
+  "TLK10744": {
+    "station": "BOP",
+    "description": "PESAWAT TELEPON WARTA KA BOP"
+  },
+  "TLK10745": {
+    "station": "BTT",
+    "description": "PESAWAT TELEPON WARTA KA BTT"
+  },
+  "TLK10746": {
+    "station": "MSG",
+    "description": "PESAWAT TELEPON WARTA KA MSG"
+  },
+  "TLK10747": {
+    "station": "BOO",
+    "description": "PESAWAT TELEPON ER SINYAL BOO"
+  },
+  "TLK10748": {
+    "station": "BOP",
+    "description": "PESAWAT TELEPON ER SINYAL BOP"
+  },
+  "TLK10749": {
+    "station": "BTT",
+    "description": "PESAWAT TELEPON ER SINYAL BTT"
+  },
+  "TLK10750": {
+    "station": "COS",
+    "description": "PESAWAT TELEPON ER IB COS"
+  },
+  "TLK10751": {
+    "station": "MSG",
+    "description": "PESAWAT TELEPON ER MSG"
+  },
+  "TLK10752": {
+    "station": "CGB",
+    "description": "PESAWAT TELEPON ER IB CGB"
+  },
+  "TLK10755": {
+    "station": "MSG",
+    "description": "WS S23 MSG"
+  },
+  "TLK10766": {
+    "station": "BOP",
+    "description": "WS S23 BOP"
+  },
+  "TLK10767": {
+    "station": "COS",
+    "description": "REPEATER BASE S23 COS"
+  },
+  "TLK10770": {
+    "station": "COS",
+    "description": "PESAWAT TELEPON ER RADIO CIOMAS"
+  },
+  "TLK10771": {
+    "station": "BOO",
+    "description": "PC VDU 1 BTT"
+  },
+  "TLK10772": {
+    "station": "BOO",
+    "description": "PC VDU 2 BTT"
+  },
+  "TLK10773": {
+    "station": "COS",
+    "description": "MULTIPLEX RADIO CIOMAS"
+  },
+  "TLK10774": {
+    "station": "BOO",
+    "description": "VOICE LOGGER WARTA KA BOO"
+  },
+  "TLK10775": {
+    "station": "BOP",
+    "description": "VOICE LOGGER WARTA KA BOP"
+  },
+  "TLK10776": {
+    "station": "BTT",
+    "description": "VOICE LOGGER WARTA KA BTT"
+  },
+  "TLK10777": {
+    "station": "MSG",
+    "description": "VOICE LOGGER WARTA KA MSG"
+  },
+  "TLK10778": {
+    "station": "CLT",
+    "description": "PESAWAT TELEPON ER SINYAL CLT"
+  },
+  "TLK10779": {
+    "station": "CLT",
+    "description": "VOICE LOGGER WARTA KA CLT"
+  },
+  "TLK10780": {
+    "station": "CLT",
+    "description": "PESAWAT TELEPON WARTA KA CLT"
+  },
+  "TLK10784": {
+    "station": "BTT",
+    "description": "SENTRAL TELEPON ANTAR STASIUN BTT"
+  },
+  "TLK10785": {
+    "station": "BOP",
+    "description": "SENTRAL TELEPON ANTAR STASIUN BOP"
+  },
+  "TLK10919": {
+    "station": "BOP",
+    "description": "PESAWAT TOKA BOP"
+  },
+  "TLK10920": {
+    "station": "BTT",
+    "description": "MULTIPLEX BTT"
+  },
+  "TLK10939": {
+    "station": "COS",
+    "description": "MULTIPLEX CS"
+  },
+  "TLK10986": {
+    "station": "BTT",
+    "description": "WS S23 BTT"
+  },
+  "TLK11002": {
+    "station": "BOO",
+    "description": "BASE STATION TAIT S26 BOO"
+  },
+  "TLK11003": {
+    "station": "BOO",
+    "description": "WS TAIT S26 BOO"
+  },
+  "TLK11004": {
+    "station": "CLT",
+    "description": "WS TAIT S26 CLT"
+  },
+  "TRA10121": {
+    "station": "BOO",
+    "description": "TOWER RADIO BOO"
+  },
+  "TRA10122": {
+    "station": "BOO",
+    "description": "BASE STATION DIGITAL S26 BOO"
+  },
+  "TRA10131": {
+    "station": "BOO",
+    "description": "MULTIPLEX BOO"
+  },
+  "TRA10132": {
+    "station": "MSG",
+    "description": "MULTIPLEX MSG"
+  },
+  "TRA10133": {
+    "station": "CGB",
+    "description": "MULTIPLEX CGB"
+  },
+  "TRA11227": {
+    "station": "BOO",
+    "description": "BANGUNAN ER SINYAL BOO"
+  },
+  "TRA11228": {
+    "station": "BOP",
+    "description": "BANGUNAN ER SINYAL BOP"
+  },
+  "TRA11229": {
+    "station": "BTT",
+    "description": "BANGUNAN ER SINYAL BTT"
+  },
+  "TRA11230": {
+    "station": "COS",
+    "description": "BANGUNAN ER IB SINYAL COS"
+  },
+  "TRA11231": {
+    "station": "COS",
+    "description": "BANGUNAN ER RADIO COS"
+  },
+  "TRA11232": {
+    "station": "COS",
+    "description": "BANGUNAN TOWER COS"
+  },
+  "TRA11233": {
+    "station": "MSG",
+    "description": "BANGUNAN ER SINYAL MSG"
+  },
+  "TRA11234": {
+    "station": "CGB",
+    "description": "BANGUNAN ER IB SINYAL CGB"
+  },
+  "TRA11258": {
+    "station": "CLT",
+    "description": "BANGUNAN ER SINYAL CLT"
+  },
+  "TRA11344": {
+    "station": "BOO",
+    "description": "OTB FO JPL 01 BOO"
+  },
+  "TRA11345": {
+    "station": "BOO",
+    "description": "OTB FO JPL 02 BOO"
+  },
+  "TRA11346": {
+    "station": "CLT-BOO",
+    "description": "OTB FO JPL 27 BOO-CLT"
+  },
+  "TRA11347": {
+    "station": "CLT-BOO",
+    "description": "OTB FO JPL 28 BOO-CLT"
+  },
+  "TRA11348": {
+    "station": "BOP",
+    "description": "OTB FO JPL 04 BOO-BOP"
+  },
+  "TRA11349": {
+    "station": "BOP-BTT",
+    "description": "OTB FO JPL 07 BOO-BOP"
+  },
+  "TRA11350": {
+    "station": "BOP-BTT",
+    "description": "OTB FO JPL BNR BOO-BOP"
+  },
+  "TRA11351": {
+    "station": "CLT",
+    "description": "OTB FO JPL 26N CLT-BJD"
+  },
+  "TRA11353": {
+    "station": "BTT",
+    "description": "OTB FO JPL 11 BTT"
+  },
+  "TRA11355": {
+    "station": "CGB",
+    "description": "OTB FO JPL 15 CGB"
+  },
+  "TRA11356": {
+    "station": "CGB",
+    "description": "OTB FO JPL 16 CGB"
+  },
+  "TRA11573": {
+    "station": "BTT",
+    "description": "BANGUNAN ER TELKOM BTT"
+  },
+  "TRA11576": {
+    "station": "CGB",
+    "description": "BANGUNAN ER TELKOM CGB"
+  },
+  "TRA11579": {
+    "station": "MSG",
+    "description": "BANGUNAN ER TELKOM MSG"
+  },
+  "TRA11795": {
+    "station": "BTT",
+    "description": "OTB 1 ER BATU TULIS"
+  },
+  "TRA11796": {
+    "station": "BOO",
+    "description": "OTB 1 ER BOGOR"
+  },
+  "TRA11797": {
+    "station": "BOP",
+    "description": "OTB 1 ER BOGOR PALEDANG"
+  },
+  "TRA11798": {
+    "station": "CGB",
+    "description": "OTB 1 ER CIGOMBONG"
+  },
+  "TRA11799": {
+    "station": "CLT",
+    "description": "OTB 1 ER CILEBUT"
+  },
+  "TRA11800": {
+    "station": "COS",
+    "description": "OTB 1 ER CIOMAS"
+  },
+  "TRA11801": {
+    "station": "MSG",
+    "description": "OTB 1 ER MASENG"
+  },
+  "TRA11802": {
+    "station": "BTT",
+    "description": "OTB 1 ER TELKOM BATU TULIS"
+  },
+  "TRA11803": {
+    "station": "BOO",
+    "description": "OTB 1 ER TELKOM BOGOR"
+  },
+  "TRA11804": {
+    "station": "CGB",
+    "description": "OTB 1 ER TELKOM CIGOMBONG"
+  },
+  "TRA11805": {
+    "station": "COS",
+    "description": "OTB 1 ER TELKOM CIOMAS"
+  },
+  "TRA11806": {
+    "station": "MSG",
+    "description": "OTB 1 ER TELKOM MASENG"
+  },
+  "TRA11812": {
+    "station": "BOO",
+    "description": "OTB 10 ER BOGOR"
+  },
+  "TRA11814": {
+    "station": "CLT",
+    "description": "OTB 10 ER CILEBUT"
+  },
+  "TRA11817": {
+    "station": "BOO",
+    "description": "OTB 11 ER BOGOR"
+  },
+  "TRA11819": {
+    "station": "CLT",
+    "description": "OTB 11 ER CILEBUT"
+  },
+  "TRA11822": {
+    "station": "BOO",
+    "description": "OTB 12 ER BOGOR"
+  },
+  "TRA11824": {
+    "station": "CLT",
+    "description": "OTB 12 ER CILEBUT"
+  },
+  "TRA11827": {
+    "station": "CLT",
+    "description": "OTB 13 ER CILEBUT"
+  },
+  "TRA11829": {
+    "station": "BTT",
+    "description": "OTB 2 ER BATU TULIS"
+  },
+  "TRA11830": {
+    "station": "BOO",
+    "description": "OTB 2 ER BOGOR"
+  },
+  "TRA11831": {
+    "station": "BOP",
+    "description": "OTB 2 ER BOGOR PALEDANG"
+  },
+  "TRA11832": {
+    "station": "CGB",
+    "description": "OTB 2 ER CIGOMBONG"
+  },
+  "TRA11833": {
+    "station": "CLT",
+    "description": "OTB 2 ER CILEBUT"
+  },
+  "TRA11834": {
+    "station": "COS",
+    "description": "OTB 2 ER CIOMAS"
+  },
+  "TRA11836": {
+    "station": "MSG",
+    "description": "OTB 2 ER MASENG"
+  },
+  "TRA11837": {
+    "station": "BTT",
+    "description": "OTB 2 ER TELKOM BATU TULIS"
+  },
+  "TRA11838": {
+    "station": "BOO",
+    "description": "OTB 2 ER TELKOM BOGOR"
+  },
+  "TRA11839": {
+    "station": "CGB",
+    "description": "OTB 2 ER TELKOM CIGOMBONG"
+  },
+  "TRA11840": {
+    "station": "COS",
+    "description": "OTB 2 ER TELKOM CIOMAS"
+  },
+  "TRA11841": {
+    "station": "MSG",
+    "description": "OTB 2 ER TELKOM MASENG"
+  },
+  "TRA11848": {
+    "station": "BTT",
+    "description": "OTB 3 ER BATU TULIS"
+  },
+  "TRA11849": {
+    "station": "BOO",
+    "description": "OTB 3 ER BOGOR"
+  },
+  "TRA11850": {
+    "station": "BOP",
+    "description": "OTB 3 ER BOGOR PALEDANG"
+  },
+  "TRA11851": {
+    "station": "CGB",
+    "description": "OTB 3 ER CIGOMBONG"
+  },
+  "TRA11852": {
+    "station": "CLT",
+    "description": "OTB 3 ER CILEBUT"
+  },
+  "TRA11853": {
+    "station": "COS",
+    "description": "OTB 3 ER CIOMAS"
+  },
+  "TRA11854": {
+    "station": "MSG",
+    "description": "OTB 3 ER MASENG"
+  },
+  "TRA11855": {
+    "station": "BTT",
+    "description": "OTB 3 ER TELKOM BATU TULIS"
+  },
+  "TRA11856": {
+    "station": "BOO",
+    "description": "OTB 3 ER TELKOM BOGOR"
+  },
+  "TRA11857": {
+    "station": "CGB",
+    "description": "OTB 3 ER TELKOM CIGOMBONG"
+  },
+  "TRA11858": {
+    "station": "COS",
+    "description": "OTB 3 ER TELKOM CIOMAS"
+  },
+  "TRA11859": {
+    "station": "MSG",
+    "description": "OTB 3 ER TELKOM MASENG"
+  },
+  "TRA11862": {
+    "station": "BTT",
+    "description": "OTB 4 ER BATU TULIS"
+  },
+  "TRA11863": {
+    "station": "BOO",
+    "description": "OTB 4 ER BOGOR"
+  },
+  "TRA11864": {
+    "station": "BOP",
+    "description": "OTB 4 ER BOGOR PALEDANG"
+  },
+  "TRA11865": {
+    "station": "CGB",
+    "description": "OTB 4 ER CIGOMBONG"
+  },
+  "TRA11866": {
+    "station": "CLT",
+    "description": "OTB 4 ER CILEBUT"
+  },
+  "TRA11867": {
+    "station": "COS",
+    "description": "OTB 4 ER CIOMAS"
+  },
+  "TRA11868": {
+    "station": "MSG",
+    "description": "OTB 4 ER MASENG"
+  },
+  "TRA11871": {
+    "station": "BTT",
+    "description": "OTB 5 ER BATU TULIS"
+  },
+  "TRA11872": {
+    "station": "BOO",
+    "description": "OTB 5 ER BOGOR"
+  },
+  "TRA11873": {
+    "station": "BOP",
+    "description": "OTB 5 ER BOGOR PALEDANG"
+  },
+  "TRA11874": {
+    "station": "CGB",
+    "description": "OTB 5 ER CIGOMBONG"
+  },
+  "TRA11875": {
+    "station": "CLT",
+    "description": "OTB 5 ER CILEBUT"
+  },
+  "TRA11876": {
+    "station": "COS",
+    "description": "OTB 5 ER CIOMAS"
+  },
+  "TRA11877": {
+    "station": "MSG",
+    "description": "OTB 5 ER MASENG"
+  },
+  "TRA11880": {
+    "station": "BTT",
+    "description": "OTB 6 ER BATU TULIS"
+  },
+  "TRA11881": {
+    "station": "BOO",
+    "description": "OTB 6 ER BOGOR"
+  },
+  "TRA11882": {
+    "station": "BOP",
+    "description": "OTB 6 ER BOGOR PALEDANG"
+  },
+  "TRA11884": {
+    "station": "CLT",
+    "description": "OTB 6 ER CILEBUT"
+  },
+  "TRA11885": {
+    "station": "COS",
+    "description": "OTB 6 ER CIOMAS"
+  },
+  "TRA11886": {
+    "station": "MSG",
+    "description": "OTB 6 ER MASENG"
+  },
+  "TRA11889": {
+    "station": "BOO",
+    "description": "OTB 7 ER BOGOR"
+  },
+  "TRA11891": {
+    "station": "CLT",
+    "description": "OTB 7 ER CILEBUT"
+  },
+  "TRA11895": {
+    "station": "BOO",
+    "description": "OTB 8 ER BOGOR"
+  },
+  "TRA11897": {
+    "station": "CLT",
+    "description": "OTB 8 ER CILEBUT"
+  },
+  "TRA11900": {
+    "station": "BOO",
+    "description": "OTB 9 ER BOGOR"
+  },
+  "TRA11902": {
+    "station": "CLT",
+    "description": "OTB 9 ER CILEBUT"
+  },
+  "TWR10023": {
+    "station": "BOO",
+    "description": "BANGUNAN ER RADIO BOO"
+  },
+  "TWR10052": {
+    "station": "COS",
+    "description": "TOWER RADIO CIOMAS"
+  },
+  "TWR10056": {
+    "station": "CGB",
+    "description": "TOWER RADIO CGB"
+  },
+  "WSL11073": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W21A BOO"
+  },
+  "WSL11074": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W21B1 BOO"
+  },
+  "WSL11075": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W21B2 BOO"
+  },
+  "WSL11076": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W61A1 BOO"
+  },
+  "WSL11077": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W61A2 BOO"
+  },
+  "WSL11078": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W41 BOO"
+  },
+  "WSL11079": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W43 BOO"
+  },
+  "WSL11080": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W23A BOO"
+  },
+  "WSL11081": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W23B BOO"
+  },
+  "WSL11082": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W13 BOO"
+  },
+  "WSL11083": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W51A2 BOO"
+  },
+  "WSL11084": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W51A1 BOO"
+  },
+  "WSL11085": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W31E BOO"
+  },
+  "WSL11086": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W31D BOO"
+  },
+  "WSL11087": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W31B BOO"
+  },
+  "WSL11088": {
+    "station": "BOO",
+    "description": "PENGGERAK WESEL W31A BOO"
+  },
+  "WSL11089": {
+    "station": "BOO",
+    "description": "PENGAMAN WESEL SETEMPAT ELEKTRIK W81 BOO"
+  },
+  "WSL11090": {
+    "station": "BOP",
+    "description": "PENGGERAK WESEL W25 BOP"
+  },
+  "WSL11091": {
+    "station": "BOP",
+    "description": "PENGGERAK WESEL W67 BOP"
+  },
+  "WSL11092": {
+    "station": "BOP",
+    "description": "PENGGERAK WESEL W47A BOP"
+  },
+  "WSL11093": {
+    "station": "BOP",
+    "description": "PENGGERAK WESEL W47C BOP"
+  },
+  "WSL11094": {
+    "station": "BOP",
+    "description": "PENGGERAK WESEL W27A BOP"
+  },
+  "WSL11095": {
+    "station": "BOP",
+    "description": "PENGGERAK WESEL W27B BOP"
+  },
+  "WSL11096": {
+    "station": "BOP",
+    "description": "PENGGERAK WESEL W47D BOP"
+  },
+  "WSL11097": {
+    "station": "MSG",
+    "description": "PENGGERAK WESEL W11 MSG"
+  },
+  "WSL11098": {
+    "station": "MSG",
+    "description": "PENGGERAK WESEL W21 MSG"
+  },
+  "WSL11099": {
+    "station": "MSG",
+    "description": "PENGGERAK WESEL W23 MSG"
+  },
+  "WSL11100": {
+    "station": "MSG",
+    "description": "PENGGERAK WESEL W13 MSG"
+  },
+  "WSL11111": {
+    "station": "CLT",
+    "description": "PENGGERAK WESEL W21 CLT"
+  },
+  "WSL11112": {
+    "station": "CLT",
+    "description": "PENGGERAK WESEL W11 CLT"
+  },
+  "WSL11113": {
+    "station": "CLT",
+    "description": "PENGGERAK WESEL W13 CLT"
+  },
+  "WSL11114": {
+    "station": "CLT",
+    "description": "PENGGERAK WESEL W23 CLT"
+  }
+}
