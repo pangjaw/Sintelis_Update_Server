@@ -1,12 +1,12 @@
 {
-  "version": "1.7.6",
+  "version": "1.7.7",
   "releaseDate": "2026-10-16",
-  "downloadUrl": "https://update.sintelboo.my.id/SintelisUtility.exe?v=1.7.6",
-  "fileSize": 190789933,
+  "downloadUrl": "https://update.sintelboo.my.id/SintelisUtility.exe?v=1.7.7",
+  "fileSize": 190790866,
   "changelog": [
-    "v1.7.6: Audit & Koreksi Personil Berdasarkan Tim - Pencocokan jadwal Tim 1, Tim 2, Tim 3 dari schedule.json & rotasi profil pegawai",
-    "v1.7.6: Koreksi Sesuai Tim - Otomatis sinkronkan personil Tim 2 dan Tim 3 tanpa bentrok dengan Tim 1",
-    "v1.7.6: UI Koreksi Dokumen - Tombol 'Scan Ulang & Audit Tim', filter visual, kolom Tim, dan personil seharusnya",
-    "v1.7.6: Audit Personil - OCR Fallback otomatis untuk membaca berkas PDF hasil scan / bitmap"
+    "v1.7.7: In-Place Auto-Updater Handshake - Mekanisme penggantian biner mandiri (atomic detached swapper) lebih tangguh & anti-lock",
+    "v1.7.7: Editor Timemark Modal - Geser (drag) timemark bebas X & Y langsung di preview foto tanpa slider vertikal",
+    "v1.7.7: Galeri Foto - Ukuran kotak dan font preview timemark diperkecil proporsional sesuai watermark asli",
+    "v1.7.7: Audit & Koreksi Personil Berdasarkan Tim - Pencocokan jadwal Tim 1, 2, 3 dari schedule.json & rotasi pegawai"
   ]
 }

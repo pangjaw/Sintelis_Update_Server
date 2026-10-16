@@ -80,10 +80,10 @@ if os.path.exists(v_src):
     v_data["releaseDate"] = time.strftime("%Y-%m-%d")
     v_data["downloadUrl"] = f"https://update.sintelboo.my.id/SintelisUtility.exe?v={app_version}"
     v_data["changelog"] = [
-        f"v{app_version}: Audit & Koreksi Personil Berdasarkan Tim - Pencocokan jadwal Tim 1, Tim 2, Tim 3 dari schedule.json & rotasi profil pegawai",
-        f"v{app_version}: Koreksi Sesuai Tim - Otomatis sinkronkan personil Tim 2 dan Tim 3 tanpa bentrok dengan Tim 1",
-        f"v{app_version}: UI Koreksi Dokumen - Tombol 'Scan Ulang & Audit Tim', filter visual, kolom Tim, dan personil seharusnya",
-        f"v{app_version}: Audit Personil - OCR Fallback otomatis untuk membaca berkas PDF hasil scan / bitmap"
+        f"v{app_version}: In-Place Auto-Updater Handshake - Mekanisme penggantian biner mandiri (atomic detached swapper) lebih tangguh & anti-lock",
+        f"v{app_version}: Editor Timemark Modal - Geser (drag) timemark bebas X & Y langsung di preview foto tanpa slider vertikal",
+        f"v{app_version}: Galeri Foto - Ukuran kotak dan font preview timemark diperkecil proporsional sesuai watermark asli",
+        f"v{app_version}: Audit & Koreksi Personil Berdasarkan Tim - Pencocokan jadwal Tim 1, 2, 3 dari schedule.json & rotasi pegawai"
     ]
     with open(v_src, "w", encoding="utf-8") as f:
         json.dump(v_data, f, indent=2, ensure_ascii=False)

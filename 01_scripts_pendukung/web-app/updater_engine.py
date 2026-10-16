@@ -12,7 +12,7 @@ import threading
 import subprocess
 import tempfile
 
-APP_VERSION = "1.7.6"
+APP_VERSION = "1.7.7"
 DEFAULT_UPDATE_URL = "https://update.sintelboo.my.id/version.json"
 
 _update_state = {
@@ -151,159 +151,107 @@ def apply_update_and_restart():
     if getattr(sys, "frozen", False):
         exe_path = os.path.abspath(sys.executable)
         exe_dir = os.path.dirname(exe_path)
-        # Menimpa berkas yang SEDANG DIBUKA pengguna (misal SintelisUtility.exe, SintelisUtility(1).exe, dsb)
         target_exe = exe_path
         standard_exe = os.path.join(exe_dir, "SintelisUtility.exe")
     else:
         target_exe = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist", "SintelisUtility.exe"))
+        exe_dir = os.path.dirname(target_exe)
         standard_exe = target_exe
 
     current_pid = os.getpid()
 
-    ps1_file = os.path.join(tempfile.gettempdir(), "sintelis_updater.ps1")
+    cmd_file = os.path.join(tempfile.gettempdir(), "sintelis_updater.cmd")
     log_file = os.path.join(tempfile.gettempdir(), "sintelis_updater.log")
 
-    target_esc = target_exe.replace("'", "''")
-    standard_esc = standard_exe.replace("'", "''")
-    temp_esc = temp_exe.replace("'", "''")
-    log_esc = log_file.replace("'", "''")
+    cmd_content = f"""@echo off
+setlocal EnableDelayedExpansion
+chcp 65001 >nul
+set "CALLER_PID={current_pid}"
+set "TARGET_EXE={target_exe}"
+set "STANDARD_EXE={standard_exe}"
+set "TEMP_EXE={temp_exe}"
+set "EXE_DIR={exe_dir}"
+set "LOG_FILE={log_file}"
 
-    ps1_content = f"""# Sintelis Utility In-Place Auto-Updater (PowerShell)
-$targetExe = '{target_esc}'
-$standardExe = '{standard_esc}'
-$tempExe = '{temp_esc}'
-$logFile = '{log_esc}'
-$callerPid = {current_pid}
+echo ============================================== >> "%LOG_FILE%"
+echo [%date% %time%] In-Place Updater Dimulai >> "%LOG_FILE%"
+echo [%date% %time%] CALLER_PID: %CALLER_PID% >> "%LOG_FILE%"
+echo [%date% %time%] TARGET_EXE: %TARGET_EXE% >> "%LOG_FILE%"
+echo [%date% %time%] STANDARD_EXE: %STANDARD_EXE% >> "%LOG_FILE%"
+echo [%date% %time%] TEMP_EXE: %TEMP_EXE% >> "%LOG_FILE%"
 
-function Log-Message([string]$msg) {{
-    $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-    $line = "[$timestamp] $msg"
-    try {{
-        Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
-    }} catch {{}}
-}}
+:: 1. Jeda 1.5 detik agar respon HTTP sukses diterima oleh antarmuka aplikasi
+timeout /t 2 /nobreak >nul
 
-Log-Message "=============================================="
-Log-Message "Updater Sintelis Utility Dimulai"
-Log-Message "TARGET: $targetExe"
-Log-Message "STANDARD: $standardExe"
-Log-Message "TEMP_EXE: $tempExe"
+:: 2. Hentikan paksa proses pemanggil dan seluruh pohon prosesnya
+echo [%date% %time%] Menghentikan proses pemanggil (PID: %CALLER_PID%)... >> "%LOG_FILE%"
+taskkill /F /PID %CALLER_PID% /T >nul 2>&1
+taskkill /F /IM "SintelisUtility*.exe" /T >nul 2>&1
+timeout /t 2 /nobreak >nul
 
-# 1. Jeda 1.5 detik agar respon HTTP sukses terkirim ke antarmuka aplikasi
-Start-Sleep -Milliseconds 1500
+:: 3. Timpa file dengan perulangan hingga 30 kali
+set "SUCCESS=0"
+for /L %%i in (1,1,30) do (
+    if "!SUCCESS!"=="0" (
+        echo [%date% %time%] Mencoba menimpa TARGET_EXE (Percobaan %%i/30)... >> "%LOG_FILE%"
+        copy /Y "%TEMP_EXE%" "%TARGET_EXE%" >nul 2>&1
+        if not errorlevel 1 (
+            set "SUCCESS=1"
+            echo [%date% %time%] TARGET_EXE berhasil ditimpa pada percobaan %%i! >> "%LOG_FILE%"
+        ) else (
+            :: Coba teknik rename swap jika file masih dikunci
+            if exist "%TARGET_EXE%.old" del /F /Q "%TARGET_EXE%.old" >nul 2>&1
+            move /Y "%TARGET_EXE%" "%TARGET_EXE%.old" >nul 2>&1
+            copy /Y "%TEMP_EXE%" "%TARGET_EXE%" >nul 2>&1
+            if not errorlevel 1 (
+                set "SUCCESS=1"
+                del /F /Q "%TARGET_EXE%.old" >nul 2>&1
+                echo [%date% %time%] TARGET_EXE berhasil ditimpa via rename-swap pada percobaan %%i! >> "%LOG_FILE%"
+            ) else (
+                timeout /t 1 /nobreak >nul
+            )
+        )
+    )
+)
 
-# 2. Hentikan paksa proses SintelisUtility dan proses pemanggil agar handle file terlepas
-try {{
-    Stop-Process -Id $callerPid -Force -ErrorAction SilentlyContinue
-}} catch {{}}
+:: 4. Jika TARGET_EXE berbeda dengan STANDARD_EXE, sinkronkan juga STANDARD_EXE
+if not "%TARGET_EXE%"=="%STANDARD_EXE%" (
+    echo [%date% %time%] Menyinkronkan STANDARD_EXE: %STANDARD_EXE% >> "%LOG_FILE%"
+    copy /Y "%TEMP_EXE%" "%STANDARD_EXE%" >nul 2>&1
+)
 
-try {{
-    Get-Process -Name "SintelisUtility*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-}} catch {{}}
+:: 5. Jalankan aplikasi terbaru jika penimpaan berhasil
+if "!SUCCESS!"=="1" (
+    echo [%date% %time%] Berhasil! Menghapus biner sementara di Temp... >> "%LOG_FILE%"
+    del /F /Q "%TEMP_EXE%" >nul 2>&1
+    echo [%date% %time%] Meluncurkan aplikasi versi terbaru: %TARGET_EXE% >> "%LOG_FILE%"
+    start "" /D "%EXE_DIR%" "%TARGET_EXE%"
+) else (
+    echo [%date% %time%] GAGAL menimpa berkas setelah 30 percobaan! >> "%LOG_FILE%"
+)
 
-try {{
-    Get-Process | Where-Object {{ $_.ProcessName -like "*SintelisUtility*" -or ($_.Path -and $_.Path -like "*SintelisUtility*") }} | Stop-Process -Force -ErrorAction SilentlyContinue
-}} catch {{}}
-
-Start-Sleep -Milliseconds 1000
-
-# 3. Sasaran utama penimpaan adalah berkas standar SintelisUtility.exe
-$primaryTarget = $standardExe
-if (-not $primaryTarget) {{
-    $primaryTarget = $targetExe
-}}
-
-$copied = $false
-for ($i = 1; $i -le 30; $i++) {{
-    try {{
-        Copy-Item -LiteralPath $tempExe -Destination $primaryTarget -Force -ErrorAction Stop
-        $copied = $true
-        Log-Message "Berkas utama berhasil ditimpa pada percobaan $i: $primaryTarget"
-        break
-    }} catch {{
-        # Fallback swap rename ke .old jika file masih dilepaskan Windows
-        try {{
-            $oldExe = "$primaryTarget.old"
-            if (Test-Path -LiteralPath $oldExe) {{ Remove-Item -LiteralPath $oldExe -Force -ErrorAction SilentlyContinue }}
-            if (Test-Path -LiteralPath $primaryTarget) {{ Move-Item -LiteralPath $primaryTarget -Destination $oldExe -Force -ErrorAction Stop }}
-            Copy-Item -LiteralPath $tempExe -Destination $primaryTarget -Force -ErrorAction Stop
-            Remove-Item -LiteralPath $oldExe -Force -ErrorAction SilentlyContinue
-            $copied = $true
-            Log-Message "Berkas utama berhasil ditimpa via rename-swap pada percobaan $i: $primaryTarget"
-            break
-        }} catch {{
-            Log-Message ("Percobaan $i gagal: $($_.Exception.Message)")
-            Start-Sleep -Seconds 1
-        }}
-    }}
-}}
-
-if ($copied) {{
-    $exeDir = Split-Path -Parent $primaryTarget
-
-    # 4. Jika aplikasi sebelumnya dijalankan dari file duplikat (misal SintelisUtility (1).exe), hapus berkas duplikat tersebut
-    if ($targetExe -and ($targetExe -ne $primaryTarget) -and (Test-Path -LiteralPath $targetExe)) {{
-        try {{
-            Remove-Item -LiteralPath $targetExe -Force -ErrorAction SilentlyContinue
-            Log-Message "Menghapus berkas duplikat yang sebelumnya dibuka: $targetExe"
-        }} catch {{}}
-    }}
-
-    # 5. Bersihkan semua sisa berkas duplikat browser (SintelisUtility (*).exe) di folder yang sama
-    try {{
-        Get-ChildItem -Path $exeDir -Filter "SintelisUtility (*).exe" -ErrorAction SilentlyContinue | ForEach-Object {{
-            if ($_.FullName -ne $primaryTarget) {{
-                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
-                Log-Message "Membersihkan sisa berkas duplikat: $($_.FullName)"
-            }}
-        }}
-    }} catch {{}}
-
-    # 6. Hapus file sementara di Temp
-    try {{
-        Remove-Item -LiteralPath $tempExe -Force -ErrorAction SilentlyContinue
-    }} catch {{}}
-
-    # 7. Luncurkan HANYA berkas utama SintelisUtility.exe
-    try {{
-        Start-Process -FilePath $primaryTarget -WorkingDirectory $exeDir
-        Log-Message "Aplikasi utama berhasil diluncurkan: $primaryTarget"
-    }} catch {{
-        Log-Message ("Gagal meluncurkan aplikasi utama: $($_.Exception.Message)")
-    }}
-}} else {{
-    Log-Message "GAGAL menimpa berkas setelah 30 percobaan!"
-}}
-
-# Hapus skrip updater ini sendiri
-try {{
-    Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-}} catch {{}}
+:: 6. Selesai dan bersihkan skrip updater ini
+(goto) 2>nul & del "%~f0"
 """
 
-    with open(ps1_file, "w", encoding="utf-8") as f:
-        f.write(ps1_content)
+    with open(cmd_file, "w", encoding="utf-8") as f:
+        f.write(cmd_content)
 
-    # Jalankan PowerShell mandiri tanpa window (CREATE_NO_WINDOW = 0x08000000)
-    cmd = [
-        "powershell.exe",
-        "-NoProfile",
-        "-WindowStyle", "Hidden",
-        "-ExecutionPolicy", "Bypass",
-        "-File", ps1_file
-    ]
+    # DETACHED_PROCESS (0x00000008) + CREATE_NEW_PROCESS_GROUP (0x00000200) + CREATE_NO_WINDOW (0x08000000)
+    flags = 0x00000008 | 0x00000200 | 0x08000000
     try:
         subprocess.Popen(
-            cmd,
-            creationflags=0x08000000,
+            ["cmd.exe", "/c", cmd_file],
+            creationflags=flags,
             close_fds=True
         )
     except Exception:
         try:
-            os.startfile(ps1_file)
+            os.startfile(cmd_file)
         except Exception:
-            subprocess.Popen(cmd)
+            subprocess.Popen(["cmd.exe", "/c", cmd_file])
 
     threading.Thread(target=lambda: (time.sleep(1.2), os._exit(0)), daemon=True).start()
     return {"ok": True, "message": "Restarting application to apply update..."}
+
 
