@@ -234,6 +234,24 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
         right_dila = next((s for s in spans if "DILAKSANAKAN" in s["text"].upper() and s["bbox"][0] > 350 and 150 <= s["bbox"][1] <= 260), None)
 
         font_name, font_file = _get_page1_font(doc)
+        custom_font = None
+        if font_file and os.path.isfile(font_file):
+            try:
+                custom_font = fitz.Font(fontfile=font_file)
+            except Exception:
+                custom_font = None
+
+        def _calc_w(txt: str, fsize: float) -> float:
+            if custom_font:
+                try:
+                    return custom_font.text_length(txt, fontsize=fsize)
+                except Exception:
+                    pass
+            try:
+                return fitz.get_text_length(txt, fontname="hebo", fontsize=fsize)
+            except Exception:
+                return len(txt) * fsize * 0.55
+
         font_size_name = 7.2
         font_size_sc = 7.2
 
@@ -273,11 +291,11 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
             n0 = emp0["nama"]
             sc0 = emp0["no_sc"]
 
-            w_n0 = fitz.get_text_length(n0, fontname=font_name, fontsize=font_size_name)
+            w_n0 = _calc_w(n0, font_size_name)
             x_n0 = 248.0 + (370.0 - 248.0 - w_n0) / 2
             page.insert_text((x_n0, y_dila_l + font_size_name * 0.35), n0, **insert_kwargs)
 
-            w_sc0 = fitz.get_text_length(sc0, fontname=font_name, fontsize=font_size_sc)
+            w_sc0 = _calc_w(sc0, font_size_sc)
             x_sc0 = 248.0 + (370.0 - 248.0 - w_sc0) / 2
             page.insert_text((x_sc0, y_sc_l + font_size_sc * 0.35), sc0, **insert_sc_kwargs)
 
@@ -302,11 +320,11 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
                         y_nm = (y_dila_r - 20.0) + (idx + 0.5) * step
                         y_sc = (y_sc_r - 20.0) + (idx + 0.5) * step
 
-                    w_nm = fitz.get_text_length(nm, fontname=font_name, fontsize=font_size_name)
+                    w_nm = _calc_w(nm, font_size_name)
                     x_nm = 462.0 + (565.0 - 462.0 - w_nm) / 2
                     page.insert_text((x_nm, y_nm + font_size_name * 0.35), nm, **insert_kwargs)
 
-                    w_sc = fitz.get_text_length(sc, fontname=font_name, fontsize=font_size_sc)
+                    w_sc = _calc_w(sc, font_size_sc)
                     x_sc = 462.0 + (565.0 - 462.0 - w_sc) / 2
                     page.insert_text((x_sc, y_sc + font_size_sc * 0.35), sc, **insert_sc_kwargs)
         else:
@@ -333,11 +351,11 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
                     step = 56.0 / n
                     y_pos = (y_center - 25.0) + (idx + 0.5) * step
 
-                w_nm = fitz.get_text_length(nm, fontname=font_name, fontsize=font_size_name)
+                w_nm = _calc_w(nm, font_size_name)
                 x_nm = 255.0 + (395.0 - 255.0 - w_nm) / 2
                 page.insert_text((x_nm, y_pos + font_size_name * 0.35), nm, **insert_kwargs)
 
-                w_sc = fitz.get_text_length(sc, fontname=font_name, fontsize=font_size_sc)
+                w_sc = _calc_w(sc, font_size_sc)
                 x_sc = 465.0 + (565.0 - 465.0 - w_sc) / 2
                 page.insert_text((x_sc, y_pos + font_size_sc * 0.35), sc, **insert_sc_kwargs)
 

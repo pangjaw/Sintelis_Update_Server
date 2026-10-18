@@ -20,6 +20,7 @@ __pycache__/
 
 # Logs & Temporary Files
 *.log
+*.old
 access.log
 tmp_uploads/
 .DS_Store

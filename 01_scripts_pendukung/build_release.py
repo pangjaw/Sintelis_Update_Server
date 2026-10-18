@@ -52,6 +52,20 @@ for attempt in range(1, 20):
         copied = True
         break
     except PermissionError:
+        # Fallback rename swap jika file sedang dibuka oleh aplikasi aktif
+        try:
+            old_cand = target_exe + ".old"
+            if os.path.exists(old_cand):
+                try: os.remove(old_cand)
+                except Exception: pass
+            os.rename(target_exe, old_cand)
+            shutil.copyfile(dist_exe, target_exe)
+            try: os.remove(old_cand)
+            except Exception: pass
+            copied = True
+            break
+        except Exception:
+            pass
         print(f"  [WAIT] File target sedang terkunci, mencoba kembali ({attempt}/20)...")
         time.sleep(1.5)
 
@@ -65,11 +79,11 @@ print(f"  -> Biner aktif disalin ke: {target_exe}")
 v_src = os.path.join(SERVER_DIR, "version.json")
 if os.path.exists(v_src):
     # Dapatkan versi terkini dari updater_engine
-    app_version = "1.7.2"
+    app_version = "1.8.5"
     try:
         sys.path.insert(0, WEBAPP_DIR)
         import updater_engine
-        app_version = getattr(updater_engine, "APP_VERSION", "1.7.2")
+        app_version = getattr(updater_engine, "APP_VERSION", "1.8.5")
     except Exception:
         pass
 
@@ -80,6 +94,7 @@ if os.path.exists(v_src):
     v_data["releaseDate"] = time.strftime("%Y-%m-%d")
     v_data["downloadUrl"] = f"https://update.sintelboo.my.id/SintelisUtility.exe?v={app_version}"
     v_data["changelog"] = [
+        f"v{app_version}: Fix Ubah Personil & No. SC - Perbaikan error perhitungan panjang teks font kustom (Font 'dejavusans-bold' is unsupported) saat penimpaan personil PDF",
         f"v{app_version}: Perbaikan Menyeluruh Auto-Crop Kolase 2x2 & 3-in-1 - Ambang batas seam adaptif, smart auto-quadrant detection ke kuadran Bottom-Left (BL), fallback instan single crop ✂️, dan sinkronisasi preview mentah/editan terpotong",
         f"v{app_version}: Fitur Salin Log (Copy to Clipboard) - Tombol 1-klik salin log pada Console Pipeline dan seluruh window log terminal",
         f"v{app_version}: Window Log Real-Time Koreksi Dokumen & Core Serat Optik - Output step-by-step proses audit personil dan koreksi core",
