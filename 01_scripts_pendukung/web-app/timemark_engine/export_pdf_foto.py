@@ -835,7 +835,8 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                      log_path: Path, log_exists: bool,
                      pdf_name: str, funcloc_offset: int = 0,
                      wesel_target_lookup: dict | None = None,
-                     render_crop: bool = False, resolution: int = 300) -> int:
+                     render_crop: bool = False, resolution: int = 300,
+                     multi_date_lookup: dict | None = None) -> int:
     """Export photos from multi-row photo page: 3 photos per asset row.
 
     WESEL/SINYAL/AXC PDFs have a single photo page with multiple rows.
@@ -927,10 +928,20 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
             # Determine BTP BEFORE WESEL suffixing so regex can match station codes
             btp = determine_btp(identifier)
 
-            # WESEL: append date suffix for 2x monthly folders
-            if category == "WESEL":
+            # Multi-date / 2x monthly folders: append date suffix
+            should_suffix = (
+                category == "WESEL" or
+                (multi_date_lookup and (
+                    multi_date_lookup.get((category, identifier), 0) > 1 or
+                    multi_date_lookup.get((category, extract_station_from_filename(pdf_name)), 0) > 1
+                ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
+            )
+            if should_suffix:
                 date_suffix = _extract_date_suffix(pdf_name, wesel_target_lookup, identifier)
                 if date_suffix:
+                    part_match = re.search(r'\((2|3|4)\)', pdf_name)
+                    if part_match:
+                        date_suffix = f"{date_suffix}_part{part_match.group(1)}"
                     identifier = f"{identifier}{date_suffix}"
 
             out_dir = identifier_output_dir(output_root, btp, category, identifier)
@@ -1013,7 +1024,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                start_page: int, _resolution: int,
                input_root: Path = None, sap_mapping: dict = None,
                render_crop: bool = False,
-               wesel_target_lookup: dict | None = None) -> int:
+               wesel_target_lookup: dict | None = None,
+               multi_date_lookup: dict | None = None) -> int:
     """Unified export: detect category from filename, find photos, output to flat identifier structure.
 
     Output: {output_root}/{btp}/{category}/{identifier}/{0,50,100}.jpg
@@ -1095,29 +1107,50 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
 
     btp = determine_btp(identifier)
 
-    # ── WESEL: append date suffix for 2x monthly folders ──
-    if category == "WESEL":
+    # ── Append date suffix for multi-occurrence folders (WESEL / 2x monthly inspections) ──
+    should_suffix = (
+        category == "WESEL" or
+        (multi_date_lookup and (
+            multi_date_lookup.get((category, identifier), 0) > 1 or
+            multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
+        ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
+    )
+    if should_suffix:
         date_suffix = _extract_date_suffix(pdf_path.name, wesel_target_lookup, identifier)
         if date_suffix:
+            part_match = re.search(r'\((2|3|4)\)', pdf_path.name)
+            if part_match:
+                date_suffix = f"{date_suffix}_part{part_match.group(1)}"
             identifier = f"{identifier}{date_suffix}"
 
     # ── Build primary output directory ──
     out_dir = identifier_output_dir(output_root, btp, category, identifier)
     ensure_dir(out_dir)
 
-    # ── Find photo pages (Lightning-fast via pypdf) ──
+    # ── Find photo pages (Detect actual image placements via pdfplumber) ──
     photo_pages: list[int] = []
     try:
-        for i in range(start_page - 1, len(reader.pages)):
-            if len(reader.pages[i].images) >= 3:
-                photo_pages.append(i)
-    except Exception:
-        # Fallback to pdfplumber only if pypdf raised an exception
-        try:
-            with pdfplumber.open(str(pdf_path)) as _detect_pdf:
-                for i in range(start_page - 1, len(_detect_pdf.pages)):
+        with pdfplumber.open(str(pdf_path)) as _detect_pdf:
+            for i in range(start_page - 1, len(_detect_pdf.pages)):
+                if len(_detect_pdf.pages[i].images) >= 3:
+                    photo_pages.append(i)
+            # Fallback 1: check earlier pages (in case start_page > actual photo page)
+            if not photo_pages:
+                for i in range(len(_detect_pdf.pages)):
                     if len(_detect_pdf.pages[i].images) >= 3:
                         photo_pages.append(i)
+            # Fallback 2: text-based detection
+            if not photo_pages:
+                for i in range(len(_detect_pdf.pages)):
+                    txt = (_detect_pdf.pages[i].extract_text() or "").upper()
+                    if "FOTO DOKUMENTASI" in txt or "FOTO 0%" in txt:
+                        photo_pages.append(i)
+    except Exception:
+        # Fallback to pypdf only if pdfplumber raised an exception
+        try:
+            for i in range(start_page - 1, len(reader.pages)):
+                if len(reader.pages[i].images) >= 3:
+                    photo_pages.append(i)
         except Exception:
             pass
 
@@ -1143,7 +1176,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                                           log_path, log_exists, pdf_path.name,
                                           funcloc_offset=funcloc_offset,
                                           wesel_target_lookup=wesel_target_lookup,
-                                          render_crop=render_crop, resolution=_resolution)
+                                          render_crop=render_crop, resolution=_resolution,
+                                          multi_date_lookup=multi_date_lookup)
                 total += count
                 # Advance offset by number of rows on this page
                 funcloc_offset += len(_multi_pdf.pages[page_idx].images) // 3
@@ -1158,7 +1192,19 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
         if not log_exists:
             writer.writeheader()
 
-        photo_page_idx = photo_pages[0] if photo_pages else None
+        # Select first page in photo_pages that actually has >= 3 placements
+        photo_page_idx = None
+        for p_idx in photo_pages:
+            if len(pdf.pages[p_idx].images) >= 3:
+                photo_page_idx = p_idx
+                break
+        if photo_page_idx is None:
+            for p_idx in range(len(pdf.pages)):
+                if len(pdf.pages[p_idx].images) >= 3:
+                    photo_page_idx = p_idx
+                    break
+        if photo_page_idx is None and photo_pages:
+            photo_page_idx = photo_pages[0]
         if photo_page_idx is not None:
             # ── Single photo page found ──
             if not force_per_row:
@@ -1263,7 +1309,23 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                     written_identifiers: set[str] = set()
                     for funcloc_line in all_funclocs:
                         row_id = extract_identifier(funcloc_line, category)
-                        if not row_id or row_id in written_identifiers:
+                        if not row_id:
+                            continue
+                        should_suffix = (
+                            category == "WESEL" or
+                            (multi_date_lookup and (
+                                multi_date_lookup.get((category, row_id), 0) > 1 or
+                                multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
+                            ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
+                        )
+                        if should_suffix:
+                            date_suffix = _extract_date_suffix(pdf_path.name, wesel_target_lookup, row_id)
+                            if date_suffix:
+                                part_match = re.search(r'\((2|3|4)\)', pdf_path.name)
+                                if part_match:
+                                    date_suffix = f"{date_suffix}_part{part_match.group(1)}"
+                                row_id = f"{row_id}{date_suffix}"
+                        if row_id in written_identifiers:
                             continue
                         written_identifiers.add(row_id)
                         row_btp = determine_btp(row_id)
@@ -1415,7 +1477,7 @@ def resolve_inputs(args: argparse.Namespace) -> list[Path]:
 
 
 def _export_worker_job(args_tuple):
-    pdf_path, output_root, log_dir, start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup = args_tuple
+    pdf_path, output_root, log_dir, start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup = args_tuple
     if not pdf_path.exists():
         return pdf_path, 0, "", None, True
 
@@ -1425,7 +1487,8 @@ def _export_worker_job(args_tuple):
         try:
             exported = export_pdf(pdf_path, output_root, log_dir,
                                   start_page, resolution, input_root, sap_mapping,
-                                  render_crop=render_crop, wesel_target_lookup=wesel_target_lookup)
+                                  render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,
+                                  multi_date_lookup=multi_date_lookup)
             err_info = None
         except Exception as exc:
             exported = 0
@@ -1470,11 +1533,20 @@ def main() -> int:
     # Pre-build WESEL target lookup once to avoid repetitive disk scans
     wesel_target_lookup = _build_wesel_target_lookup("02_pdf_target")
 
+    # Count occurrences of (category, station) across pdf_paths to detect multi-inspection assets
+    from collections import Counter
+    multi_date_lookup = Counter()
+    for p in pdf_paths:
+        cat = detect_category_from_filename(p.name)
+        st = extract_station_from_filename(p.name)
+        if st and cat:
+            multi_date_lookup[(cat, st)] += 1
+
     import concurrent.futures
 
     max_workers = min(6, os.cpu_count() or 4)
     tasks = [
-        (p, output_root, log_dir, args.start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup)
+        (p, output_root, log_dir, args.start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup)
         for p in pdf_paths
     ]
 

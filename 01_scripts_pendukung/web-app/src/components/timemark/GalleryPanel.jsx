@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { MASTER_CATEGORIES, CATEGORY_LABEL_MAP, normalizeCategory } from '../../utils/masterAssets';
 
 // =============================================================================
 // Helper Kalkulasi Tanggal Otomatis (0%, 50%, 100%)
@@ -460,11 +461,11 @@ function TimemarkEditorModal({
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>📷 Foto Asli / Sebelum Edit</span>
                 <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Ekspor Mentah</span>
               </div>
-              <div style={{ width: '100%', height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '6px', background: '#000000' }}>
+              <div style={{ width: '100%', height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '6px', background: '#000000' }}>
                 <img
                   src={photo.rawUrl}
                   alt="Foto Asli"
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  style={{ maxWidth: '100%', maxHeight: '300px', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }}
                 />
               </div>
             </div>
@@ -484,14 +485,14 @@ function TimemarkEditorModal({
                   </span>
                 </div>
               </div>
-              <div style={{ width: '100%', height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '6px', background: '#000000', position: 'relative' }}>
+              <div style={{ width: '100%', height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '6px', background: '#000000', position: 'relative' }}>
                 {previewUrl || photo.rawUrl ? (
-                  <>
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
                     <img
                       src={previewUrl || photo.rawUrl}
                       alt="Foto Preview Timemark"
                       draggable={false}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none', pointerEvents: 'none' }}
+                      style={{ maxWidth: '100%', maxHeight: '300px', width: 'auto', height: 'auto', objectFit: 'contain', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
                     />
 
                     {/* Draggable Timemark Box di Modal Preview */}
@@ -552,13 +553,8 @@ function TimemarkEditorModal({
                       </span>
                     </div>
 
-                    {!previewUrl && (
-                      <div style={{ position: 'absolute', top: '8px', left: '8px', zIndex: 15, background: 'rgba(0,0,0,0.65)', padding: '2px 8px', borderRadius: '4px', color: '#fbbf24', fontSize: '0.68rem', fontWeight: 600 }}>
-                        📷 Menampilkan foto mentah sebagai panduan posisi
-                      </div>
-                    )}
-                  </>
-                ) : (
+                    </div>
+                  ) : (
                   <div style={{ textAlign: 'center', color: '#f59e0b', fontSize: '0.75rem', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
                     <div style={{ fontSize: '1.75rem' }}>⚠️</div>
                     <div>Foto hasil editan belum tersedia.</div>
@@ -882,6 +878,8 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   // Mode States (Sama Persis dengan Web App)
   const [pipelineMode, setPipelineMode] = useState('standard'); // 'standard' | 'time' | 'coord'
   const [viewMode, setViewMode] = useState('dual'); // 'dual' | 'edited' | 'raw'
+  const [cardSize, setCardSize] = useState('large'); // 'normal' | 'large'
+  const [photoViewOverrides, setPhotoViewOverrides] = useState({}); // { [targetKey]: 'edited' | 'raw' }
   const [sourceTypeFilter, setSourceTypeFilter] = useState('all'); // 'timemark' | 'export' | 'all'
   const [activeDetector, setActiveDetector] = useState('google_vision'); // 'google_vision' | 'guide'
 
@@ -941,17 +939,62 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   const uniqueStations = useMemo(() => {
     const set = new Set();
     assets.forEach(a => { if (a.station) set.add(a.station); });
+    targetFiles.forEach(t => { if (t.btp) set.add(t.btp); });
     return Array.from(set).sort();
-  }, [assets]);
+  }, [assets, targetFiles]);
 
   const uniqueCategories = useMemo(() => {
-    const set = new Set();
-    assets.forEach(a => {
-      const cat = a.category || a.asset_type;
-      if (cat) set.add(cat);
+    const canonMap = new Map();
+
+    // 1. Inisialisasi Kategori Master Sintelis Resor 1.21 BOO
+    MASTER_CATEGORIES.forEach(cat => {
+      const norm = normalizeCategory(cat);
+      canonMap.set(norm, {
+        key: cat,
+        label: CATEGORY_LABEL_MAP[cat] || cat,
+        count: 0
+      });
     });
-    return Array.from(set).sort();
-  }, [assets]);
+
+    // 2. Tambahkan kategori dari targetFiles / schedule jika ada
+    targetFiles.forEach(t => {
+      if (t.category) {
+        const norm = normalizeCategory(t.category);
+        if (!canonMap.has(norm)) {
+          canonMap.set(norm, {
+            key: t.category,
+            label: CATEGORY_LABEL_MAP[t.category] || t.category,
+            count: 0
+          });
+        }
+      }
+    });
+
+    // 3. Tambahkan kategori riil dari folder assets
+    assets.forEach(a => {
+      const rawCat = a.category || a.asset_type;
+      if (rawCat) {
+        const norm = normalizeCategory(rawCat);
+        if (!canonMap.has(norm)) {
+          canonMap.set(norm, {
+            key: rawCat,
+            label: CATEGORY_LABEL_MAP[rawCat] || rawCat,
+            count: 0
+          });
+        }
+      }
+    });
+
+    // 4. Hitung jumlah aset riil untuk tiap kategori
+    assets.forEach(a => {
+      const norm = normalizeCategory(a.category || a.asset_type);
+      if (canonMap.has(norm)) {
+        canonMap.get(norm).count += 1;
+      }
+    });
+
+    return Array.from(canonMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [assets, targetFiles]);
 
   // Combined File List
   const allFileOptions = useMemo(() => {
@@ -978,9 +1021,10 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   // Filtered Assets
   const filteredAssets = useMemo(() => {
     return assets.filter(a => {
-      // 0. Filter Tipe Sumber Foto (Hasil Timemark vs Ekspor Asli)
+      // 0. Filter Tipe Sumber Foto (Hasil Timemark vs Ekspor Asli vs Kolase)
       if (sourceTypeFilter === 'timemark' && !a.hasEdited) return false;
       if (sourceTypeFilter === 'export' && !a.hasRaw) return false;
+      if (sourceTypeFilter === 'collage' && !a.isCollage) return false;
 
       // 1. Filter File (Target PDF atau Source PDF)
       if (selectedFile) {
@@ -994,10 +1038,14 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
         return false;
       }
 
-      // 3. Filter Kategori Aset
-      const cat = a.category || a.asset_type;
-      if (selectedCategory && cat !== selectedCategory) {
-        return false;
+      // 3. Filter Kategori Aset (Normalisasi Alias agar AXC/AXLE COUNTER, SINYAL/PERAGA, dll cocok bolak-balik)
+      const cat = a.category || a.asset_type || '';
+      if (selectedCategory) {
+        const normAssetCat = normalizeCategory(cat);
+        const normSelectedCat = normalizeCategory(selectedCategory);
+        if (normAssetCat !== normSelectedCat && cat !== selectedCategory) {
+          return false;
+        }
       }
 
       // 4. Filter Status Kelengkapan Foto
@@ -1008,8 +1056,10 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
       // 5. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
+        const normCat = normalizeCategory(cat).toLowerCase();
+        const labelCat = (CATEGORY_LABEL_MAP[normalizeCategory(cat)] || '').toLowerCase();
         const matchStation = a.station && a.station.toLowerCase().includes(q);
-        const matchCat = cat && cat.toLowerCase().includes(q);
+        const matchCat = (cat && cat.toLowerCase().includes(q)) || normCat.includes(q) || labelCat.includes(q);
         const matchDetail = a.detail && a.detail.toLowerCase().includes(q);
         if (!matchStation && !matchCat && !matchDetail) return false;
       }
@@ -1132,6 +1182,36 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
     }
   };
 
+  // Potong Kolase Per Foto (Crop Single Collage) Handler
+  const handleCropCollageSingle = async (targetKey) => {
+    if (!targetKey) return;
+    setActionLoadingRel(targetKey);
+    try {
+      const res = await fetch('/api/timemark/crop-collage-single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseExportDir: exportDir,
+          rel: targetKey
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setFeedback({
+          type: 'success',
+          text: `✓ ${data.message || 'Kolase berhasil dipotong dan disimpan!'}`
+        });
+        await fetchPhotos();
+      } else {
+        alert('Gagal memotong kolase: ' + (data.error || 'Terjadi kesalahan'));
+      }
+    } catch (err) {
+      alert('Galat potong kolase: ' + err.message);
+    } finally {
+      setActionLoadingRel(null);
+    }
+  };
+
   // Proses Timemark Otomatis (Per Foto atau Per Folder Aset)
   const handleProcessTimemark = async (asset, photoName = null) => {
     const targetKey = photoName ? `${asset.relDir}/${photoName}` : asset.relDir;
@@ -1201,244 +1281,296 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', width: '100%', overflowY: 'auto', paddingRight: '0.5rem' }}>
       
-      {/* ── Top Bar: Folder & Status Bar ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.85rem 1.25rem', width: '100%', flexWrap: 'wrap', gap: '0.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>Folder Foto Ekspor / Timemark:</span>
-            <strong style={{ fontSize: '0.875rem', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{exportDir || 'Belum dipilih'}</strong>
-          </div>
-          {onPickFolder && (
+      {/* ── STICKY FREEZE HEADER: Folder Bar & Mode Toolbar & Filter Box ── */}
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 35,
+          background: 'rgba(10, 15, 29, 0.96)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.65rem',
+          paddingTop: '0.25rem',
+          paddingBottom: '0.75rem',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.55)'
+        }}
+      >
+        {/* ── Top Bar: Folder & Status Bar ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.75rem 1.25rem', width: '100%', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>Folder Foto Ekspor / Timemark:</span>
+              <strong style={{ fontSize: '0.875rem', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{exportDir || 'Belum dipilih'}</strong>
+            </div>
+            {onPickFolder && (
+              <button
+                onClick={onPickFolder}
+                style={{ padding: '0.4rem 0.85rem', background: 'var(--accent)', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                📁 Ganti Folder...
+              </button>
+            )}
             <button
-              onClick={onPickFolder}
-              style={{ padding: '0.4rem 0.85rem', background: 'var(--accent)', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              onClick={fetchPhotos}
+              disabled={loading}
+              style={{ padding: '0.4rem 0.75rem', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
             >
-              📁 Ganti Folder...
+              🔄 Refresh
             </button>
+          </div>
+
+          {/* Counter Badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '0.35rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontWeight: 500 }}>
+              Menampilkan <strong style={{ color: '#10b981' }}>{filteredAssets.length}</strong> dari <strong>{assets.length}</strong> aset ({editedCount} telah diedit)
+            </span>
+          </div>
+        </div>
+
+        {/* ── Mode Toolbar (Diadopsi Persis dari Web App) ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '1rem 1.25rem', width: '100%' }}>
+          
+          {/* Row 1: Pipeline Mode & View Mode Switchers */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+            
+            {/* Pipeline Mode Switcher */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Mode:</span>
+              {[
+                { id: 'standard', label: '📅 Edit Tanggal' },
+                { id: 'time', label: '⏰ Edit Jam' },
+                { id: 'coord', label: '📍 Edit Koordinat' }
+              ].map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setPipelineMode(m.id)}
+                  style={{
+                    padding: '0.35rem 0.8rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: pipelineMode === m.id ? '#10b981' : 'transparent',
+                    color: pipelineMode === m.id ? '#ffffff' : 'var(--text-secondary)',
+                    fontWeight: pipelineMode === m.id ? 700 : 500,
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            {/* View Mode Switcher (Dual vs Edited vs Raw) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Tampilan:</span>
+              {[
+                { id: 'dual', label: '⚖️ Komparasi / Dual' },
+                { id: 'edited', label: '✨ Edited (04)' },
+                { id: 'raw', label: '📷 Mentah (03)' }
+              ].map(v => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setViewMode(v.id)}
+                  style={{
+                    padding: '0.35rem 0.8rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: viewMode === v.id ? 'var(--accent)' : 'transparent',
+                    color: viewMode === v.id ? '#ffffff' : 'var(--text-secondary)',
+                    fontWeight: viewMode === v.id ? 700 : 500,
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Card Size Switcher */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Ukuran:</span>
+              {[
+                { id: 'normal', label: 'Standar' },
+                { id: 'large', label: '🔍 Besar (Fokus)' }
+              ].map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setCardSize(s.id)}
+                  style={{
+                    padding: '0.35rem 0.8rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: cardSize === s.id ? '#6366f1' : 'transparent',
+                    color: cardSize === s.id ? '#ffffff' : 'var(--text-secondary)',
+                    fontWeight: cardSize === s.id ? 700 : 500,
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  title={s.id === 'large' ? 'Perbesar tampilan foto agar detail lapangan terbaca jelas' : 'Tampilan kartu proporsional standar'}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Detector Selector Switcher (Google AI Vision vs Metode Biasa HSV) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Detektor:</span>
+              {[
+                { id: 'google_vision', label: '✨ Google Vision AI', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.2)' },
+                { id: 'guide', label: '🎨 Metode Biasa (HSV)', color: '#0284c7', bg: 'rgba(2, 132, 199, 0.2)' }
+              ].map(d => (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => setActiveDetector(d.id)}
+                  style={{
+                    padding: '0.35rem 0.8rem',
+                    borderRadius: '6px',
+                    border: activeDetector === d.id ? `1px solid ${d.color}` : '1px solid transparent',
+                    background: activeDetector === d.id ? d.bg : 'transparent',
+                    color: activeDetector === d.id ? d.color : 'var(--text-secondary)',
+                    fontWeight: activeDetector === d.id ? 800 : 500,
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: activeDetector === d.id ? `0 0 8px ${d.color}40` : 'none'
+                  }}
+                  title={d.id === 'google_vision' ? 'Deteksi kotak tulisan waktu otomatis via Google Cloud Vision AI' : 'Deteksi garis panduan warna merah/oranye klasik'}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+
+          </div>
+
+          {/* Row 2: Search & Dropdown Filters */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
+            
+            {/* Filter Berkas PDF Target */}
+            <div>
+              <select
+                value={selectedFile}
+                onChange={e => {
+                  const val = e.target.value;
+                  setSelectedFile(val);
+                  const match = targetFiles.find(t => t.file === val);
+                  if (match) {
+                    if (match.category) setSelectedCategory(match.category);
+                    if (match.btp) setSelectedStation(match.btp);
+                  }
+                }}
+                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+                title="Filter aset berdasarkan berkas PDF target"
+              >
+                <option value="">📄 Semua Berkas Target PDF</option>
+                {allFileOptions.map((opt, idx) => (
+                  <option key={idx} value={opt.value} title={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filter Stasiun / Wilayah (BTP) */}
+            <div>
+              <select
+                value={selectedStation}
+                onChange={e => setSelectedStation(e.target.value)}
+                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+              >
+                <option value="">🏢 Semua Stasiun / Wilayah (BTP)</option>
+                {uniqueStations.map(stn => {
+                  const count = assets.filter(a => a.station === stn).length;
+                  return (
+                    <option key={stn} value={stn}>
+                      {stn} ({count} Aset)
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Filter Kategori Aset */}
+            <div>
+              <select
+                value={selectedCategory}
+                onChange={e => setSelectedCategory(e.target.value)}
+                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+              >
+                <option value="">⚙️ Semua Kategori Aset ({assets.length} Aset)</option>
+                {uniqueCategories.map(cat => (
+                  <option key={cat.key} value={cat.key}>
+                    {cat.label} ({cat.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filter Status Kelengkapan Foto */}
+            <div>
+              <select
+                value={selectedStatus}
+                onChange={e => setSelectedStatus(e.target.value)}
+                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+              >
+                <option value="">📸 Semua Status Kelengkapan</option>
+                <option value="complete">✅ Lengkap (3 Foto: 0, 50, 100%) ({assets.filter(a => (a.photos || []).length >= 3).length})</option>
+                <option value="incomplete">⚠️ Belum Lengkap (&lt; 3 Foto) ({assets.filter(a => (a.photos || []).length < 3).length})</option>
+              </select>
+            </div>
+
+            {/* Filter Status Sumber Foto */}
+            <div>
+              <select
+                value={sourceTypeFilter}
+                onChange={e => setSourceTypeFilter(e.target.value)}
+                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+              >
+                <option value="all">🖼️ Semua Sumber Foto</option>
+                <option value="timemark">✨ Hanya Yang Sudah Diedit (04)</option>
+                <option value="export">📷 Hanya Yang Punya Mentah (03)</option>
+                <option value="collage">🗂️ Hanya Foto Kolase ({assets.filter(a => a.isCollage).length})</option>
+              </select>
+            </div>
+
+            {/* Pencarian Teks Cepat */}
+            <div>
+              <input
+                type="text"
+                placeholder="🔍 Cari nama aset (ZP 101, W11A, J10)..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+              />
+            </div>
+
+          </div>
+
+          {/* Reset Filter Button row */}
+          {isFilterActive && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
+              <button
+                onClick={resetAllFilters}
+                style={{ padding: '0.35rem 0.85rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+              >
+                ✕ Reset Semua Filter
+              </button>
+            </div>
           )}
-          <button
-            onClick={fetchPhotos}
-            disabled={loading}
-            style={{ padding: '0.4rem 0.75rem', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-          >
-            🔄 Refresh
-          </button>
         </div>
-
-        {/* Counter Badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '0.35rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontWeight: 500 }}>
-            Menampilkan <strong style={{ color: '#10b981' }}>{filteredAssets.length}</strong> dari <strong>{assets.length}</strong> aset ({editedCount} telah diedit)
-          </span>
-        </div>
-      </div>
-
-      {/* ── Mode Toolbar (Diadopsi Persis dari Web App) ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '1rem 1.25rem', width: '100%' }}>
-        
-        {/* Row 1: Pipeline Mode & View Mode Switchers */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-          
-          {/* Pipeline Mode Switcher */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Mode:</span>
-            {[
-              { id: 'standard', label: '📅 Edit Tanggal' },
-              { id: 'time', label: '⏰ Edit Jam' },
-              { id: 'coord', label: '📍 Edit Koordinat' }
-            ].map(m => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setPipelineMode(m.id)}
-                style={{
-                  padding: '0.35rem 0.8rem',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: pipelineMode === m.id ? '#10b981' : 'transparent',
-                  color: pipelineMode === m.id ? '#ffffff' : 'var(--text-secondary)',
-                  fontWeight: pipelineMode === m.id ? 700 : 500,
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          {/* View Mode Switcher (Dual vs Edited vs Raw) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Tampilan:</span>
-            {[
-              { id: 'dual', label: '⚖️ Komparasi / Dual' },
-              { id: 'edited', label: '✨ Edited (04)' },
-              { id: 'raw', label: '📷 Mentah (03)' }
-            ].map(v => (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => setViewMode(v.id)}
-                style={{
-                  padding: '0.35rem 0.8rem',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: viewMode === v.id ? 'var(--accent)' : 'transparent',
-                  color: viewMode === v.id ? '#ffffff' : 'var(--text-secondary)',
-                  fontWeight: viewMode === v.id ? 700 : 500,
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Detector Selector Switcher (Google AI Vision vs Metode Biasa HSV) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Detektor:</span>
-            {[
-              { id: 'google_vision', label: '✨ Google Vision AI', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.2)' },
-              { id: 'guide', label: '🎨 Metode Biasa (HSV)', color: '#0284c7', bg: 'rgba(2, 132, 199, 0.2)' }
-            ].map(d => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => setActiveDetector(d.id)}
-                style={{
-                  padding: '0.35rem 0.8rem',
-                  borderRadius: '6px',
-                  border: activeDetector === d.id ? `1px solid ${d.color}` : '1px solid transparent',
-                  background: activeDetector === d.id ? d.bg : 'transparent',
-                  color: activeDetector === d.id ? d.color : 'var(--text-secondary)',
-                  fontWeight: activeDetector === d.id ? 800 : 500,
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  boxShadow: activeDetector === d.id ? `0 0 8px ${d.color}40` : 'none'
-                }}
-                title={d.id === 'google_vision' ? 'Deteksi kotak tulisan waktu otomatis via Google Cloud Vision AI' : 'Deteksi garis panduan warna merah/oranye klasik'}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-
-        </div>
-
-        {/* Row 2: Search & Dropdown Filters */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
-          
-          {/* Filter Berkas PDF Target */}
-          <div>
-            <select
-              value={selectedFile}
-              onChange={e => {
-                const val = e.target.value;
-                setSelectedFile(val);
-                const match = targetFiles.find(t => t.file === val);
-                if (match) {
-                  if (match.category) setSelectedCategory(match.category);
-                  if (match.btp) setSelectedStation(match.btp);
-                }
-              }}
-              style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-              title="Filter aset berdasarkan berkas PDF target"
-            >
-              <option value="">📄 Semua Berkas Target PDF</option>
-              {allFileOptions.map((opt, idx) => (
-                <option key={idx} value={opt.value} title={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Filter Stasiun / Wilayah (BTP) */}
-          <div>
-            <select
-              value={selectedStation}
-              onChange={e => setSelectedStation(e.target.value)}
-              style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-            >
-              <option value="">🏢 Semua Stasiun / Wilayah (BTP)</option>
-              {uniqueStations.map(stn => (
-                <option key={stn} value={stn}>
-                  {stn}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Filter Kategori Aset */}
-          <div>
-            <select
-              value={selectedCategory}
-              onChange={e => setSelectedCategory(e.target.value)}
-              style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-            >
-              <option value="">⚙️ Semua Kategori Aset</option>
-              {uniqueCategories.map(cat => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Filter Status Kelengkapan Foto */}
-          <div>
-            <select
-              value={selectedStatus}
-              onChange={e => setSelectedStatus(e.target.value)}
-              style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-            >
-              <option value="">📸 Semua Status Kelengkapan</option>
-              <option value="complete">✅ Lengkap (3 Foto: 0, 50, 100%)</option>
-              <option value="incomplete">⚠️ Belum Lengkap (&lt; 3 Foto)</option>
-            </select>
-          </div>
-
-          {/* Filter Status Sumber Foto */}
-          <div>
-            <select
-              value={sourceTypeFilter}
-              onChange={e => setSourceTypeFilter(e.target.value)}
-              style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-            >
-              <option value="all">🖼️ Semua Sumber Foto</option>
-              <option value="timemark">✨ Hanya Yang Sudah Diedit (04)</option>
-              <option value="export">📷 Hanya Yang Punya Mentah (03)</option>
-            </select>
-          </div>
-
-          {/* Pencarian Teks Cepat */}
-          <div>
-            <input
-              type="text"
-              placeholder="🔍 Cari nama aset (ZP 101, W11A, J10)..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-            />
-          </div>
-
-        </div>
-
-        {/* Reset Filter Button row */}
-        {isFilterActive && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
-            <button
-              onClick={resetAllFilters}
-              style={{ padding: '0.35rem 0.85rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
-            >
-              ✕ Reset Semua Filter
-            </button>
-          </div>
-        )}
       </div>
 
       {feedback && (
@@ -1507,27 +1639,29 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                   {/* Tombol Proses Timemark Otomatis (3 Foto Sekaligus) */}
                   <button
                     onClick={() => handleProcessTimemark(asset)}
-                    disabled={isRowProcessing || isRowMerging}
+                    disabled={isRowProcessing || isRowMerging || (asset.photos || []).length === 0}
                     style={{
                       padding: '0.25rem 0.75rem',
                       borderRadius: '6px',
-                      background: isRowProcessing
+                      background: (asset.photos || []).length === 0
+                        ? 'rgba(100, 116, 139, 0.25)'
+                        : isRowProcessing
                         ? 'rgba(147, 51, 234, 0.4)'
                         : activeDetector === 'google_vision'
                         ? 'linear-gradient(135deg, #7e22ce 0%, #9333ea 100%)'
                         : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                      color: '#ffffff',
+                      color: (asset.photos || []).length === 0 ? '#94a3b8' : '#ffffff',
                       border: 'none',
                       fontSize: '0.75rem',
                       fontWeight: 800,
-                      cursor: isRowProcessing || isRowMerging ? 'not-allowed' : 'pointer',
+                      cursor: isRowProcessing || isRowMerging || (asset.photos || []).length === 0 ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.35rem',
-                      boxShadow: activeDetector === 'google_vision' ? '0 2px 6px rgba(147, 51, 234, 0.4)' : '0 2px 6px rgba(2, 132, 199, 0.4)',
+                      boxShadow: (asset.photos || []).length === 0 ? 'none' : (activeDetector === 'google_vision' ? '0 2px 6px rgba(147, 51, 234, 0.4)' : '0 2px 6px rgba(2, 132, 199, 0.4)'),
                       transition: 'all 0.2s'
                     }}
-                    title={`Edit otomatis 3 foto aset ini menggunakan ${activeDetector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa (HSV)'}`}
+                    title={(asset.photos || []).length === 0 ? 'Belum ada foto mentah yang dapat diproses' : `Edit otomatis 3 foto aset ini menggunakan ${activeDetector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa (HSV)'}`}
                   >
                     {isRowProcessing ? (
                       <>
@@ -1545,23 +1679,23 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                   {/* Tombol Instan ⚡ Merge PDF Per Baris Aset */}
                   <button
                     onClick={() => handleMergeRow(asset)}
-                    disabled={isRowMerging || isRowProcessing}
+                    disabled={isRowMerging || isRowProcessing || (asset.photos || []).length === 0}
                     style={{
                       padding: '0.25rem 0.75rem',
                       borderRadius: '6px',
-                      background: isRowMerging ? 'rgba(2, 132, 199, 0.4)' : '#0284c7',
-                      color: '#ffffff',
+                      background: (asset.photos || []).length === 0 ? 'rgba(100, 116, 139, 0.25)' : (isRowMerging ? 'rgba(2, 132, 199, 0.4)' : '#0284c7'),
+                      color: (asset.photos || []).length === 0 ? '#94a3b8' : '#ffffff',
                       border: 'none',
                       fontSize: '0.75rem',
                       fontWeight: 800,
-                      cursor: isRowMerging || isRowProcessing ? 'not-allowed' : 'pointer',
+                      cursor: isRowMerging || isRowProcessing || (asset.photos || []).length === 0 ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.35rem',
-                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.4)',
+                      boxShadow: (asset.photos || []).length === 0 ? 'none' : '0 2px 6px rgba(2, 132, 199, 0.4)',
                       transition: 'all 0.2s'
                     }}
-                    title="Gabungkan 1 baris aset ini langsung ke file PDF target terkait"
+                    title={(asset.photos || []).length === 0 ? 'Foto belum tersedia untuk dimerge' : 'Gabungkan 1 baris aset ini langsung ke file PDF target terkait'}
                   >
                     {isRowMerging ? (
                       <>
@@ -1605,7 +1739,16 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
               </div>
 
               {/* 3 Photos Grid (0% | 50% | 100%) Across 3 Large Columns */}
-              <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'dual' ? 'repeat(auto-fit, minmax(360px, 1fr))' : 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', width: '100%' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: viewMode === 'dual'
+                    ? (cardSize === 'large' ? 'repeat(auto-fit, minmax(420px, 1fr))' : 'repeat(auto-fit, minmax(360px, 1fr))')
+                    : (cardSize === 'large' ? 'repeat(auto-fit, minmax(340px, 1fr))' : 'repeat(auto-fit, minmax(280px, 1fr))'),
+                  gap: '1rem',
+                  width: '100%'
+                }}
+              >
                 {['0.jpg', '50.jpg', '100.jpg'].map((photoName) => {
                   const photoObj = (asset.photos || []).find(p => p.name === photoName);
                   const labelPercent = photoName.replace('.jpg', '') + '%';
@@ -1613,6 +1756,9 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                   const isDragOver = dragOverRel === targetKey;
                   const isActionLoading = actionLoadingRel === targetKey;
                   const isManual = photoObj?.meta?.manualEdit;
+                  const dualCardHeight = cardSize === 'large' ? 290 : 220;
+                  const singleCardHeight = cardSize === 'large' ? 380 : 270;
+                  const currentSingleView = photoViewOverrides[targetKey] || (viewMode === 'raw' ? 'raw' : (photoObj?.hasEdited ? 'edited' : 'raw'));
 
                   return (
                     <div
@@ -1635,6 +1781,23 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                           {photoObj ? (
                             <>
+                              {photoObj.isCollage && (
+                                <span
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    background: photoObj.hasTemp ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)',
+                                    color: photoObj.hasTemp ? '#4ade80' : '#facc15',
+                                    border: photoObj.hasTemp ? '1px solid #22c55e' : '1px solid #eab308',
+                                    fontWeight: 600
+                                  }}
+                                  title={photoObj.hasTemp ? "Foto ini adalah kolase dan telah dipotong" : "Foto ini adalah kolase dan belum dipotong"}
+                                >
+                                  🗂️ {photoObj.hasTemp ? 'Kolase Terpotong' : 'Kolase'}
+                                </span>
+                              )}
+
                               {isManual && (
                                 <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid #f59e0b', fontWeight: 600 }}>
                                   Manual (Y:{photoObj.meta.yPos})
@@ -1655,24 +1818,52 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                                     📷 Mentah (03)
                                   </span>
                                 )
-                              ) : viewMode === 'raw' ? (
-                                photoObj.hasRaw ? (
-                                  <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(148, 163, 184, 0.2)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.4)', fontWeight: 600 }}>
-                                    📷 Mentah (03_export_foto)
-                                  </span>
-                                ) : (
-                                  <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: 600 }}>
-                                    📷 Belum Ada Mentah
-                                  </span>
-                                )
                               ) : (
-                                photoObj.hasEdited ? (
+                                /* Quick Flip Toggle di Single Mode */
+                                photoObj.hasRaw && photoObj.hasEdited ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '5px', padding: '1px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setPhotoViewOverrides(prev => ({ ...prev, [targetKey]: 'edited' }))}
+                                      style={{
+                                        border: 'none',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        background: currentSingleView === 'edited' ? '#10b981' : 'transparent',
+                                        color: currentSingleView === 'edited' ? '#ffffff' : '#94a3b8'
+                                      }}
+                                      title="Tampilkan Foto Editan Timemark (04)"
+                                    >
+                                      ✨ 04
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setPhotoViewOverrides(prev => ({ ...prev, [targetKey]: 'raw' }))}
+                                      style={{
+                                        border: 'none',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        background: currentSingleView === 'raw' ? '#38bdf8' : 'transparent',
+                                        color: currentSingleView === 'raw' ? '#ffffff' : '#94a3b8'
+                                      }}
+                                      title="Tampilkan Foto Mentah Ekspor (03)"
+                                    >
+                                      📷 03
+                                    </button>
+                                  </div>
+                                ) : currentSingleView === 'edited' ? (
                                   <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(34, 197, 94, 0.2)', color: '#4ade80', border: '1px solid #22c55e', fontWeight: 600 }}>
-                                    ✨ Timemark (04_photos_edited)
+                                    ✨ Editan (04)
                                   </span>
                                 ) : (
-                                  <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid #f59e0b', fontWeight: 600 }}>
-                                    ⚠️ Belum Diedit
+                                  <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(148, 163, 184, 0.2)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.4)', fontWeight: 600 }}>
+                                    📷 Mentah (03)
                                   </span>
                                 )
                               )}
@@ -1711,7 +1902,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                               e.stopPropagation();
                               setDragOverRel(null);
 
-                              // 1. Cek apakah ini swap foto internal (misal foto kedua ke foto pertama)
+                              // 1. Cek swap foto internal
                               const swapData = e.dataTransfer.getData('application/x-sintelis-photo');
                               if (swapData) {
                                 try {
@@ -1742,41 +1933,65 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                                 <span style={{ cursor: 'grab' }} title="Seret untuk tukar posisi">✥</span>
-                                📷 Mentah (03)
+                                📷 {photoObj?.hasTemp ? 'Mentah (Terpotong)' : 'Mentah (03)'}
                               </span>
-                              {photoObj?.rawUrl && (
-                                <button
-                                  type="button"
-                                  onClick={() => setZoomPhoto({ url: photoObj.rawUrl, title: `${asset.detail} - ${labelPercent} (Mentah 03)` })}
-                                  style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px', fontSize: '0.75rem' }}
-                                  title="Perbesar Foto Mentah (03)"
-                                >
-                                  🔍
-                                </button>
-                              )}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                {photoObj?.isCollage && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCropCollageSingle(targetKey)}
+                                    disabled={actionLoadingRel === targetKey}
+                                    style={{
+                                      background: photoObj.hasTemp ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                                      border: photoObj.hasTemp ? '1px solid #22c55e' : '1px solid #f59e0b',
+                                      color: photoObj.hasTemp ? '#4ade80' : '#fbbf24',
+                                      cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 600
+                                    }}
+                                    title={photoObj.hasTemp ? "Kolase sudah dipotong. Klik untuk potong ulang (auto-crop)" : "Potong otomatis kolase ini (auto-crop 300x300)"}
+                                  >
+                                    ✂️ {actionLoadingRel === targetKey ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong')}
+                                  </button>
+                                )}
+                                {photoObj?.rawUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setZoomPhoto({ url: (photoObj.hasTemp && photoObj.tempUrl) ? photoObj.tempUrl : photoObj.rawUrl, title: `${asset.detail} - ${labelPercent} (${photoObj.hasTemp ? 'Mentah Terpotong' : 'Mentah 03'})` })}
+                                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px', fontSize: '0.75rem' }}
+                                    title={photoObj.hasTemp ? "Perbesar Foto Mentah Terpotong" : "Perbesar Foto Mentah (03)"}
+                                  >
+                                    🔍
+                                  </button>
+                                )}
+                              </div>
                             </div>
 
-                            <div style={{ width: '100%', height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '4px', background: '#000000', position: 'relative' }}>
+                            <div style={{ width: '100%', height: `${dualCardHeight}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '4px', background: '#000000', position: 'relative' }}>
                               {photoObj?.rawUrl ? (
-                                <img
-                                  src={photoObj.rawUrl}
-                                  alt={`${asset.detail} - ${labelPercent} (Mentah)`}
-                                  style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'grab' }}
-                                  loading="lazy"
-                                  draggable={true}
-                                  onDragStart={e => {
-                                    if (e.target.closest('.inline-timemark-box')) {
-                                      e.preventDefault();
-                                      return;
-                                    }
-                                    const payload = JSON.stringify({ rel: targetKey, assetRel: asset.relDir, photoName });
-                                    e.dataTransfer.setData('application/x-sintelis-photo', payload);
-                                    e.dataTransfer.setData('text/plain', targetKey);
-                                    setDraggedPhotoInfo({ rel: targetKey, assetRel: asset.relDir, photoName });
-                                  }}
-                                  onDragEnd={() => setDraggedPhotoInfo(null)}
-                                  title="Klik & tahan (drag) untuk menukar posisi dengan foto lain"
-                                />
+                                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
+                                  <img
+                                    src={(photoObj.hasTemp && photoObj.tempUrl) ? photoObj.tempUrl : photoObj.rawUrl}
+                                    alt={`${asset.detail} - ${labelPercent} (${photoObj.hasTemp ? 'Mentah Terpotong' : 'Mentah'})`}
+                                    style={{ maxWidth: '100%', maxHeight: `${dualCardHeight}px`, width: 'auto', height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block' }}
+                                    loading="lazy"
+                                    draggable={true}
+                                    onDragStart={e => {
+                                      if (e.target.closest('.inline-timemark-box')) {
+                                        e.preventDefault();
+                                        return;
+                                      }
+                                      const payload = JSON.stringify({ rel: targetKey, assetRel: asset.relDir, photoName });
+                                      e.dataTransfer.setData('application/x-sintelis-photo', payload);
+                                      e.dataTransfer.setData('text/plain', targetKey);
+                                      setDraggedPhotoInfo({ rel: targetKey, assetRel: asset.relDir, photoName });
+                                    }}
+                                    onDragEnd={() => setDraggedPhotoInfo(null)}
+                                    title="Klik & tahan (drag) untuk menukar posisi dengan foto lain"
+                                  />
+                                </div>
                               ) : (
                                 <div style={{ textAlign: 'center', color: '#64748b', fontSize: '0.72rem', padding: '0.5rem' }}>
                                   <div style={{ fontSize: '1.25rem', marginBottom: '0.2rem' }}>📷</div>
@@ -1862,13 +2077,13 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                               )}
                             </div>
 
-                            <div style={{ width: '100%', height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '4px', background: '#000000', position: 'relative' }}>
+                            <div style={{ width: '100%', height: `${dualCardHeight}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '4px', background: '#000000', position: 'relative' }}>
                               {photoObj?.editedUrl ? (
-                                <>
+                                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
                                   <img
                                     src={photoObj.editedUrl}
                                     alt={`${asset.detail} - ${labelPercent} (Editan)`}
-                                    style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'grab' }}
+                                    style={{ maxWidth: '100%', maxHeight: `${dualCardHeight}px`, width: 'auto', height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block' }}
                                     loading="lazy"
                                     draggable={true}
                                     onDragStart={e => {
@@ -1895,7 +2110,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                                     onSaved={fetchPhotos}
                                     onOpenModal={() => setEditingModal({ asset, photo: photoObj })}
                                   />
-                                </>
+                                </div>
                               ) : (
                                 <div style={{ textAlign: 'center', color: '#f59e0b', fontSize: '0.72rem', padding: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
                                   <div style={{ fontSize: '1.25rem' }}>⚠️</div>
@@ -1947,7 +2162,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
                         </div>
                       ) : (
-                        /* Mode Tunggal: 'raw' (Hanya Mentah 03) atau 'edited' (Hanya Editan 04) */
+                        /* Mode Tunggal: 'raw' (Hanya Mentah 03) atau 'edited' (Hanya Editan 04) dengan PiP Preview */
                         <div
                           onDragOver={e => {
                             e.preventDefault();
@@ -1981,7 +2196,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                           }}
                           style={{
                             width: '100%',
-                            height: '270px',
+                            height: `${singleCardHeight}px`,
                             background: '#090d16',
                             borderRadius: '6px',
                             overflow: 'hidden',
@@ -1993,22 +2208,24 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                           }}
                           title="Tarik & lepaskan file gambar ke sini untuk mengganti foto mentah, atau seret foto ini ke slot lain untuk menukar posisi"
                         >
-                          {viewMode === 'raw' ? (
+                          {currentSingleView === 'raw' ? (
                             photoObj?.rawUrl ? (
-                              <img
-                                src={photoObj.rawUrl}
-                                alt={`${asset.detail} - ${labelPercent} (Mentah)`}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'grab' }}
-                                loading="lazy"
-                                draggable={true}
-                                onDragStart={e => {
-                                  const payload = JSON.stringify({ rel: targetKey, assetRel: asset.relDir, photoName });
-                                  e.dataTransfer.setData('application/x-sintelis-photo', payload);
-                                  e.dataTransfer.setData('text/plain', targetKey);
-                                  setDraggedPhotoInfo({ rel: targetKey, assetRel: asset.relDir, photoName });
-                                }}
-                                onDragEnd={() => setDraggedPhotoInfo(null)}
-                              />
+                              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
+                                <img
+                                  src={(photoObj.hasTemp && photoObj.tempUrl) ? photoObj.tempUrl : photoObj.rawUrl}
+                                  alt={`${asset.detail} - ${labelPercent} (${photoObj.hasTemp ? 'Mentah Terpotong' : 'Mentah'})`}
+                                  style={{ maxWidth: '100%', maxHeight: `${singleCardHeight}px`, width: 'auto', height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block' }}
+                                  loading="lazy"
+                                  draggable={true}
+                                  onDragStart={e => {
+                                    const payload = JSON.stringify({ rel: targetKey, assetRel: asset.relDir, photoName });
+                                    e.dataTransfer.setData('application/x-sintelis-photo', payload);
+                                    e.dataTransfer.setData('text/plain', targetKey);
+                                    setDraggedPhotoInfo({ rel: targetKey, assetRel: asset.relDir, photoName });
+                                  }}
+                                  onDragEnd={() => setDraggedPhotoInfo(null)}
+                                />
+                              </div>
                             ) : (
                               <div style={{ textAlign: 'center', color: '#64748b', fontSize: '0.8rem', padding: '1rem' }}>
                                 <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>📷</div>
@@ -2017,11 +2234,11 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                             )
                           ) : (
                             photoObj?.editedUrl ? (
-                              <>
+                              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
                                 <img
                                   src={photoObj.editedUrl}
                                   alt={`${asset.detail} - ${labelPercent} (Editan)`}
-                                  style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'grab' }}
+                                  style={{ maxWidth: '100%', maxHeight: `${singleCardHeight}px`, width: 'auto', height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block' }}
                                   loading="lazy"
                                   draggable={true}
                                   onDragStart={e => {
@@ -2037,7 +2254,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                                   onDragEnd={() => setDraggedPhotoInfo(null)}
                                 />
 
-                                {/* Kotak Timemark Interaktif yang Dapat Digeser (Inline Draggable Box) */}
+                                {/* Kotak Timemark Interaktif yang Terkunci Tepat pada Foto */}
                                 <InlineTimemarkBox
                                   asset={asset}
                                   photo={photoObj}
@@ -2047,7 +2264,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                                   onSaved={fetchPhotos}
                                   onOpenModal={() => setEditingModal({ asset, photo: photoObj })}
                                 />
-                              </>
+                              </div>
                             ) : (
                               <div style={{ textAlign: 'center', color: '#f59e0b', fontSize: '0.8rem', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
                                 <div style={{ fontSize: '1.75rem' }}>⚠️</div>
@@ -2078,6 +2295,62 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                                 </button>
                               </div>
                             )
+                          )}
+
+                          {/* Mini PiP Thumbnail untuk melihat foto pasangannya (03 vs 04) secara instan */}
+                          {photoObj?.hasRaw && photoObj?.hasEdited && (
+                            <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPhotoViewOverrides(prev => ({
+                                  ...prev,
+                                  [targetKey]: currentSingleView === 'edited' ? 'raw' : 'edited'
+                                }));
+                              }}
+                              style={{
+                                position: 'absolute',
+                                bottom: '10px',
+                                right: '10px',
+                                width: '64px',
+                                height: '48px',
+                                borderRadius: '6px',
+                                border: currentSingleView === 'edited' ? '2px solid #38bdf8' : '2px solid #10b981',
+                                background: '#000000',
+                                overflow: 'hidden',
+                                cursor: 'pointer',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.7)',
+                                zIndex: 20,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'transform 0.15s ease'
+                              }}
+                              title={`Klik untuk intip/beralih ke Foto ${currentSingleView === 'edited' ? 'Mentah (03)' : 'Editan Timemark (04)'}`}
+                              onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                              onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                            >
+                              <img
+                                src={currentSingleView === 'edited' ? photoObj.rawUrl : photoObj.editedUrl}
+                                alt="Thumbnail sebaliknya"
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                              <span
+                                style={{
+                                  position: 'absolute',
+                                  top: '2px',
+                                  left: '2px',
+                                  fontSize: '0.55rem',
+                                  fontWeight: 800,
+                                  padding: '1px 3px',
+                                  borderRadius: '3px',
+                                  background: currentSingleView === 'edited' ? 'rgba(56, 189, 248, 0.9)' : 'rgba(16, 185, 129, 0.9)',
+                                  color: '#ffffff',
+                                  lineHeight: 1
+                                }}
+                              >
+                                {currentSingleView === 'edited' ? '03' : '04'}
+                              </span>
+                            </div>
                           )}
 
                           {/* Drag Over Overlay */}
@@ -2170,15 +2443,40 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                             </button>
                           )}
 
+                          {viewMode !== 'dual' && photoObj.isCollage && (
+                            <button
+                              type="button"
+                              onClick={() => handleCropCollageSingle(targetKey)}
+                              disabled={actionLoadingRel === targetKey}
+                              style={{
+                                padding: '0.4rem 0.6rem',
+                                background: photoObj.hasTemp ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                                color: photoObj.hasTemp ? '#4ade80' : '#fbbf24',
+                                border: photoObj.hasTemp ? '1px solid #22c55e' : '1px solid #f59e0b',
+                                borderRadius: '6px',
+                                cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.25rem'
+                              }}
+                              title={photoObj.hasTemp ? "Kolase sudah dipotong. Klik untuk potong ulang" : "Potong otomatis foto kolase ini (auto-crop 300x300)"}
+                            >
+                              <span>✂️</span>
+                              <span>{actionLoadingRel === targetKey ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong Kolase')}</span>
+                            </button>
+                          )}
+
                           {viewMode !== 'dual' && (
                             <button
                               type="button"
                               onClick={() => {
-                                const targetZoom = viewMode === 'raw' ? photoObj.rawUrl : photoObj.editedUrl;
+                                const targetZoom = viewMode === 'raw' ? ((photoObj.hasTemp && photoObj.tempUrl) || photoObj.rawUrl) : photoObj.editedUrl;
                                 if (targetZoom) {
                                   setZoomPhoto({
                                     url: targetZoom,
-                                    title: `${asset.detail} - Foto ${labelPercent} (${viewMode === 'raw' ? 'Mentah 03' : 'Editan 04'})`
+                                    title: `${asset.detail} - Foto ${labelPercent} (${viewMode === 'raw' ? (photoObj.hasTemp ? 'Mentah Terpotong' : 'Mentah 03') : 'Editan 04'})`
                                   });
                                 }
                               }}

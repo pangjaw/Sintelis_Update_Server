@@ -1779,6 +1779,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_timemark_revert_photo()
         elif parsed.path == "/api/timemark/swap-photo":
             self._handle_timemark_swap_photo()
+        elif parsed.path == "/api/timemark/crop-collage-single":
+            self._handle_timemark_crop_collage_single()
         elif parsed.path == "/api/timemark/pegawai":
             self._handle_timemark_pegawai_post()
         elif parsed.path == "/api/timemark/set-active-preset":
@@ -1936,11 +1938,12 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         "04_photos_edited", "04_foto_edited", "04_time", "04_koordinat", "05_pdf_merged", "backups", "_temp_merged", ".git", "node_modules"
                     )]
                     photo_files = [f for f in files if f.lower() in ("0.jpg", "50.jpg", "100.jpg")]
-                    if not photo_files:
-                        continue
                     rel = os.path.relpath(root, dir_raw).replace("\\", "/")
                     parts = [p for p in rel.split("/") if p and p != "."]
-                    if not parts:
+                    if not parts or len(parts) < 2:
+                        continue
+                    # Jika masih memiliki sub-folder dan belum ada foto di folder ini, biarkan os.walk menyelam lebih dalam
+                    if dirs and not photo_files:
                         continue
                     detail = parts[-1]
                     category = parts[-2] if len(parts) >= 2 else "ASET"
@@ -1963,11 +1966,12 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         "backups", "_temp_merged", ".git", "node_modules", "03_photos_export", "03_export_foto"
                     )]
                     photo_files = [f for f in files if f.lower() in ("0.jpg", "50.jpg", "100.jpg")]
-                    if not photo_files:
-                        continue
                     rel = os.path.relpath(root, dir_edited).replace("\\", "/")
                     parts = [p for p in rel.split("/") if p and p != "."]
-                    if not parts:
+                    if not parts or len(parts) < 2:
+                        continue
+                    # Jika masih memiliki sub-folder dan belum ada foto di folder ini, biarkan os.walk menyelam lebih dalam
+                    if dirs and not photo_files:
                         continue
                     detail = parts[-1]
                     category = parts[-2] if len(parts) >= 2 else "ASET"
@@ -2005,6 +2009,28 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                                 if tim_name and not ainfo["tim"]:
                                     ainfo["tim"] = tim_name.replace("_", " ").title()
                                 break
+
+            # 4. Baca daftar kolase yang telah dipotong dari cropped_collages.json atau manifest
+            cropped_set = set()
+            for cand_crop in [
+                os.path.join(export_root, "logs", "cropped_collages.json"),
+                os.path.join(export_root, "logs", "auto_crop_manifest.json"),
+                os.path.join(BASE_DIR, "logs", "cropped_collages.json"),
+                os.path.join(BASE_DIR, "logs", "auto_crop_manifest.json")
+            ]:
+                if os.path.isfile(cand_crop):
+                    try:
+                        with open(cand_crop, "r", encoding="utf-8") as f_c:
+                            c_data = json.load(f_c)
+                            if isinstance(c_data, list):
+                                for x in c_data:
+                                    cropped_set.add(str(x).replace("\\", "/").lower())
+                            elif isinstance(c_data, dict) and "collages" in c_data:
+                                for item in c_data.get("collages", []):
+                                    if "rel_path" in item:
+                                        cropped_set.add(str(item["rel_path"]).replace("\\", "/").lower())
+                    except Exception:
+                        pass
 
             # Bangun list aset terpadu
             assets = []
@@ -2072,6 +2098,19 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         mtime_e = int(os.path.getmtime(edited_path))
                         edited_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(edited_path))}&t={mtime_e}"
 
+                    # Deteksi dan URL preview foto hasil crop kolase (03_photos_cropped_temp)
+                    rel_p = f"{station}/{category}/{detail}/{p_name}".replace("\\", "/")
+                    temp_photo_path = os.path.join(export_root, "03_photos_cropped_temp", station, category, detail, p_name)
+                    has_temp = bool(os.path.isfile(temp_photo_path))
+                    cat_u = category.upper()
+                    is_cat_eligible = any(k in cat_u for k in ("CATUDAYA", "CATU DAYA", "PDSE", "PTDS", "PTLS"))
+                    is_collage = bool(has_temp or (rel_p.lower() in cropped_set) or is_cat_eligible)
+
+                    temp_url = None
+                    if has_temp:
+                        mtime_t = int(os.path.getmtime(temp_photo_path))
+                        temp_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(temp_photo_path))}&t={mtime_t}"
+
                     p_meta = meta_data.get(p_name, {}) if isinstance(meta_data.get(p_name), dict) else {}
                     has_backup = bool(has_raw and (os.path.isfile(raw_path + ".original_backup.jpg") or os.path.isfile(raw_path + ".orig.jpg")))
 
@@ -2079,20 +2118,25 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         "name": p_name,
                         "rawUrl": raw_url,
                         "editedUrl": edited_url,
+                        "tempUrl": temp_url,
+                        "croppedUrl": temp_url,
                         "timeUrl": None,
                         "coordUrl": None,
                         "hasRaw": has_raw,
                         "hasEdited": has_edited,
+                        "hasTemp": has_temp,
+                        "hasCropped": has_temp,
                         "hasTime": False,
                         "hasCoord": False,
-                        "isCollage": False,
+                        "isCollage": is_collage,
                         "hasBackup": has_backup,
                         "meta": p_meta,
-                        "url": edited_url if has_edited else raw_url
+                        "url": edited_url if has_edited else (temp_url if has_temp else raw_url)
                     })
 
                 has_any_edited = any(p["hasEdited"] for p in photos)
                 has_any_raw = any(p["hasRaw"] for p in photos)
+                has_any_collage = any(p["isCollage"] for p in photos)
                 assets.append({
                     "station": station,
                     "btp": station,
@@ -2107,12 +2151,13 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     "photos": photos,
                     "hasEdited": has_any_edited,
                     "isEdited": has_any_edited,
+                    "isCollage": has_any_collage,
                     "tim": tim,
                     "sourceType": "timemark" if has_any_edited else "export"
                 })
 
-            # Sortir: Aset dengan hasEdited tampil lebih dulu, lalu abjad stasiun/kategori/detail
-            assets.sort(key=lambda a: (0 if a["hasEdited"] else 1, a["station"], a["category"], a["detail"]))
+            # Sortir: Aset dengan hasEdited tampil lebih dulu, lalu yang memiliki foto mentah, lalu yang kosong
+            assets.sort(key=lambda a: (0 if a["hasEdited"] else (1 if a["photos"] else 2), a["station"], a["category"], a["detail"]))
 
             self._json({
                 "ok": True,
@@ -2428,8 +2473,12 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 stem = os.path.splitext(fname)[0]
                 p_date = calc_photo_date(date_to_use, stem) if date_to_use else ""
 
+                # Prioritaskan foto hasil potong kolase (03_photos_cropped_temp) jika ada
+                temp_cand = os.path.join(export_root, "03_photos_cropped_temp", asset_rel, fname)
                 in_cand = os.path.join(photos_export, asset_rel, fname)
-                if not os.path.isfile(in_cand):
+                if os.path.isfile(temp_cand):
+                    in_cand = temp_cand
+                elif not os.path.isfile(in_cand):
                     in_cand = os.path.join(photos_edited, tim_group, asset_rel, fname)
                     if not os.path.isfile(in_cand):
                         continue
@@ -2815,8 +2864,161 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 "message": f"Berhasil menukar posisi foto {os.path.basename(norm_src)} dengan {os.path.basename(norm_tgt)}."
             })
         except Exception as e:
-            _log(f"Swap photo error: {e}")
             self._json({"ok": False, "error": str(e)}, 500)
+
+    def _handle_timemark_crop_collage_single(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            data = json.loads(body) if body else {}
+
+            base_dir = data.get("baseExportDir") or data.get("folder") or ""
+            rel = (data.get("rel") or "").replace("\\", "/").strip("/")
+
+            if not rel:
+                self._json({"ok": False, "error": "Parameter rel wajib diisi."}, 400)
+                return
+
+            export_root, photos_export, photos_edited = _resolve_photo_directories(base_dir or BASE_DIR)
+            src_path = Path(photos_export) / rel
+            if not src_path.is_file():
+                self._json({"ok": False, "error": f"Foto mentah tidak ditemukan: {src_path}"}, 404)
+                return
+
+            # Import helper deteksi & crop kolase
+            sys.path.insert(0, os.path.join(APP_DIR, "timemark_engine"))
+            from auto_crop_collages import detect_white_seam_collage
+            from PIL import Image
+            import numpy as np
+
+            req_quad = data.get("quadrant")
+            layout, crop_box, stats = detect_white_seam_collage(src_path, requested_quadrant=req_quad)
+
+            img = Image.open(src_path).convert("RGB")
+            w, h = img.size
+
+            # Jika deteksi garis putih terlalu tipis, gunakan fallback kuadran 2x2 cerdas (berbasis guideline timemark)
+            if layout == "single_photo" or not crop_box:
+                layout = "2x2"
+                quads = {
+                    "BL": (0, h // 2, w // 2, h),
+                    "TL": (0, 0, w // 2, h // 2),
+                    "TR": (w // 2, 0, w, h // 2),
+                    "BR": (w // 2, h // 2, w, h)
+                }
+                if req_quad and req_quad.upper() in quads:
+                    chosen = req_quad.upper()
+                else:
+                    chosen = "BL"
+                    arr_int = np.array(img)
+                    max_g = 0
+                    for qn, (qx1, qy1, qx2, qy2) in quads.items():
+                        qarr = arr_int[qy1:qy2, qx1:qx2]
+                        qr, qg, qb = qarr[:, :, 0].astype(int), qarr[:, :, 1].astype(int), qarr[:, :, 2].astype(int)
+                        gmask = ((qr > 140) & (qg < 90) & (qb < 90)) | ((qg > 140) & (qb > 140) & (qr < 90))
+                        hits = int(np.sum(gmask))
+                        if hits > max_g and hits >= 250:
+                            max_g = hits
+                            chosen = qn
+                crop_box = quads[chosen]
+                stats = stats or {}
+                stats["chosen_quadrant"] = chosen
+                stats["fallback"] = True
+
+            x1, y1, x2, y2 = crop_box
+            cropped_img = img.crop((x1, y1, x2, y2))
+            resized_img = cropped_img.resize((300, 300), Image.Resampling.LANCZOS)
+
+            temp_dst = Path(export_root) / "03_photos_cropped_temp" / rel
+            temp_dst.parent.mkdir(parents=True, exist_ok=True)
+            resized_img.save(temp_dst, quality=95, subsampling=0)
+
+            # Update cropped_collages.json
+            set_file = Path(export_root) / "logs" / "cropped_collages.json"
+            set_file.parent.mkdir(parents=True, exist_ok=True)
+            crops_list = []
+            if set_file.is_file():
+                try:
+                    crops_list = json.loads(set_file.read_text(encoding="utf-8"))
+                except Exception:
+                    crops_list = []
+            if rel.lower() not in [x.lower() for x in crops_list]:
+                crops_list.append(rel)
+                set_file.write_text(json.dumps(sorted(crops_list), indent=2, ensure_ascii=False), encoding="utf-8")
+
+            # Sinkronisasi otomatis: Re-proses timemark di 04_photos_edited menggunakan foto hasil crop ini
+            asset_rel = os.path.dirname(rel).replace("\\", "/")
+            fname = os.path.basename(rel)
+            stem = os.path.splitext(fname)[0]
+
+            date_to_use = ""
+            for cand_date in [
+                os.path.join(photos_export, asset_rel, "date.txt"),
+                os.path.join(photos_edited, asset_rel, "date.txt")
+            ]:
+                if os.path.isfile(cand_date):
+                    try:
+                        with open(cand_date, "r", encoding="utf-8", errors="ignore") as df:
+                            date_to_use = df.read().strip()
+                        if date_to_use:
+                            break
+                    except Exception:
+                        pass
+
+            def calc_photo_date(base_dt, stem):
+                clean_dt = str(base_dt or "").strip()
+                m = re.search(r"^(.*?\d{4})\s+(\d{2}):(\d{2})$", clean_dt)
+                if not m:
+                    return clean_dt
+                d_part, hh, mm = m.group(1), int(m.group(2)), int(m.group(3))
+                tot = hh * 60 + mm
+                pct = 50 if stem == "50" else (100 if stem == "100" else 0)
+                tot += round((pct * 45) / 100)
+                return f"{d_part} {(tot // 60) % 24:02d}:{tot % 60:02d}"
+
+            p_date = calc_photo_date(date_to_use, stem) if date_to_use else ""
+
+            # Cari folder tim yang ada (Tim_1 / Tim_2)
+            sub_env = os.environ.copy()
+            sub_env["PYTHONUNBUFFERED"] = "1"
+            sub_env["PYTHONIOENCODING"] = "utf-8"
+
+            for tim_group in ["Tim_1", "Tim_2", ""]:
+                t_folder = os.path.join(photos_edited, tim_group) if tim_group else photos_edited
+                out_target = os.path.join(t_folder, asset_rel, fname)
+                if os.path.isfile(out_target) or os.path.isdir(t_folder):
+                    os.makedirs(os.path.dirname(out_target), exist_ok=True)
+                    args = [
+                        "--input", str(temp_dst),
+                        "--single-out", out_target,
+                        "--detector", "google_vision"
+                    ]
+                    if p_date:
+                        args.extend(["--date", p_date])
+                    cmd = make_script_cmd("edit_timemark_ide1.py", args)
+                    try:
+                        subprocess.run(
+                            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                            env=sub_env, cwd=BASE_DIR, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                        )
+                    except Exception as err:
+                        _log(f"Auto re-timemark after crop failed: {err}")
+
+            mtime_t = int(os.path.getmtime(temp_dst))
+            temp_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(temp_dst))}&t={mtime_t}"
+
+            self._json({
+                "ok": True,
+                "message": f"Kolase ({layout} - {stats.get('chosen_quadrant', 'BL')}) berhasil dipotong dan timemark diperbarui!",
+                "tempUrl": temp_url,
+                "layout": layout,
+                "cropBox": crop_box,
+                "stats": stats
+            })
+        except Exception as e:
+            _log(f"Crop collage single error: {e}")
+            self._json({"ok": False, "error": str(e)}, 500)
+
 
     def _handle_timemark_remerge_single(self):
         try:
@@ -3688,11 +3890,15 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             export_root, photos_dir, _ = _resolve_photo_directories(export_dir or pdf_dir)
             schedule_file = os.path.join(export_root, "schedule.json")
 
-            time_mapping = os.path.join(APP_DATA_DIR, "mapping.json")
+            time_mapping = os.path.join(APP_DATA_DIR, "asset_waktu_mapping.json")
+            if not os.path.isfile(time_mapping):
+                time_mapping = os.path.join(ENGINE_DIR, "asset_waktu_mapping.json")
             if not os.path.isfile(time_mapping):
                 time_mapping = os.path.join(ENGINE_DIR, "mapping.json")
 
-            data_acuan = os.path.join(APP_DATA_DIR, "data_acuan.json")
+            data_acuan = os.path.join(APP_DATA_DIR, "data_acuan_tenaga_gabungan.json")
+            if not os.path.isfile(data_acuan):
+                data_acuan = os.path.join(ENGINE_DIR, "data_acuan_tenaga_gabungan.json")
             if not os.path.isfile(data_acuan):
                 data_acuan = os.path.join(ENGINE_DIR, "data_acuan.json")
 

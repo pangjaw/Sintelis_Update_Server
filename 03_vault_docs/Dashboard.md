@@ -1,6 +1,6 @@
 # 🧭 SINTELIS UTILITY & UPDATE SERVER DASHBOARD
 > **Pusat Kendali Aplikasi Desktop & Peladen Pembaruan Otomatis (Cloudflare Auto-Updater)**
-> Terakhir Diperbarui: 2026-10-16 14:09:00 | Versi Aktif: **v1.7.0**
+> Terakhir Diperbarui: 2026-10-17 11:10:00 | Versi Aktif: **v1.8.3**
 
 ---
 
@@ -8,7 +8,8 @@
 - **Lokasi Utama Proyek & Server:** `C:\Users\SINTEL 1.21 BOO\Documents\Server\Sintelis_Update_Server`
 - **Direktori Output Rilis & HTTP Server:** `C:\Users\SINTEL 1.21 BOO\Documents\Server\Sintelis_Update_Server\02_server_update` (Port 8085)
 - **Status Cloudflare Zero Trust Tunnel:** Forwarding `https://update.sintelboo.my.id` -> `127.0.0.1:8085`
-- **Target Rilis Biner:** `SintelisUtility.exe` (~181.61 MB)
+- **Target Rilis Biner:** `SintelisUtility.exe` (v1.8.3)
+- **Buku Pedoman Arsitektur & Aturan Baku Fitur:** [[Feature_Specs_and_Rules.md]] *(Wajib dibaca sebelum migrasi/refactoring)*
 - **Catatan Migrasi:** Jalur lama `D:\Sintelis_Update_Server` telah dinonaktifkan/dipindahkan sepenuhnya ke direktori ini.
 
 ---
@@ -26,17 +27,24 @@ Sintelis_Update_Server/
 │   └── requirements.txt            <-- Ketergantungan Modul Python
 │
 ├── 📁 02_server_update/            <-- SATU-SATUNYA TARGET OUTPUT RILIS & SERVER UPDATE
-│   ├── SintelisUtility.exe         <-- Biner Rilis Aktif v1.7.0 (181.61 MB)
+│   ├── SintelisUtility.exe         <-- Biner Rilis Aktif v1.8.3 (253.33 MB)
 │   ├── version.json                <-- Manifest Versi & Changelog Klien
+
+
 │   ├── server_update.py            <-- Script HTTP Server Port 8085 (CORS Enabled)
 │   ├── start_update_server.bat     <-- Skrip Start Server Manual
 │   └── run_update_server.vbs       <-- Silent Background Launcher
 │
 ├── 📁 03_vault_docs/               <-- Dokumentasi Obsidian & SOP
 │   ├── Dashboard.md                <-- File Ini (Beranda Utama Vault)
+│   ├── Feature_Specs_and_Rules.md  <-- BUKU PANDUAN EMAS: Flowchart & Aturan Baku Fitur (Anti-Lupa/Anti-Bug)
 │   ├── Architecture.md             <-- Spesifikasi Arsitektur Sistem
 │   ├── Update_SOP.md               <-- SOP 6 Aturan Emas Rilis Biner
 │   └── Notes/                      <-- Catatan Harian & Log Perubahan
+│
+├── 📁 .agents/                     <-- Konfigurasi Peran Sub-Agen
+│   ├── dika-reviewer.md            <-- Agen DIKA (Reviewer & QA Architect - Basis: OCR-FOTO-P3STE)
+│   └── fathur-executor.md          <-- Agen FATHUR (Eksekutor & Lead Builder)
 │
 ├── 📁 .obsidian/                   <-- Konfigurasi Obsidian Vault
 ├── 📄 build_and_deploy.bat         <-- Skrip Eksekusi 1-Klik Build & Deploy

@@ -38,7 +38,7 @@ export default function App() {
   const [paused, setPaused] = useState(false);
   const [errorFileNames, setErrorFileNames] = useState([]);
   const [failedSaveItems, setFailedSaveItems] = useState([]);
-  const [currentVersion, setCurrentVersion] = useState('v1.7.1');
+  const [currentVersion, setCurrentVersion] = useState('v1.8.0');
   const [serverVersion, setServerVersion] = useState(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [activePresetName, setActivePresetName] = useState('');

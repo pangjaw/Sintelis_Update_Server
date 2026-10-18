@@ -28,6 +28,11 @@ timemark_dir = Path(_cwd) / 'timemark_engine'
 if timemark_dir.is_dir():
     datas.append((str(timemark_dir), 'timemark_engine'))
 
+config_dir = Path(_cwd) / 'config'
+if config_dir.is_dir():
+    datas.append((str(config_dir), 'config'))
+
+
 tesseract_dir = Path(r'C:\Program Files\Tesseract-OCR')
 if tesseract_dir.is_dir():
     datas.append((str(tesseract_dir), 'tesseract'))
@@ -56,8 +61,20 @@ a = Analysis(
         'updater_engine', 'timemark_engine', 'timemark_engine.pipeline_runner',
         'timemark_engine.date_changer_engine',
         'timemark_engine.personnel_changer_engine',
-        'timemark_engine.extract_file_personnel',
         'timemark_engine.export_schedule_excel',
+        'timemark_engine.auto_crop_collages',
+        'timemark_engine.crop_collage_photos',
+        'timemark_engine.crop_single_temp',
+        'timemark_engine.audit_and_correct_personnel',
+        'timemark_engine.correct_serat_optik_cores',
+        'timemark_engine.export_tablo_excel',
+        'timemark_engine.export_dinasan_excel',
+        'timemark_engine.employee_manager',
+        'timemark_engine.export_pdf_foto',
+        'timemark_engine.extract_pdf_dates',
+        'timemark_engine.scheduler',
+        'timemark_engine.edit_timemark_ide1',
+        'timemark_engine.merge_pdf_foto',
     ],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     excludes=[

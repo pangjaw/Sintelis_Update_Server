@@ -23,6 +23,7 @@ state = {
     "logs": [],
     "step_statuses": {
         "step1": "pending",
+        "step1_5": "pending",
         "step2": "pending",
         "step3": "pending",
         "step4": "pending",
@@ -172,7 +173,7 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
     data_acuan = os.path.join(ENGINE_DIR, "data_acuan_tenaga_gabungan.json")
     schedule_file = os.path.join(export_root, "schedule.json")
 
-    steps_to_run = selected_steps if isinstance(selected_steps, list) else ["1", "2", "3", "4", "5"]
+    steps_to_run = selected_steps if isinstance(selected_steps, list) else ["1", "1.5", "2", "3", "4", "5"]
     total_steps = len(steps_to_run)
     step_idx = 0
 
@@ -216,6 +217,25 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 "--sap-mapping", sap_mapping
             ])
             ok = run_cmd(cmd, "step1", f"Step 1: Ekstraksi Foto ({'PDF Sumber' if mode == 'single' else 'PDF 2026'})")
+            if not ok:
+                return
+
+        # STEP 1.5: Auto-Crop Kolase
+        if "1.5" in steps_to_run or "step1_5" in steps_to_run:
+            step_idx += 1
+            with _state_lock:
+                state["current_step"] = 1.5
+                state["progress"] = int((step_idx - 1) / total_steps * 100)
+            temp_crops_dir = os.path.join(export_root, "03_photos_cropped_temp")
+            manifest_file = os.path.join(export_root, "logs", "auto_crop_manifest.json")
+            cropped_set_file = os.path.join(export_root, "logs", "cropped_collages.json")
+            cmd = make_cmd("auto_crop_collages.py", [
+                "--input", raw_photos_dir,
+                "--output", temp_crops_dir,
+                "--manifest", manifest_file,
+                "--cropped-set", cropped_set_file
+            ])
+            ok = run_cmd(cmd, "step1_5", "Step 1.5: Auto-Crop Kolase (White-Seam Isolation)")
             if not ok:
                 return
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export default function CorrectionPanel({ targetDir, onPickFolder }) {
   const [activeSubSection, setActiveSubSection] = useState('personnel'); // 'personnel' | 'serat_optik'
@@ -14,6 +14,32 @@ export default function CorrectionPanel({ targetDir, onPickFolder }) {
   const [persFeedback, setPersFeedback] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'mismatch' | 'needs_sc' | 'compliant'
 
+  // State Window Log Koreksi & Serat Optik
+  const [corrLogs, setCorrLogs] = useState([]);
+  const [copiedLog, setCopiedLog] = useState(false);
+  const logEndRef = useRef(null);
+
+  const addLog = (type, msg) => {
+    const ts = new Date().toLocaleTimeString();
+    setCorrLogs(prev => [...prev, { ts, type, msg }]);
+  };
+
+  const handleCopyLogs = () => {
+    if (!corrLogs.length) return;
+    const text = corrLogs.map(l => `[${l.ts}] ${l.msg}`).join('\n');
+    navigator.clipboard.writeText(text);
+    setCopiedLog(true);
+    setTimeout(() => setCopiedLog(false), 2000);
+  };
+
+  const handleClearLogs = () => {
+    setCorrLogs([]);
+  };
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [corrLogs]);
+
   // 1. Serat Optik Handler
   const handleScanSeratOptik = async (apply = false) => {
     if (!targetDir) {
@@ -22,6 +48,7 @@ export default function CorrectionPanel({ targetDir, onPickFolder }) {
     }
     setSoScanning(true);
     setSoFeedback(null);
+    addLog('info', `[SERAT OPTIK] Memulai ${apply ? 'koreksi nilai core fisik' : 'pemindaian berkas'} pada: ${targetDir}`);
     try {
       const res = await fetch('/api/timemark/koreksi-serat-optik', {
         method: 'POST',
@@ -30,18 +57,39 @@ export default function CorrectionPanel({ targetDir, onPickFolder }) {
       });
       const data = await res.json();
       if (res.ok && data.ok) {
-        setSoItems(data.items || []);
-        const needed = (data.items || []).filter(i => i.needs_correction).length;
+        const items = data.items || [];
+        setSoItems(items);
+        const needed = items.filter(i => i.needs_correction).length;
+        const appliedCount = items.filter(i => i.applied).length;
+
+        // Detailkan ke Window Log
+        items.forEach(it => {
+          if (it.applied) {
+            addLog('success', `⚡ [TERKOREKSI] ${it.filename} (${it.tipe}): ${it.current_core} Core -> ${it.target_core} Core (${it.message || 'Sukses'})`);
+          } else if (it.needs_correction) {
+            addLog('warn', `⚠️ [PERLU KOREKSI] ${it.filename} (${it.tipe}): Terbaca ${it.current_core || '-'} Core, Target: ${it.target_core} Core`);
+          } else {
+            addLog('info', `✓ [SESUAI] ${it.filename} (${it.tipe}): Sudah ${it.target_core} Core (${it.message || 'Standar valid'})`);
+          }
+        });
+
         if (apply) {
-          setSoFeedback({ type: 'success', text: `✓ Koreksi nilai core Serat Optik berhasil diterapkan pada berkas yang membutuhkan.` });
+          const txt = `✓ Koreksi nilai core Serat Optik selesai: ${appliedCount} berkas berhasil disesuaikan.`;
+          setSoFeedback({ type: 'success', text: txt });
+          addLog('success', `[SERAT OPTIK] ${txt}`);
         } else {
-          setSoFeedback({ type: 'info', text: `Pemindaian selesai: Ditemukan ${data.items.length} berkas Serat Optik (${needed} perlu koreksi).` });
+          const txt = `Pemindaian selesai: Ditemukan ${items.length} berkas Serat Optik (${needed} perlu koreksi).`;
+          setSoFeedback({ type: 'info', text: txt });
+          addLog('info', `[SERAT OPTIK] ${txt}`);
         }
       } else {
-        setSoFeedback({ type: 'error', text: 'Gagal memproses: ' + (data.error || 'Terjadi kesalahan') });
+        const errTxt = data.error || 'Terjadi kesalahan';
+        setSoFeedback({ type: 'error', text: 'Gagal memproses: ' + errTxt });
+        addLog('error', `[SERAT OPTIK] Gagal memproses: ${errTxt}`);
       }
     } catch (err) {
       setSoFeedback({ type: 'error', text: 'Galat: ' + err.message });
+      addLog('error', `[SERAT OPTIK] Galat: ${err.message}`);
     } finally {
       setSoScanning(false);
     }
@@ -55,6 +103,13 @@ export default function CorrectionPanel({ targetDir, onPickFolder }) {
     }
     setPersScanning(true);
     setPersFeedback(null);
+    const actionLabel = action === 'auto-correct-batch' 
+      ? 'Koreksi Personil Sesuai Tim' 
+      : action === 'auto-correct-no-sc' 
+      ? 'Pelengkapan Nomor SC' 
+      : (refresh ? 'Scan Ulang Fisik Disk & Audit' : 'Audit Dokumen');
+    addLog('info', `[PERSONIL] Memulai ${actionLabel} pada: ${targetDir}...`);
+
     try {
       const res = await fetch('/api/timemark/audit-personil', {
         method: 'POST',
@@ -64,26 +119,64 @@ export default function CorrectionPanel({ targetDir, onPickFolder }) {
       const data = await res.json();
       if (res.ok && data.ok) {
         setPersReport(data.result);
+        if (data.from_cache) {
+          addLog('info', `[PERSONIL] ⚡ Memuat hasil audit dari cache lokal.`);
+        }
+
+        const summary = data.result?.summary;
+        if (summary) {
+          addLog('info', `[PERSONIL] Ringkasan: Total ${summary.total_files} berkas | Sesuai: ${summary.compliant} | Beda Tim: ${summary.team_mismatch_count || 0} | Perlu Koreksi: ${summary.needs_correction} | SC Kurang: ${summary.needs_sc_correction || 0}`);
+        }
+
         if (action === 'auto-correct-batch') {
-          setPersFeedback({ type: 'success', text: `✓ Koreksi & sinkronisasi personil berhasil! ${data.result?.total_corrected || 0} berkas disesuaikan dengan tim jadwalnya.` });
+          const tot = data.result?.total_corrected || 0;
+          const txt = `✓ Koreksi & sinkronisasi personil berhasil! ${tot} berkas disesuaikan dengan tim jadwalnya.`;
+          setPersFeedback({ type: 'success', text: txt });
+          addLog('success', `[PERSONIL] ${txt}`);
+          if (Array.isArray(data.result?.corrected)) {
+            data.result.corrected.forEach(c => {
+              addLog('success', `⚡ [TERKOREKSI TIM] ${c.file}: KAUR=${c.kaur}, PNC=${(c.pnc || []).join(', ')}`);
+            });
+          }
         } else if (action === 'auto-correct-no-sc') {
-          setPersFeedback({ type: 'success', text: `✓ Nomor SC pada ${data.result?.total_sc_corrected || 0} berkas berhasil dilengkapi.` });
+          const totSc = data.result?.total_sc_corrected || 0;
+          const txt = `✓ Nomor SC pada ${totSc} berkas berhasil dilengkapi.`;
+          setPersFeedback({ type: 'success', text: txt });
+          addLog('success', `[PERSONIL] ${txt}`);
         } else {
-          const needsCorrCount = data.result?.summary?.needs_correction ?? data.result?.critical_count ?? 0;
-          const mismatchCount = data.result?.summary?.team_mismatch_count ?? 0;
+          const needsCorrCount = summary?.needs_correction ?? data.result?.critical_count ?? 0;
+          const mismatchCount = summary?.team_mismatch_count ?? 0;
           const cachePrefix = data.from_cache ? '⚡ Hasil dimuat instan dari cache: ' : 'Audit selesai: ';
           const mismatchDesc = mismatchCount > 0 ? ` (${mismatchCount} berkas beda personil tim)` : '';
-          setPersFeedback({ type: 'info', text: `${cachePrefix}${data.result?.total_files || 0} berkas dipindai (${needsCorrCount} berkas perlu penyesuaian${mismatchDesc}).` });
+          const txt = `${cachePrefix}${data.result?.total_files || 0} berkas dipindai (${needsCorrCount} berkas perlu penyesuaian${mismatchDesc}).`;
+          setPersFeedback({ type: 'info', text: txt });
+          addLog('info', `[PERSONIL] ${txt}`);
+
+          // Rincian berkas beda tim ke log
+          if (Array.isArray(data.result?.files)) {
+            const mismatches = data.result.files.filter(f => f.team_mismatch);
+            if (mismatches.length > 0) {
+              mismatches.forEach(m => {
+                const readNames = (m.kaur || []).concat(m.pnc || []).join(', ') || 'Kosong';
+                const expNames = (m.expected_kaur || []).concat(m.expected_pnc || []).join(', ') || '-';
+                addLog('warn', `⚠️ [BEDA TIM] ${m.file} (${m.team_label || 'Tim ?'}): Terbaca [${readNames}] -> Seharusnya [${expNames}]`);
+              });
+            }
+          }
         }
       } else {
-        setPersFeedback({ type: 'error', text: 'Gagal audit personil: ' + (data.error || 'Terjadi kesalahan') });
+        const errTxt = data.error || 'Terjadi kesalahan';
+        setPersFeedback({ type: 'error', text: 'Gagal audit personil: ' + errTxt });
+        addLog('error', `[PERSONIL] Gagal audit personil: ${errTxt}`);
       }
     } catch (err) {
       setPersFeedback({ type: 'error', text: 'Galat: ' + err.message });
+      addLog('error', `[PERSONIL] Galat: ${err.message}`);
     } finally {
       setPersScanning(false);
     }
   };
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', width: '100%', overflowY: 'auto', paddingRight: '0.5rem' }}>
@@ -449,6 +542,107 @@ export default function CorrectionPanel({ targetDir, onPickFolder }) {
         </div>
       )}
 
+      {/* SECTION 3: WINDOW LOG KOREKSI & AUDIT (REAL-TIME TERMINAL CONSOLE) */}
+      <div style={{
+        marginTop: '0.5rem',
+        background: '#090d16',
+        border: '1px solid var(--border-color)',
+        borderRadius: '8px',
+        padding: '0.85rem 1rem',
+        fontFamily: 'monospace',
+        fontSize: '0.8rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.35rem',
+        minHeight: '175px',
+        maxHeight: '260px',
+        userSelect: 'text'
+      }}>
+        <div style={{
+          color: '#64748b',
+          borderBottom: '1px solid #1e293b',
+          paddingBottom: '0.45rem',
+          marginBottom: '0.35rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+              🖥️ Window Log Koreksi & Audit ({corrLogs.length})
+            </span>
+            <span style={{ fontSize: '0.72rem', background: 'var(--bg-secondary)', padding: '0.15rem 0.45rem', borderRadius: '4px', color: 'var(--text-muted)' }}>
+              {activeSubSection === 'serat_optik' ? 'Core Serat Optik' : 'Audit & Koreksi Personil'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {corrLogs.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleCopyLogs}
+                  style={{
+                    padding: '0.2rem 0.6rem',
+                    background: copiedLog ? '#14532d' : 'var(--bg-secondary)',
+                    color: copiedLog ? '#86efac' : 'var(--accent)',
+                    border: `1px solid ${copiedLog ? '#22c55e' : 'var(--border-color)'}`,
+                    borderRadius: '4px',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    transition: 'all 0.2s'
+                  }}
+                  title="Salin seluruh isi log terminal koreksi ke clipboard"
+                >
+                  <span>{copiedLog ? '✓' : '📋'}</span>
+                  <span>{copiedLog ? 'Tersalin!' : 'Salin Log'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearLogs}
+                  style={{
+                    padding: '0.2rem 0.5rem',
+                    background: 'transparent',
+                    color: 'var(--text-muted)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer'
+                  }}
+                  title="Bersihkan catatan log"
+                >
+                  🗑️ Bersihkan
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.3rem', userSelect: 'text' }}>
+          {corrLogs.map((lg, idx) => (
+            <div key={idx} style={{
+              color: lg.type === 'error' ? '#f87171' : lg.type === 'warn' ? '#fbbf24' : lg.type === 'success' ? '#4ade80' : '#e2e8f0',
+              lineHeight: 1.45,
+              wordBreak: 'break-all',
+              userSelect: 'text'
+            }}>
+              <span style={{ color: '#64748b', marginRight: '0.5rem' }}>[{lg.ts}]</span>
+              {lg.msg}
+            </div>
+          ))}
+          {corrLogs.length === 0 && (
+            <div style={{ color: '#475569', fontStyle: 'italic', margin: 'auto', textAlign: 'center', padding: '1rem' }}>
+              Log aktivitas koreksi akan ditampilkan di sini saat proses Audit Personil atau Pindai Core Serat Optik dijalankan.
+            </div>
+          )}
+          <div ref={logEndRef} />
+        </div>
+      </div>
+
     </div>
   );
 }
+

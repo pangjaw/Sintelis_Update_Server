@@ -189,7 +189,7 @@ def _determine_btp(identifier: str, pdf_path: Path = None) -> str:
 MULTI_ROW_CATEGORIES = {"SINYAL", "WESEL", "AXC"}
 
 
-def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, p_map: dict, photos_dir: Path | None = None):
+def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, p_map: dict, photos_dir: Path | None = None, multi_date_lookup: dict | None = None):
     from extract_pdf_dates import parse_target_filename, parse_date_from_filename, parse_date_indonesian
     import fitz
 
@@ -239,6 +239,10 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
         return None
 
     date_suffix = pdf_date.strftime("_%d-%m") if pdf_date else ""
+    if date_suffix:
+        part_match = re.search(r'\((2|3|4)\)', pdf_path.name)
+        if part_match:
+            date_suffix = f"{date_suffix}_part{part_match.group(1)}"
 
     # Extract funclocs on page 1 (in order from top to bottom)
     all_funclocs = extract_all_funclocs(page1_text) if page1_text else []
@@ -263,10 +267,16 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
                 btp = _determine_btp(ident, pdf_path)
                 
                 target_ident = ident
-                if photos_dir and date_suffix:
-                    suffixed_candidate = f"{ident}{date_suffix}"
-                    if (photos_dir / btp / category / suffixed_candidate).is_dir():
-                        target_ident = suffixed_candidate
+                should_suffix = (
+                    category == "WESEL" or
+                    (photos_dir and date_suffix and (photos_dir / btp / category / f"{ident}{date_suffix}").is_dir()) or
+                    (multi_date_lookup and (
+                        multi_date_lookup.get((category, ident), 0) > 1 or
+                        multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
+                    ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
+                )
+                if should_suffix and date_suffix:
+                    target_ident = f"{ident}{date_suffix}"
 
                 asset_items.append({
                     "identifier": target_ident,
@@ -300,10 +310,16 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
 
         btp = _determine_btp(identifier, pdf_path)
         target_ident = identifier
-        if photos_dir and date_suffix:
-            suffixed_candidate = f"{identifier}{date_suffix}"
-            if (photos_dir / btp / category / suffixed_candidate).is_dir():
-                target_ident = suffixed_candidate
+        should_suffix = (
+            category == "WESEL" or
+            (photos_dir and date_suffix and (photos_dir / btp / category / f"{identifier}{date_suffix}").is_dir()) or
+            (multi_date_lookup and (
+                multi_date_lookup.get((category, identifier), 0) > 1 or
+                multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
+            ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
+        )
+        if should_suffix and date_suffix:
+            target_ident = f"{identifier}{date_suffix}"
 
         asset_items.append({
             "identifier": target_ident,
@@ -350,6 +366,15 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
     except Exception:
         pass
 
+    # Pre-scan PDF files to detect multi-inspection assets (e.g. WESEL, PDSE, PTDS, PTLS)
+    from collections import Counter
+    multi_date_lookup = Counter()
+    for p in files:
+        cat = detect_category_from_filename(p.name)
+        st = extract_station_from_filename(p.name)
+        if st and cat:
+            multi_date_lookup[(cat, st)] += 1
+
     import concurrent.futures
 
     # ── PASS 1: Extract all items in parallel and group by target date ──
@@ -357,7 +382,7 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
     max_w = min(8, os.cpu_count() or 4)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as executor:
-        results = list(executor.map(lambda p: _process_pdf_pass1(p, mapping, acuan, k_map, p_map, photos_dir), files))
+        results = list(executor.map(lambda p: _process_pdf_pass1(p, mapping, acuan, k_map, p_map, photos_dir, multi_date_lookup), files))
 
     for idx, pdf_entry in enumerate(results, 1):
         if not pdf_entry:

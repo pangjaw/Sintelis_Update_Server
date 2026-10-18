@@ -674,11 +674,14 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
         if td not in tim_order:
             tim_order.append(td)
 
-    # Expected date suffix for WESEL if any
+    # Expected date suffix for multi-date / 2x monthly inspections if any
     expected_suffix = ""
     m_wsl = re.search(r'(\d{2})-(\d{2})-\d{4}', pdf_path.name)
     if m_wsl:
         expected_suffix = f"_{m_wsl.group(1)}-{m_wsl.group(2)}"
+        part_m = re.search(r'\((2|3|4)\)', pdf_path.name)
+        if part_m:
+            expected_suffix = f"{expected_suffix}_part{part_m.group(1)}"
 
     MULTI_ROW_CATEGORIES = {"SINYAL", "WESEL", "AXC"}
     is_multi_row = (category in MULTI_ROW_CATEGORIES) or any(cat in MULTI_ROW_CATEGORIES for _, _, cat in asset_entries)

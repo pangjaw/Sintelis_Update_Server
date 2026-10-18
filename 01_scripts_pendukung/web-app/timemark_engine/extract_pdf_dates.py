@@ -278,10 +278,10 @@ def build_folder_lookup(output_root: Path) -> dict[tuple[str, str], list[Path]]:
                     key = (category, ident_dir.name)
                     lookup[key].append(ident_dir)
 
-                    # Strip _DD-MM suffix if present → also map base identifier for any category
-                    # e.g. "W13 BOO_02-01" → base "W13 BOO", "B104 CLT-BOO_10-02" → base "B104 CLT-BOO"
+                    # Strip _DD-MM or _DD-MM_partN suffix if present → also map base identifier for any category
+                    # e.g. "W13 BOO_02-01" → base "W13 BOO", "CLT_05-01_part2" → base "CLT"
                     name = ident_dir.name
-                    suf_m = re.match(r'^(.+?)_(\d{2}-\d{2})$', name)
+                    suf_m = re.match(r'^(.+?)_(\d{2}-\d{2}(?:_part\d+)?)$', name)
                     if suf_m:
                         base_name = suf_m.group(1)
                         base_key = (category, base_name)
@@ -387,133 +387,11 @@ def save_folder_mapping(path: Path, mapping: dict) -> None:
 
 
 def prepare_multi_date_folders(output_root: Path, pdf_files: list[Path], logs_dir: Path = Path("logs")) -> dict:
-    """Pre-scan target PDFs, identify assets with multiple dates, and manage suffixed folders.
-    - If base folder exists (e.g. B104 CLT-BOO):
-        1. Renames base folder to B104 CLT-BOO_{first_date}
-        2. Copies to B104 CLT-BOO_{subsequent_dates}
-    - If base folder already renamed in earlier run:
-        Ensures all subsequent dates have folders copied.
-    - Saves mapping to logs/asset_folder_mapping.json.
+    """Streamlined Step 2: Since Step 1 (Early Binding) creates suffixed folders directly,
+    physical folder duplication and renaming in Step 2 is bypassed to avoid redundant I/O
+    and prevent recursive naming (_DD-MM_DD-MM).
     """
-    mapping = load_folder_mapping(logs_dir / "asset_folder_mapping.json")
-    
-    # 1. Pre-scan PDF targets to find dates per asset
-    print("[*] Pre-scanning target PDFs untuk mendeteksi aset tanggal ganda...", flush=True)
-    asset_dates = defaultdict(lambda: defaultdict(dict))
-    
-    for pdf_path in pdf_files:
-        fname = pdf_path.name
-        parsed = parse_target_filename(fname)
-        base_category = None
-        base_identifier = None
-        dt = None
-        
-        if parsed:
-            base_category, base_identifier, date_str = parsed
-            dt = parse_date_from_filename(date_str)
-        if not dt:
-            dt = extract_date_from_pdf(pdf_path)
-        if not dt:
-            continue
-            
-        date_suf = dt.strftime("%d-%m")
-        date_fmt = format_date_target(dt)
-        
-        all_funclocs = []
-        if not parsed or base_category in {"AXC", "WESEL", "SINYAL"}:
-            try:
-                import fitz
-                with fitz.open(str(pdf_path)) as doc:
-                    if len(doc) > 0:
-                        text = doc[0].get_text() or ""
-                        all_funclocs = extract_all_funclocs(text)
-            except Exception:
-                pass
-                
-        idents = []
-        if all_funclocs and base_category:
-            for fl in all_funclocs:
-                ident = extract_identifier(fl, base_category)
-                if ident:
-                    for old, new in IDENTIFIER_EXCEPTIONS.items():
-                        tokens = ident.split()
-                        old_tokens = old.split()
-                        if len(tokens) >= len(old_tokens) and tokens[:len(old_tokens)] == old_tokens:
-                            rest = ' '.join(tokens[len(old_tokens):])
-                            ident = f"{new} {rest}".strip() if rest else new
-                    norm = normalize_identifier(ident)
-                    idents.append((base_category, norm, ident))
-        if not idents and base_category and base_identifier:
-            norm = normalize_identifier(base_identifier)
-            idents.append((base_category, norm, base_identifier))
-            
-        seen_in_file = set()
-        for cat, norm_id, orig_id in idents:
-            if orig_id in seen_in_file:
-                continue
-            seen_in_file.add(orig_id)
-            if cat == "PINTU_PERLINTASAN":
-                cat = "JPL"
-            asset_dates[(cat, orig_id)][date_suf] = {"date": date_fmt, "pdf": fname, "norm": norm_id}
-
-    # 2. Filter multi-date assets
-    multi_date_assets = {k: v for k, v in asset_dates.items() if len(v) > 1}
-    print(f"[*] Terdeteksi {len(multi_date_assets)} aset memiliki tanggal ganda pada target PDF.", flush=True)
-
-    # 3. For each multi-date asset, check and manage folders in output_root
-    btp_dirs = [d for d in output_root.iterdir() if d.is_dir() and d.name.startswith("BTP")]
-    if not btp_dirs:
-        btp_dirs = [output_root]
-
-    for (cat, orig_id), date_map in multi_date_assets.items():
-        sorted_sufs = sorted(date_map.keys())
-        first_suf = sorted_sufs[0]
-        
-        for btp_dir in btp_dirs:
-            cat_dir = btp_dir / cat if btp_dir != output_root else output_root / cat
-            if not cat_dir.is_dir():
-                continue
-                
-            base_folder = cat_dir / orig_id
-            norm_id = list(date_map.values())[0].get("norm", orig_id)
-            if not base_folder.is_dir() and (cat_dir / norm_id).is_dir():
-                base_folder = cat_dir / norm_id
-                
-            first_suffixed = cat_dir / f"{orig_id}_{first_suf}"
-            if not first_suffixed.is_dir() and (cat_dir / f"{norm_id}_{first_suf}").is_dir():
-                first_suffixed = cat_dir / f"{norm_id}_{first_suf}"
-
-            # If base folder exists (from fresh Step 1 export):
-            if base_folder.is_dir():
-                if first_suffixed.exists() and first_suffixed != base_folder:
-                    try:
-                        shutil.rmtree(first_suffixed)
-                    except Exception:
-                        pass
-                base_folder.rename(first_suffixed)
-                print(f"  [STEP 2] Rename folder dasar: {base_folder.name} -> {first_suffixed.name}", flush=True)
-            
-            # Now, if first_suffixed exists, ensure all subsequent dates have copies
-            if first_suffixed.is_dir():
-                for next_suf in sorted_sufs[1:]:
-                    next_suffixed = cat_dir / f"{orig_id}_{next_suf}"
-                    if not next_suffixed.exists():
-                        shutil.copytree(first_suffixed, next_suffixed)
-                        print(f"  [STEP 2] Salin foto tanggal ganda: {first_suffixed.name} -> {next_suffixed.name}", flush=True)
-                        
-                # Update mapping
-                map_key = f"{btp_dir.name}/{cat}/{orig_id}"
-                mapping[map_key] = {
-                    "btp": btp_dir.name,
-                    "category": cat,
-                    "base_identifier": orig_id,
-                    "dates": sorted_sufs,
-                    "folders": {suf: f"{orig_id}_{suf}" for suf in sorted_sufs}
-                }
-                break
-
-    save_folder_mapping(logs_dir / "asset_folder_mapping.json", mapping)
-    return mapping
+    return {}
 
 
 def main() -> int:
@@ -657,6 +535,9 @@ def main() -> int:
             # Try suffixed match first (date from target PDF filename)
             if dt:
                 date_suffix = dt.strftime("_%d-%m")
+                part_match = re.search(r'\((2|3|4)\)', fname)
+                if part_match:
+                    date_suffix = f"{date_suffix}_part{part_match.group(1)}"
                 suffixed_id = f"{orig_id}{date_suffix}"
                 matches = folder_lookup.get((cat, suffixed_id), [])
                 if not matches:

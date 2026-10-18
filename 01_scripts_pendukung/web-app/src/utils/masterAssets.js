@@ -703,3 +703,69 @@ export function exportAuditToExcel(auditResult, title = 'Audit_Kelengkapan_Aset'
 
   return { b64, filename, wb };
 }
+
+// =============================================================================
+// Standar Kategori Aset & Normalisasi Acuan Resor Sintelis 1.21 BOO
+// =============================================================================
+export const MASTER_CATEGORIES = [
+  'AXC',
+  'CATUDAYA',
+  'CTS',
+  'JPL',
+  'PDSE',
+  'POINT LOCK',
+  'PTDS',
+  'PTLS',
+  'PTPP',
+  'RADIO BASESTATION',
+  'RADIO WAYSTATION',
+  'SERAT OPTIK',
+  'SINYAL',
+  'SISTEM WAYSTATION',
+  'WESEL'
+];
+
+export const CATEGORY_LABEL_MAP = {
+  'AXC': 'AXC (Axle Counter)',
+  'AXLE COUNTER': 'AXC (Axle Counter)',
+  'CATUDAYA': 'CATU DAYA (Rectifier)',
+  'CATU DAYA': 'CATU DAYA (Rectifier)',
+  'CTS': 'CTS (CTC / CTS)',
+  'CTC-CTS': 'CTS (CTC / CTS)',
+  'JPL': 'JPL (Pintu Perlintasan)',
+  'PINTU PERLINTASAN': 'JPL (Pintu Perlintasan)',
+  'PDSE': 'PDSE (Peralatan Dalam)',
+  'POINT LOCK': 'POINT LOCK (W81 BOO)',
+  'PTDS': 'PTDS (Telkom Stasiun)',
+  'PTLS': 'PTLS (Telkom Luar Stasiun)',
+  'PTPP': 'PTPP (Telkom JPL)',
+  'RADIO BASESTATION': 'RADIO BASESTATION (6 Bulanan)',
+  'RADIO WAYSTATION': 'RADIO WAYSTATION (3 Bulanan)',
+  'SERAT OPTIK': 'SERAT OPTIK (OTB)',
+  'SINYAL': 'SINYAL (Peraga Sinyal)',
+  'PERAGA SINYAL': 'SINYAL (Peraga Sinyal)',
+  'SISTEM WAYSTATION': 'SISTEM WAYSTATION (1 Tahunan)',
+  'WESEL': 'WESEL (Wesel Mekanik / Elektrik)'
+};
+
+export function normalizeCategory(cat) {
+  if (!cat) return '';
+  const s = String(cat).toUpperCase().trim();
+  if (s === 'AXC' || s.includes('AXLE') || s.includes('DETEKSI')) return 'AXC';
+  if (s === 'CATUDAYA' || s.includes('CATU') || s.includes('RECTIFIER')) return 'CATUDAYA';
+  if (s === 'CTS' || s.includes('CTC')) return 'CTS';
+  if (s === 'JPL' || s.includes('PINTU') || s.includes('PERLINTASAN')) return 'JPL';
+  if (s === 'PDSE' || s.includes('PERALATAN DALAM')) return 'PDSE';
+  if (s === 'POINT LOCK' || s.includes('POINTLOCK')) return 'POINT LOCK';
+  if (s === 'PTDS' || s.includes('TELKOM STASIUN')) return 'PTDS';
+  if (s === 'PTLS' || s.includes('TELKOM LUAR')) return 'PTLS';
+  if (s === 'PTPP' || s.includes('TELKOM JPL') || s.includes('TELKOM PINTU')) return 'PTPP';
+  if (s.includes('BASESTATION') || s.includes('BASE STATION')) return 'RADIO BASESTATION';
+  if (s.includes('SISTEM WAYSTATION')) return 'SISTEM WAYSTATION';
+  if (s.includes('WAYSTATION') || s.includes('WAY STATION')) return 'RADIO WAYSTATION';
+  if (s === 'SERAT OPTIK' || s.includes('OPTIK') || s.includes('OTB')) return 'SERAT OPTIK';
+  if (s === 'SINYAL' || s.includes('SINYAL')) return 'SINYAL';
+  if (s === 'WESEL') return 'WESEL';
+  return s;
+}
+

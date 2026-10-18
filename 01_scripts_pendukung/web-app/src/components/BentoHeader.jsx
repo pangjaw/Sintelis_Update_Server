@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function BentoHeader({
   activePreset = 'Standar (Resor 1.21 Bogor)',
-  currentVersion = 'v1.7.1',
+  currentVersion = 'v1.8.0',
   serverVersion = null,
   updateAvailable = false,
   onOpenUpdateModal = null,

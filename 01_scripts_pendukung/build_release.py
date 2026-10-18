@@ -39,8 +39,8 @@ if not os.path.exists(dist_exe):
 size_bytes = os.path.getsize(dist_exe)
 size_mb = size_bytes / (1024 * 1024)
 print(f"[3/4] Validasi ukuran: {size_bytes} bytes ({size_mb:.2f} MB)")
-if size_mb < 170 or size_mb > 250:
-    print(f"[WARN] Ukuran biner di luar rentang normal 170-250 MB: {size_mb:.2f} MB")
+if size_mb < 170 or size_mb > 270:
+    print(f"[WARN] Ukuran biner di luar rentang normal 170-270 MB: {size_mb:.2f} MB")
 
 # 4. Copy ke 02_server_update
 print("[4/4] Menyalin biner ke 02_server_update...")
@@ -80,11 +80,13 @@ if os.path.exists(v_src):
     v_data["releaseDate"] = time.strftime("%Y-%m-%d")
     v_data["downloadUrl"] = f"https://update.sintelboo.my.id/SintelisUtility.exe?v={app_version}"
     v_data["changelog"] = [
-        f"v{app_version}: In-Place Auto-Updater Handshake - Mekanisme penggantian biner mandiri (atomic detached swapper) lebih tangguh & anti-lock",
-        f"v{app_version}: Editor Timemark Modal - Geser (drag) timemark bebas X & Y langsung di preview foto tanpa slider vertikal",
-        f"v{app_version}: Galeri Foto - Ukuran kotak dan font preview timemark diperkecil proporsional sesuai watermark asli",
-        f"v{app_version}: Audit & Koreksi Personil Berdasarkan Tim - Pencocokan jadwal Tim 1, 2, 3 dari schedule.json & rotasi pegawai"
+        f"v{app_version}: Perbaikan Menyeluruh Auto-Crop Kolase 2x2 & 3-in-1 - Ambang batas seam adaptif, smart auto-quadrant detection ke kuadran Bottom-Left (BL), fallback instan single crop ✂️, dan sinkronisasi preview mentah/editan terpotong",
+        f"v{app_version}: Fitur Salin Log (Copy to Clipboard) - Tombol 1-klik salin log pada Console Pipeline dan seluruh window log terminal",
+        f"v{app_version}: Window Log Real-Time Koreksi Dokumen & Core Serat Optik - Output step-by-step proses audit personil dan koreksi core",
+        f"v{app_version}: Early Binding Multi-Tanggal Menyeluruh - Deteksi frekuensi inspeksi terpadu pada WESEL, PDSE, PTDS, PTLS, SINYAL, AXC",
+        f"v{app_version}: Isolasi File Ganda Hari Sama (_part{{n}}) - Berkas bertanda (2).pdf otomatis mendapat suffix _part2 mencegah saling timpa"
     ]
+
     with open(v_src, "w", encoding="utf-8") as f:
         json.dump(v_data, f, indent=2, ensure_ascii=False)
     print(f"  -> version.json diperbarui ke v{app_version} di: {v_src}")

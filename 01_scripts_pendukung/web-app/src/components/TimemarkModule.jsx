@@ -18,7 +18,7 @@ export default function TimemarkModule() {
   const [exportDir, setExportDir] = useState('');
   const [mergedDir, setMergedDir] = useState('');
 
-  const [selectedSteps, setSelectedSteps] = useState(['1', '2', '3', '4', '5']);
+  const [selectedSteps, setSelectedSteps] = useState(['1', '1.5', '2', '3', '4', '5']);
   const [detector, setDetector] = useState('google_vision'); // 'google_vision' | 'guide'
   const [pipelineState, setPipelineState] = useState({
     running: false,
@@ -29,6 +29,7 @@ export default function TimemarkModule() {
     logs: [],
     step_statuses: {
       step1: 'pending',
+      step1_5: 'pending',
       step2: 'pending',
       step3: 'pending',
       step4: 'pending',
@@ -38,7 +39,17 @@ export default function TimemarkModule() {
   });
 
   const [pdfCounts, setPdfCounts] = useState({ single: null, source: null, target: null });
+  const [copiedLog, setCopiedLog] = useState(false);
   const logEndRef = useRef(null);
+
+  const handleCopyLogs = () => {
+    if (!pipelineState.logs || !pipelineState.logs.length) return;
+    const text = pipelineState.logs.map(l => `[${l.ts}] ${l.msg}`).join('\n');
+    navigator.clipboard.writeText(text);
+    setCopiedLog(true);
+    setTimeout(() => setCopiedLog(false), 2000);
+  };
+
 
   // Poll status when running
   useEffect(() => {
@@ -95,7 +106,9 @@ export default function TimemarkModule() {
 
   const handleToggleStep = (stepId) => {
     setSelectedSteps(prev =>
-      prev.includes(stepId) ? prev.filter(s => s !== stepId) : [...prev, stepId].sort()
+      prev.includes(stepId)
+        ? prev.filter(s => s !== stepId)
+        : [...prev, stepId].sort((a, b) => parseFloat(a) - parseFloat(b))
     );
   };
 
@@ -154,6 +167,7 @@ export default function TimemarkModule() {
 
   const stepLabels = [
     { id: '1', key: 'step1', name: 'Step 1: Ekstraksi Foto PDF' },
+    { id: '1.5', key: 'step1_5', name: 'Step 1.5: Auto-Crop Kolase (White-Seam)' },
     { id: '2', key: 'step2', name: 'Step 2: Ekstraksi Tanggal Checklist' },
     { id: '3', key: 'step3', name: 'Step 3: Penjadwalan Tim & Alokasi Waktu' },
     { id: '4', key: 'step4', name: 'Step 4: Edit Watermark Timemark Foto' },
@@ -582,16 +596,52 @@ export default function TimemarkModule() {
             overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.25rem'
+            gap: '0.25rem',
+            userSelect: 'text'
           }}>
-            <div style={{ color: '#64748b', borderBottom: '1px solid #1e293b', paddingBottom: '0.4rem', marginBottom: '0.4rem' }}>
-              Console Log Pipeline — Output Real-Time
+            <div style={{
+              color: '#64748b',
+              borderBottom: '1px solid #1e293b',
+              paddingBottom: '0.4rem',
+              marginBottom: '0.4rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span style={{ fontWeight: 600 }}>
+                Console Log Pipeline — Output Real-Time {pipelineState.logs.length > 0 ? `(${pipelineState.logs.length})` : ''}
+              </span>
+              {pipelineState.logs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleCopyLogs}
+                  style={{
+                    padding: '0.2rem 0.6rem',
+                    background: copiedLog ? '#14532d' : 'var(--bg-secondary)',
+                    color: copiedLog ? '#86efac' : 'var(--accent)',
+                    border: `1px solid ${copiedLog ? '#22c55e' : 'var(--border-color)'}`,
+                    borderRadius: '4px',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    transition: 'all 0.2s'
+                  }}
+                  title="Salin seluruh isi log terminal ke clipboard"
+                >
+                  <span>{copiedLog ? '✓' : '📋'}</span>
+                  <span>{copiedLog ? 'Tersalin!' : 'Salin Log'}</span>
+                </button>
+              )}
             </div>
             {pipelineState.logs.map((lg, idx) => (
               <div key={idx} style={{
                 color: lg.type === 'error' ? '#f87171' : lg.type === 'warn' ? '#fbbf24' : lg.type === 'success' ? '#4ade80' : '#e2e8f0',
                 lineHeight: 1.45,
-                wordBreak: 'break-all'
+                wordBreak: 'break-all',
+                userSelect: 'text'
               }}>
                 <span style={{ color: '#64748b', marginRight: '0.5rem' }}>[{lg.ts}]</span>
                 {lg.msg}
@@ -604,6 +654,7 @@ export default function TimemarkModule() {
             )}
             <div ref={logEndRef} />
           </div>
+
 
         </div>
 

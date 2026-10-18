@@ -1256,16 +1256,15 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
     if "03_photos_export" in str(image_path) or "03_export_foto" in str(image_path):
         try:
             parts = Path(image_path).parts
-            if "03_photos_export" in parts:
-                idx = parts.index("03_photos_export")
+            folder_name = "03_photos_export" if "03_photos_export" in parts else ("03_export_foto" if "03_export_foto" in parts else None)
+            if folder_name:
+                idx = parts.index(folder_name)
                 rel_p = Path(*parts[idx+1:])
-                cand_temp = Path("03_photos_cropped_temp") / rel_p
-                if cand_temp.exists():
-                    actual_input_path = cand_temp
-            elif "03_export_foto" in parts:
-                idx = parts.index("03_export_foto")
-                rel_p = Path(*parts[idx+1:])
-                cand_temp = Path("03_photos_cropped_temp") / rel_p
+                root_dir = Path(*parts[:idx]) if idx > 0 else Path(".")
+                # Cek kandidat cropped temp di root ekspor yang sama terlebih dahulu
+                cand_temp = root_dir / "03_photos_cropped_temp" / rel_p
+                if not cand_temp.exists():
+                    cand_temp = Path("03_photos_cropped_temp") / rel_p
                 if cand_temp.exists():
                     actual_input_path = cand_temp
         except Exception:
