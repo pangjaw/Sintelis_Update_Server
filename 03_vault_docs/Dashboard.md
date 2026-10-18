@@ -1,6 +1,6 @@
 # 🧭 SINTELIS UTILITY & UPDATE SERVER DASHBOARD
 > **Pusat Kendali Aplikasi Desktop & Peladen Pembaruan Otomatis (Cloudflare Auto-Updater)**
-> Terakhir Diperbarui: 2026-10-17 11:10:00 | Versi Aktif: **v1.8.3**
+> Terakhir Diperbarui: 2026-10-18 19:25:00 | Versi Aktif: **v1.8.7**
 
 ---
 
@@ -8,7 +8,7 @@
 - **Lokasi Utama Proyek & Server:** `C:\Users\SINTEL 1.21 BOO\Documents\Server\Sintelis_Update_Server`
 - **Direktori Output Rilis & HTTP Server:** `C:\Users\SINTEL 1.21 BOO\Documents\Server\Sintelis_Update_Server\02_server_update` (Port 8085)
 - **Status Cloudflare Zero Trust Tunnel:** Forwarding `https://update.sintelboo.my.id` -> `127.0.0.1:8085`
-- **Target Rilis Biner:** `SintelisUtility.exe` (v1.8.3)
+- **Target Rilis Biner:** `SintelisUtility.exe` (v1.8.7)
 - **Buku Pedoman Arsitektur & Aturan Baku Fitur:** [[Feature_Specs_and_Rules.md]] *(Wajib dibaca sebelum migrasi/refactoring)*
 - **Catatan Migrasi:** Jalur lama `D:\Sintelis_Update_Server` telah dinonaktifkan/dipindahkan sepenuhnya ke direktori ini.
 
@@ -27,7 +27,7 @@ Sintelis_Update_Server/
 │   └── requirements.txt            <-- Ketergantungan Modul Python
 │
 ├── 📁 02_server_update/            <-- SATU-SATUNYA TARGET OUTPUT RILIS & SERVER UPDATE
-│   ├── SintelisUtility.exe         <-- Biner Rilis Aktif v1.8.3 (253.33 MB)
+│   ├── SintelisUtility.exe         <-- Biner Rilis Aktif v1.8.7 (182.85 MB)
 │   ├── version.json                <-- Manifest Versi & Changelog Klien
 
 
@@ -72,4 +72,6 @@ Skrip akan secara otomatis:
 ## 🔗 Tautan Navigasi Vault
 - [[Architecture|Arsitektur Sistem]]
 - [[Update_SOP|SOP 6 Aturan Emas Pembaruan]]
+- [[Notes/Daily/2026-10-18|Log Pembaruan & Fix Bug v1.8.4 – v1.8.7 (Personil, Alias 2025, Audit PTLS, Font Ganti Tanggal)]]
+- [[Notes/Daily/2026-10-17|Log Ekspor Foto PDSE/PTDS/PTLS & Auto-Crop Kolase v1.8.0]]
 - [[Notes/Daily/2026-10-16|Log Pemindahan & Penataan Direktori]]

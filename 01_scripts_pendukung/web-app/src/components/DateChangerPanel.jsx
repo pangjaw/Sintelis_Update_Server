@@ -63,6 +63,21 @@ export default function DateChangerPanel() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
+  const [manualPath, setManualPath] = useState('');
+
+  // Handler Pindai Input Path Manual (SSH/Web friendly)
+  const handleManualScan = () => {
+    const p = manualPath.trim().replace(/^["']|["']$/g, '');
+    if (!p) {
+      setFeedback({ type: 'error', text: 'Silakan masukkan path folder atau berkas PDF terlebih dahulu.' });
+      return;
+    }
+    if (p.toLowerCase().endsWith('.pdf')) {
+      handleScanPaths([p]);
+    } else {
+      handleScanPaths([], p);
+    }
+  };
 
   // 1. Handler Pemindaian Berkas dari Backend
   const handleScanPaths = async (paths, folder = null) => {
@@ -393,6 +408,48 @@ export default function DateChangerPanel() {
               Bersihkan
             </button>
           )}
+        </div>
+
+        {/* ── Manual Path Input (SSH / Remote Web) ── */}
+        <div style={{ width: '100%', display: 'flex', gap: '0.5rem', alignItems: 'center', paddingTop: '0.6rem', borderTop: '1px dashed var(--border-color)' }}>
+          <input
+            type="text"
+            placeholder="Ketik atau tempel path folder / berkas PDF di PC (misal: C:\Dokumen\Checklist atau D:\file.pdf)..."
+            value={manualPath}
+            onChange={(e) => setManualPath(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleManualScan(); }}
+            disabled={loading || processing}
+            style={{
+              flex: 1,
+              padding: '0.45rem 0.75rem',
+              borderRadius: '7px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-input, var(--bg-secondary))',
+              color: 'var(--text-primary)',
+              fontSize: '0.825rem',
+              fontFamily: 'monospace'
+            }}
+          />
+          <button
+            onClick={handleManualScan}
+            disabled={loading || processing || !manualPath.trim()}
+            style={{
+              padding: '0.45rem 0.9rem',
+              background: 'var(--accent)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '7px',
+              cursor: (loading || processing || !manualPath.trim()) ? 'not-allowed' : 'pointer',
+              fontSize: '0.825rem',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem'
+            }}
+          >
+            🔍 Pindai Path
+          </button>
         </div>
       </div>
 

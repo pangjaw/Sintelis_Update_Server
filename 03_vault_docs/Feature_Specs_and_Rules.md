@@ -333,4 +333,63 @@ sequenceDiagram
   - Menjalankan pengujian sintaks, smoke test dataset, dan build PyInstaller `build_release.py`.
   - Melakukan sinkronisasi balik skrip ke `OCR-FOTO-P3STE/scripts/`.
 
+---
+
+## 🛡️ 9. ATURAN BAKU FITUR DILUAR TIMEMARK: GANTI PERSONIL & AUTO-UPDATE
+
+### 9.1 Fitur Ganti Personil & Nomor SC (`personnel_changer_engine.py`)
+1. **Dilarang Menggunakan Koordinat Hardcoded**:
+   - Seluruh penempatan kotak putih (*redaction fill*) **wajib** dihitung secara dinamis dari garis fisik halaman formulir melalui `page.get_drawings()`.
+2. **Aturan Inset Margin Aman**:
+   - Kotak putih wajib menggunakan margin $+1.0\text{ pt}$ (kiri & atas) dan $-1.0\text{ pt}$ (kanan & bawah) dari garis sel fisik agar tidak menimpa garis pembatas sel.
+3. **Standar Tipografi Form KAI**:
+   - Font wajib menggunakan `DejaVuSans-Bold` (bukan `Helvetica`).
+   - Argumen `fontname='DejaVuSans-Bold'` wajib disertakan bersamaan dengan `fontfile` pada PyMuPDF `insert_text`.
+   - Ukuran font standar: **7.8 pt** untuk Nama Personil, **7.0 pt** untuk Nomor SC.
+
+### 9.2 Fitur Auto-Update Client (`updater_engine.py`)
+1. **Dilarang Menggunakan Flag `/T` pada `taskkill`**:
+   - Updater `cmd.exe` dilahirkan oleh proses aplikasi Python. Penggunaan flag `/T` (*tree kill*) akan membunuh `cmd.exe` itu sendiri sebelum sempat menimpa biner atau me-restart aplikasi.
+2. **Dilarang Menggunakan `timeout` pada Non-Interactive Shell**:
+   - Jeda waktu dalam skrip batch latar belakang wajib menggunakan `ping 127.0.0.1 -n {detik + 1} >nul`.
+3. **Isolasi Proses Penuh via Shell RPC (VBScript Wrapper)**:
+   - Peluncuran skrip updater wajib dibungkus VBScript tersembunyi (*window style 0*) dan dijalankan via `os.startfile(vbs_file)`. Pemanggilan didelegasikan ke `explorer.exe` (Windows Shell RPC) sehingga independen mutlak dari siklus hidup Python.
+4. **UX Auto-Restart & Reopen**:
+   - Begitu unduhan selesai (100%), antarmuka webview wajib memicu otomatis proses pemasangan dan memuat ulang aplikasi ke versi terbaru tanpa memerlukan intervensi tombol manual berulang dari pengguna.
+
+
+---
+
+## 🏷️ 9. ATURAN RESOLUSI ALIAS NAMA BERKAS ARSIP (BIDIRECTIONAL ALIAS MAPPING)
+
+Untuk menjembatani perbedaan antara kode aset master modern dan nama berkas fisik arsip historis (seperti arsip 2025 yang membawa typo atau penamaan lama lapangan), sistem memberlakukan aturan pemetaan alias dua arah:
+
+| Berkas Lapangan (Arsip 2025) | Aset Master Sintelis | Lingkup Isolasi | Penanganan Engine |
+| :--- | :--- | :--- | :--- |
+| `PERAWATAN SINYAL J12B MSG ...` | `SINYAL J12 MSG` | Khusus Stasiun `MSG` | `matchFileToAsset`, `idMatches`, `IDENTIFIER_EXCEPTIONS`, `merge_pdf_foto.py` |
+| `PERAWATAN AXLE COUNTER ZP 41B BOO ...` | `AXLE COUNTER ZP 41 BOO` | Khusus Stasiun `BOO` | `matchFileToAsset`, `idMatches`, `IDENTIFIER_EXCEPTIONS`, `merge_pdf_foto.py` |
+| `PERAWATAN PTLS MSG ...` | `PTLS MSG` (Target: 1) | Stasiun `MSG` | Diselaraskan seragam dengan stasiun BTP BD lainnya (`target: 1`) |
+
+> [!WARNING]
+> **Prinsip Isolasi Alias:** Aturan alias `J12B` $\leftrightarrow$ `J12` **HANYA** berlaku jika lokasi terdeteksi sebagai `MSG`. Stasiun `CLT` dan `BTT` memiliki sinyal keluar `J12A` dan `J12B` terpisah secara fisik sehingga tidak boleh dialiaskan sembarangan!
+
+---
+
+## 🔤 10. STANDAR BAKU TIPOGRAFI & INJEKSI FONT (DEJAVUSANS-BOLD 7.2 PT)
+
+Seluruh checklist perawatan P3STE dibuat menggunakan pustaka TCPDF dengan format font embedded **`DejaVuSans-Bold`**. Seluruh mesin yang melakukan manipulasi teks (seperti `personnel_changer_engine.py` dan `date_changer_engine.py`) wajib menaati aturan berikut:
+
+1. **Dilarang Keras Hardcode `Helvetica-Bold`:**
+   PyMuPDF merender `Helvetica-Bold` dengan bentuk tipis dan sempit yang menimbulkan kontras visual jomplang (*belang*) terhadap teks tabel asli.
+2. **Wajib Menyematkan Berkas `fontfile`:**
+   Setiap pemanggilan `page.insert_text(...)` wajib menyertakan path berkas `DejaVuSans-Bold.ttf` via parameter `fontfile=font_file` untuk mencegah eksepsi `ValueError: font is unsupported`.
+3. **Penguncian Titik Baseline `origin`:**
+   Hindari penghitungan posisi Y manual `(bbox.y1 - 1.5)`. Selalu gunakan titik tipografi bawaan `target_span.get("origin")` agar teks pengganti duduk persis di garis baris yang sama dengan teks aslinya.
+4. **Ukuran Standar Font:**
+   - Tanggal Halaman 1: **`7.2 pt`** (DejaVuSans-Bold)
+   - Tanggal Header Foto: **`7.2 pt`** (DejaVuSans-Bold, rata tengah kanvas via `custom_font.text_length(...)`)
+   - Nama Personil: **`7.8 pt`** (DejaVuSans-Bold)
+   - No. SC Personil: **`7.0 pt`** (DejaVuSans-Bold)
+
+
 

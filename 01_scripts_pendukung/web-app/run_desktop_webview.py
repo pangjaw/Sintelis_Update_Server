@@ -3684,12 +3684,24 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             folder = data.get("folder", "")
 
             all_pdf_paths = []
-            if folder and os.path.isdir(folder):
-                for fname in sorted(os.listdir(folder)):
-                    if fname.lower().endswith(".pdf"):
-                        all_pdf_paths.append(os.path.join(folder, fname))
+            if folder:
+                folder_str = str(folder).strip('\"\'').strip()
+                if os.path.isdir(folder_str):
+                    for fname in sorted(os.listdir(folder_str)):
+                        if fname.lower().endswith(".pdf"):
+                            all_pdf_paths.append(os.path.join(folder_str, fname))
+                elif os.path.isfile(folder_str) and folder_str.lower().endswith(".pdf"):
+                    all_pdf_paths.append(folder_str)
             elif paths:
-                all_pdf_paths = [p for p in paths if os.path.isfile(p)]
+                for p in paths:
+                    if isinstance(p, str):
+                        p_str = p.strip('\"\'').strip()
+                        if os.path.isfile(p_str) and p_str.lower().endswith(".pdf"):
+                            all_pdf_paths.append(p_str)
+                        elif os.path.isdir(p_str):
+                            for fname in sorted(os.listdir(p_str)):
+                                if fname.lower().endswith(".pdf"):
+                                    all_pdf_paths.append(os.path.join(p_str, fname))
 
             items = []
             for p in all_pdf_paths:
@@ -3746,12 +3758,24 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             folder = data.get("folder", "")
 
             all_pdf_paths = []
-            if folder and os.path.isdir(folder):
-                for fname in sorted(os.listdir(folder)):
-                    if fname.lower().endswith(".pdf"):
-                        all_pdf_paths.append(os.path.join(folder, fname))
+            if folder:
+                folder_str = str(folder).strip('\"\'').strip()
+                if os.path.isdir(folder_str):
+                    for fname in sorted(os.listdir(folder_str)):
+                        if fname.lower().endswith(".pdf"):
+                            all_pdf_paths.append(os.path.join(folder_str, fname))
+                elif os.path.isfile(folder_str) and folder_str.lower().endswith(".pdf"):
+                    all_pdf_paths.append(folder_str)
             elif paths:
-                all_pdf_paths = [p for p in paths if os.path.isfile(p)]
+                for p in paths:
+                    if isinstance(p, str):
+                        p_str = p.strip('\"\'').strip()
+                        if os.path.isfile(p_str) and p_str.lower().endswith(".pdf"):
+                            all_pdf_paths.append(p_str)
+                        elif os.path.isdir(p_str):
+                            for fname in sorted(os.listdir(p_str)):
+                                if fname.lower().endswith(".pdf"):
+                                    all_pdf_paths.append(os.path.join(p_str, fname))
 
             items = []
             for p in all_pdf_paths:
