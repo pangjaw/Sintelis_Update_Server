@@ -224,8 +224,7 @@ export const MASTER_ASSETS = [
   { key: 'PTLS_BOP', category: 'PTLS', categoryDisplay: 'TELKOM LUAR STASIUN (PTLS)', id: 'PTLS', loc: 'BOP', period: 'BULANAN', target: 1 },
   { key: 'PTLS_BTT', category: 'PTLS', categoryDisplay: 'TELKOM LUAR STASIUN (PTLS)', id: 'PTLS', loc: 'BTT', period: 'BULANAN', target: 1 },
   { key: 'PTLS_COS', category: 'PTLS', categoryDisplay: 'TELKOM LUAR STASIUN (PTLS)', id: 'PTLS', loc: 'COS', period: 'BULANAN', target: 1 },
-  { key: 'PTLS_MSG_1', category: 'PTLS', categoryDisplay: 'TELKOM LUAR STASIUN (PTLS)', id: 'PTLS 1', loc: 'MSG', period: 'BULANAN', target: 1 },
-  { key: 'PTLS_MSG_2', category: 'PTLS', categoryDisplay: 'TELKOM LUAR STASIUN (PTLS)', id: 'PTLS 2', loc: 'MSG', period: 'BULANAN', target: 1 },
+  { key: 'PTLS_MSG', category: 'PTLS', categoryDisplay: 'TELKOM LUAR STASIUN (PTLS)', id: 'PTLS', loc: 'MSG', period: 'BULANAN', target: 1 },
   { key: 'PTLS_CGB', category: 'PTLS', categoryDisplay: 'TELKOM LUAR STASIUN (PTLS)', id: 'PTLS', loc: 'CGB', period: 'BULANAN', target: 1 },
 
   // =========================================================================
@@ -345,8 +344,12 @@ export function matchFileToAsset(filename) {
   // 6. AXLE COUNTER / DETEKSI KA
   if (s.includes('AXLE COUNTER') || s.includes('DETEKSI KA') || /\bZP\s*[0-9]/i.test(s)) {
     const mz = s.match(/(ZP\s*[0-9]{1,3}[A-Z]*)/i);
-    const zId = mz ? mz[1].replace(/\s+/g, ' ').toUpperCase() : 'ZP';
+    let zId = mz ? mz[1].replace(/\s+/g, ' ').toUpperCase() : 'ZP';
     const loc = extractLocFromText(s);
+    // Resolusi nama berkas: ZP 41B BOO (arsip 2025) identik dengan ZP 41 BOO
+    if ((zId === 'ZP 41B' || zId === 'ZP41B') && (loc === 'BOO' || !loc)) {
+      zId = 'ZP 41';
+    }
     return { category: 'AXLE COUNTER', id: zId, loc, period: 'BULANAN' };
   }
 
@@ -377,6 +380,10 @@ export function matchFileToAsset(filename) {
     let sigId = mSig ? mSig[1].replace(/\./g, '').toUpperCase() : '';
     if (['BOO', 'CLT', 'BTT', 'BOP', 'COS', 'MSG', 'CGB', 'CCR', 'BJD'].includes(sigId)) {
       sigId = '';
+    }
+    // Resolusi nama berkas: J12B MSG (arsip 2025) identik dengan J12 MSG
+    if (sigId === 'J12B' && loc === 'MSG') {
+      sigId = 'J12';
     }
     return { category: 'PERAGA SINYAL', id: sigId, loc, period: 'BULANAN' };
   }
@@ -460,18 +467,35 @@ export function performAssetAudit(files, periodFilter = 'BULANAN') {
     let matchedKey = null;
 
     // Helper ID matcher: persis sama atau normalisasi format tanpa spasi/leading zeros
-    const idMatches = (masterId, fileId) => {
+    const idMatches = (masterId, fileId, loc = '', category = '') => {
       if (!masterId || !fileId) return false;
-      if (masterId.toUpperCase().trim() === fileId.toUpperCase().trim()) return true;
-      const mNorm = masterId.toUpperCase().replace(/\s+/g, '').replace(/^JPL0*/i, 'JPL').replace(/^PTPP0*/i, 'PTPP');
-      const fNorm = fileId.toUpperCase().replace(/\s+/g, '').replace(/^JPL0*/i, 'JPL').replace(/^PTPP0*/i, 'PTPP');
+      const mU = masterId.toUpperCase().trim();
+      const fU = fileId.toUpperCase().trim();
+      if (mU === fU) return true;
+
+      // Resolusi nama berkas 2025: ZP 41B BOO <=> ZP 41 BOO
+      if ((loc === 'BOO' || !loc) && (category === 'AXLE COUNTER' || !category)) {
+        const isM41 = mU === 'ZP 41' || mU === 'ZP41' || mU === 'ZP 41B' || mU === 'ZP41B';
+        const isF41 = fU === 'ZP 41' || fU === 'ZP41' || fU === 'ZP 41B' || fU === 'ZP41B';
+        if (isM41 && isF41) return true;
+      }
+
+      // Resolusi nama berkas 2025: J12B MSG <=> J12 MSG
+      if ((loc === 'MSG' || !loc) && (category === 'PERAGA SINYAL' || !category)) {
+        const isM12 = mU === 'J12' || mU === 'J12B';
+        const isF12 = fU === 'J12' || fU === 'J12B';
+        if (isM12 && isF12) return true;
+      }
+
+      const mNorm = mU.replace(/\s+/g, '').replace(/^JPL0*/i, 'JPL').replace(/^PTPP0*/i, 'PTPP');
+      const fNorm = fU.replace(/\s+/g, '').replace(/^JPL0*/i, 'JPL').replace(/^PTPP0*/i, 'PTPP');
       return mNorm === fNorm;
     };
 
     // 1. Exact match (category + id + loc)
     for (const [key, a] of assetMap.entries()) {
       if (a.category === matched.category && normalizeSectionLoc(a.loc) === normalizeSectionLoc(matched.loc)) {
-        if (idMatches(a.id, matched.id)) {
+        if (idMatches(a.id, matched.id, a.loc, a.category)) {
           matchedKey = key;
           break;
         }
@@ -481,7 +505,7 @@ export function performAssetAudit(files, periodFilter = 'BULANAN') {
     // 2. Cross-location match untuk aset spesifik ber-ID (B214 di CLT-BOO cocok ke B214 di BOO-CLT/BOO/CLT)
     if (!matchedKey && matched.id && !DESCRIPTIVE_CATEGORIES.has(matched.category)) {
       for (const [key, a] of assetMap.entries()) {
-        if (a.category === matched.category && idMatches(a.id, matched.id)) {
+        if (a.category === matched.category && idMatches(a.id, matched.id, a.loc, a.category)) {
           if (locsOverlap(a.loc, matched.loc)) {
             matchedKey = key;
             break;
@@ -494,7 +518,7 @@ export function performAssetAudit(files, periodFilter = 'BULANAN') {
     if (!matchedKey && matched.id && !DESCRIPTIVE_CATEGORIES.has(matched.category)) {
       const candidates = [];
       for (const [key, a] of assetMap.entries()) {
-        if (a.category === matched.category && idMatches(a.id, matched.id)) {
+        if (a.category === matched.category && idMatches(a.id, matched.id, a.loc, a.category)) {
           candidates.push(key);
         }
       }

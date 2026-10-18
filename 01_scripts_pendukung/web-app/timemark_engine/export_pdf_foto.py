@@ -449,6 +449,8 @@ def extract_detail(title: str, asset_type: str) -> str:
     res = sanitize_segment(detail)
     if res == "ZP 41B BOO":
         res = "ZP 41 BOO"
+    if res == "J12B MSG":
+        res = "J12 MSG"
     return res
 
 

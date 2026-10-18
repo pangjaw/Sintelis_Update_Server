@@ -60,6 +60,7 @@ _CATEGORY_KEYWORDS = sorted(FILENAME_TO_CATEGORY.keys(), key=len, reverse=True)
 # ── Identifier exceptions (target filename → export folder) ──
 IDENTIFIER_EXCEPTIONS = {
     "ZP 41B": "ZP 41",  # Typo in original PDF target
+    "J12B MSG": "J12 MSG",  # Arsip 2025 di MSG masih memakai J12B (aset master J12)
     "JPL 26": "JPL 26N",  # Filename sengaja tanpa N, aset aslinya 26N
 }
 

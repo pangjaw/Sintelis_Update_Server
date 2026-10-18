@@ -495,6 +495,11 @@ def get_identifier_candidates(identifier: str) -> list[str]:
     elif identifier == "ZP 41 BOO":
         cands.append("ZP 41B BOO")
 
+    if identifier == "J12B MSG":
+        cands.append("J12 MSG")
+    elif identifier == "J12 MSG":
+        cands.append("J12B MSG")
+
     if "JPL 26N" in identifier:
         for s in ["JPL 26N CLT", "JPL 26N BJD", "JPL 26N CLT-BJD", "JPL 26N BJD-CLT"]:
             if s not in cands:

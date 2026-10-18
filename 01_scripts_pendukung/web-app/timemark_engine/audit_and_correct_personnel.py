@@ -581,6 +581,7 @@ def correct_single_file(pdf_path: Path, kaur_obj: dict, pnc1_obj: dict, pnc2_obj
 
 def load_or_build_file_tim_mapping(folder_path: Path) -> dict[str, int]:
     """Mengembalikan pemetaan {filename: tim_number (1, 2, 3)} untuk folder target."""
+    folder_path = Path(folder_path)
     app_data = os.environ.get("LOCALAPPDATA", "")
     candidates = [
         folder_path / "schedule.json",
