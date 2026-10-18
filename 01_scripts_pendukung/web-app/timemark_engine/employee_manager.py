@@ -9,6 +9,7 @@ Handles:
 """
 
 import os
+import sys
 import re
 import json
 import random
@@ -314,8 +315,17 @@ def replace_page1_employee_names(
         page.apply_redactions()
 
         font_size = 6.91
-        font_candidates = [Path('config/DejaVuSans-Bold.ttf'), Path(__file__).parent.parent / 'config' / 'DejaVuSans-Bold.ttf']
-        font_file = next((str(p.resolve()) for p in font_candidates if p.exists()), None)
+        font_candidates = [
+            getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "timemark_engine" / "DejaVuSans-Bold.ttf",
+            getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "config" / "DejaVuSans-Bold.ttf",
+            getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "DejaVuSans-Bold.ttf",
+            Path(__file__).parent / "DejaVuSans-Bold.ttf",
+            Path(__file__).parent / "config" / "DejaVuSans-Bold.ttf",
+            Path(__file__).parent.parent / "config" / "DejaVuSans-Bold.ttf",
+            Path("config/DejaVuSans-Bold.ttf"),
+            Path("timemark_engine/DejaVuSans-Bold.ttf"),
+        ]
+        font_file = next((str(p.resolve()) for p in font_candidates if p and Path(p).is_file()), None)
         custom_font = fitz.Font(fontfile=font_file) if font_file else None
         font_name = 'DejaVuSans-Bold' if custom_font else 'hebo'
 
@@ -453,8 +463,17 @@ def replace_page1_employee_names(
     num_rows = len(new_employees)
     font_size_name = 7.8
     font_size_sc = 7.0
-    ttf_candidates = [Path("config/DejaVuSans-Bold.ttf"), Path(__file__).parent.parent / "config" / "DejaVuSans-Bold.ttf"]
-    font_file = next((str(c.resolve()) for c in ttf_candidates if c.exists()), None)
+    ttf_candidates = [
+        getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "timemark_engine" / "DejaVuSans-Bold.ttf",
+        getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "config" / "DejaVuSans-Bold.ttf",
+        getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "DejaVuSans-Bold.ttf",
+        Path(__file__).parent / "DejaVuSans-Bold.ttf",
+        Path(__file__).parent / "config" / "DejaVuSans-Bold.ttf",
+        Path(__file__).parent.parent / "config" / "DejaVuSans-Bold.ttf",
+        Path("config/DejaVuSans-Bold.ttf"),
+        Path("timemark_engine/DejaVuSans-Bold.ttf"),
+    ]
+    font_file = next((str(c.resolve()) for c in ttf_candidates if c and Path(c).is_file()), None)
     custom_font = None
     if font_file:
         try:

@@ -17,6 +17,19 @@ export default function UpdateModal({ isOpen, onClose }) {
     }
   }, [isOpen]);
 
+  // Otomatis pasang pembaruan dan restart saat download selesai (status === 'ready')
+  useEffect(() => {
+    let timerId;
+    if (downloadProgress.status === 'ready' && !isApplying) {
+      timerId = setTimeout(() => {
+        handleApplyUpdate();
+      }, 1500);
+    }
+    return () => {
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [downloadProgress.status, isApplying]);
+
   const checkUpdate = async () => {
     setLoadingCheck(true);
     try {
@@ -72,33 +85,77 @@ export default function UpdateModal({ isOpen, onClose }) {
   };
 
   const handleApplyUpdate = async () => {
+    if (isApplying) return;
     setIsApplying(true);
     try {
       await fetch('/api/update/apply', { method: 'POST' });
     } catch (err) {
-      alert('Gagal memasang pembaruan: ' + err.message);
-      setIsApplying(false);
+      // Pemutusan koneksi HTTP adalah wajar karena aplikasi keluar untuk digantikan proses baru
+      console.log('Update apply trigger sent:', err);
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-      <div style={{ width: '520px', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' }}>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999
+      }}
+      onClick={(e) => {
+        // Jangan izinkan tutup modal jika sedang memasang pembaruan
+        if (!isApplying && e.target === e.currentTarget) onClose();
+      }}
+    >
+      <style>{`
+        @keyframes sintelis-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes sintelis-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.85; transform: scale(1.02); }
+        }
+      `}</style>
+      <div style={{ width: '520px', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '14px', padding: '1.5rem', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)' }}>
         
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span>🚀</span> Pembaruan Aplikasi Sintelis Utility
           </h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '1.25rem', cursor: 'pointer' }}>
-            ✕
-          </button>
+          {!isApplying && (
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '1.25rem', cursor: 'pointer' }} title="Tutup">
+              ✕
+            </button>
+          )}
         </div>
 
         {/* Content */}
-        {loadingCheck ? (
+        {isApplying ? (
+          <div style={{ textAlign: 'center', padding: '2.5rem 1rem', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem', display: 'inline-block', animation: 'sintelis-spin 1.5s linear infinite' }}>
+              ⚙️
+            </div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--accent)', marginBottom: '0.5rem' }}>
+              Memasang Pembaruan & Memuat Ulang...
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '380px', margin: '0 auto' }}>
+              Aplikasi sedang menimpa berkas biner dan akan membuka kembali versi terbaru secara otomatis dalam beberapa detik.
+              <br />
+              <span style={{ fontSize: '0.78rem', color: '#e2e8f0', marginTop: '0.5rem', display: 'inline-block' }}>
+                Mohon tidak menutup jendela ini.
+              </span>
+            </div>
+          </div>
+        ) : loadingCheck ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
             Memeriksa pembaruan ke server Cloudflare...
           </div>
@@ -118,7 +175,7 @@ export default function UpdateModal({ isOpen, onClose }) {
                 <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
                   Catatan Pembaruan (Changelog):
                 </div>
-                <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-primary)', fontSize: '0.85rem', lineHeight: 1.6 }}>
+                <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-primary)', fontSize: '0.85rem', lineHeight: 1.6, maxHeight: '180px', overflowY: 'auto' }}>
                   {updateData.changelog.map((c, i) => (
                     <li key={i}>{c}</li>
                   ))}
@@ -134,7 +191,19 @@ export default function UpdateModal({ isOpen, onClose }) {
                   <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{downloadProgress.percent}%</span>
                 </div>
                 <div style={{ width: '100%', height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{ width: `${downloadProgress.percent}%`, height: '100%', background: 'var(--accent)' }} />
+                  <div style={{ width: `${downloadProgress.percent}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.2s' }} />
+                </div>
+              </div>
+            )}
+
+            {/* Ready Status Banner */}
+            {downloadProgress.status === 'ready' && (
+              <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', borderRadius: '8px', textAlign: 'center', animation: 'sintelis-pulse 1.2s infinite' }}>
+                <div style={{ fontWeight: 600, color: '#4ade80', fontSize: '0.9rem', marginBottom: '0.2rem' }}>
+                  ✓ Unduhan Selesai (100%)
+                </div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  Memasang pembaruan & memuat ulang aplikasi...
                 </div>
               </div>
             )}
@@ -144,10 +213,10 @@ export default function UpdateModal({ isOpen, onClose }) {
               {downloadProgress.status === 'ready' ? (
                 <button
                   onClick={handleApplyUpdate}
-                  disabled={isApplying}
-                  style={{ flex: 1, padding: '0.75rem', background: 'var(--accent)', color: '#0b0d15', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
+                  disabled={true}
+                  style={{ flex: 1, padding: '0.75rem', background: 'var(--accent)', color: '#0b0d15', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'not-allowed', opacity: 0.9 }}
                 >
-                  {isApplying ? 'Memasang & Membuka Ulang...' : '🔄 Pasang & Restart Sekarang'}
+                  🔄 Memasang & Membuka Ulang...
                 </button>
               ) : downloadProgress.status === 'downloading' ? (
                 <button disabled style={{ flex: 1, padding: '0.75rem', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: 'none', borderRadius: '8px' }}>
@@ -169,30 +238,32 @@ export default function UpdateModal({ isOpen, onClose }) {
             <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
               Aplikasi Anda Sudah Terkini!
             </div>
-            <div style={{ fontSize: '0.85rem' }}>Versi yang terpasang saat ini adalah v{updateData?.currentVersion || '1.4.0'}</div>
+            <div style={{ fontSize: '0.85rem' }}>Versi yang terpasang saat ini adalah v{updateData?.currentVersion || '1.8.6'}</div>
           </div>
         )}
 
         {/* Setting URL Collapse */}
-        <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
-          >
-            {showSettings ? '▲ Sembunyikan Pengaturan URL Server' : '⚙️ Pengaturan Alamat URL Server Update'}
-          </button>
-          {showSettings && (
-            <div style={{ marginTop: '0.5rem' }}>
-              <input
-                type="text"
-                value={serverUrl}
-                onChange={e => handleSaveUrl(e.target.value)}
-                style={{ width: '100%', padding: '0.4rem 0.65rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.82rem' }}
-                placeholder="https://update.sintelboo.my.id/version.json"
-              />
-            </div>
-          )}
-        </div>
+        {!isApplying && (
+          <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              {showSettings ? '▲ Sembunyikan Pengaturan URL Server' : '⚙️ Pengaturan Alamat URL Server Update'}
+            </button>
+            {showSettings && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <input
+                  type="text"
+                  value={serverUrl}
+                  onChange={e => handleSaveUrl(e.target.value)}
+                  style={{ width: '100%', padding: '0.4rem 0.65rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                  placeholder="https://update.sintelboo.my.id/version.json"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     </div>

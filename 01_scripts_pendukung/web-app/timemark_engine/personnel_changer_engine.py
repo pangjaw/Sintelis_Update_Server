@@ -23,9 +23,10 @@ if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
 try:
-    from employee_manager import load_pegawai_config
+    from employee_manager import load_pegawai_config, replace_page1_employee_names
 except ImportError:
     load_pegawai_config = None
+    replace_page1_employee_names = None
 
 try:
     from audit_and_correct_personnel import extract_personnel_from_pdf, get_roster_sets
@@ -34,20 +35,31 @@ except ImportError:
     get_roster_sets = None
 
 
-def _get_page1_font(doc: fitz.Document):
+def _get_page1_font(doc: fitz.Document = None):
     """Mencari font tebal yang cocok untuk penulisan personil."""
     candidates = [
+        getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "timemark_engine" / "DejaVuSans-Bold.ttf",
+        getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "config" / "DejaVuSans-Bold.ttf",
+        getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "DejaVuSans-Bold.ttf",
+        ENGINE_DIR / "DejaVuSans-Bold.ttf",
         ENGINE_DIR / "config" / "DejaVuSans-Bold.ttf",
         ENGINE_DIR.parent / "config" / "DejaVuSans-Bold.ttf",
-        Path("config/DejaVuSans-Bold.ttf")
+        Path("config/DejaVuSans-Bold.ttf"),
+        Path("timemark_engine/DejaVuSans-Bold.ttf"),
+        Path("DejaVuSans-Bold.ttf")
     ]
-    font_file = next((str(p.resolve()) for p in candidates if p.exists()), None)
+    font_file = None
+    for cand in candidates:
+        if cand and Path(cand).is_file():
+            font_file = str(Path(cand).resolve())
+            break
+
     if font_file:
         try:
             return "DejaVuSans-Bold", font_file
         except Exception:
             pass
-    return "hebo", None
+    return "DejaVuSans-Bold", None
 
 
 def extract_personnel_from_layout(page: fitz.Page) -> list[str]:
@@ -252,20 +264,16 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
             except Exception:
                 return len(txt) * fsize * 0.55
 
-        font_size_name = 7.2
-        font_size_sc = 7.2
+        font_size_name = 7.8
+        font_size_sc = 7.0
 
-        insert_kwargs = {"fontsize": font_size_name, "color": (0, 0, 0)}
+        insert_kwargs = {"fontsize": font_size_name, "color": (0, 0, 0), "fontname": font_name}
         if font_file:
             insert_kwargs["fontfile"] = font_file
-        else:
-            insert_kwargs["fontname"] = font_name
 
-        insert_sc_kwargs = {"fontsize": font_size_sc, "color": (0, 0, 0)}
+        insert_sc_kwargs = {"fontsize": font_size_sc, "color": (0, 0, 0), "fontname": font_name}
         if font_file:
             insert_sc_kwargs["fontfile"] = font_file
-        else:
-            insert_sc_kwargs["fontname"] = font_name
 
         if right_dila:
             # === TATA LETAK SIEMENS 2-KOLOM (AXLE COUNTER / WESEL SIEMENS) ===
@@ -278,12 +286,11 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
             y_dila_r = (right_dila["bbox"][1] + right_dila["bbox"][3]) / 2
             y_sc_r = (right_sc["bbox"][1] + right_sc["bbox"][3]) / 2 if right_sc else 262.0
 
-            # Redact sel kiri (KAUR)
-            page.add_redact_annot(fitz.Rect(248.0, 180.0, 370.0, 225.0), fill=(1, 1, 1))
-            page.add_redact_annot(fitz.Rect(248.0, 240.0, 370.0, 285.0), fill=(1, 1, 1))
-            # Redact sel kanan (PNC)
-            page.add_redact_annot(fitz.Rect(462.0, 175.0, 565.0, 230.0), fill=(1, 1, 1))
-            page.add_redact_annot(fitz.Rect(462.0, 235.0, 565.0, 285.0), fill=(1, 1, 1))
+            # Redact sel kiri (KAUR) dan kanan (PNC) dengan margin aman di dalam sel
+            page.add_redact_annot(fitz.Rect(249.0, 181.0, 369.0, 224.0), fill=(1, 1, 1))
+            page.add_redact_annot(fitz.Rect(249.0, 241.0, 369.0, 284.0), fill=(1, 1, 1))
+            page.add_redact_annot(fitz.Rect(463.0, 176.0, 564.0, 229.0), fill=(1, 1, 1))
+            page.add_redact_annot(fitz.Rect(463.0, 236.0, 564.0, 284.0), fill=(1, 1, 1))
             page.apply_redactions()
 
             # Personil 1 -> Sel Kiri (KAUR)
@@ -292,11 +299,11 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
             sc0 = emp0["no_sc"]
 
             w_n0 = _calc_w(n0, font_size_name)
-            x_n0 = 248.0 + (370.0 - 248.0 - w_n0) / 2
+            x_n0 = 249.0 + (369.0 - 249.0 - w_n0) / 2
             page.insert_text((x_n0, y_dila_l + font_size_name * 0.35), n0, **insert_kwargs)
 
             w_sc0 = _calc_w(sc0, font_size_sc)
-            x_sc0 = 248.0 + (370.0 - 248.0 - w_sc0) / 2
+            x_sc0 = 249.0 + (369.0 - 249.0 - w_sc0) / 2
             page.insert_text((x_sc0, y_sc_l + font_size_sc * 0.35), sc0, **insert_sc_kwargs)
 
             # Personil 2..N -> Sel Kanan (PNC)
@@ -321,43 +328,91 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
                         y_sc = (y_sc_r - 20.0) + (idx + 0.5) * step
 
                     w_nm = _calc_w(nm, font_size_name)
-                    x_nm = 462.0 + (565.0 - 462.0 - w_nm) / 2
+                    x_nm = 463.0 + (564.0 - 463.0 - w_nm) / 2
                     page.insert_text((x_nm, y_nm + font_size_name * 0.35), nm, **insert_kwargs)
 
                     w_sc = _calc_w(sc, font_size_sc)
-                    x_sc = 462.0 + (565.0 - 462.0 - w_sc) / 2
+                    x_sc = 463.0 + (564.0 - 463.0 - w_sc) / 2
                     page.insert_text((x_sc, y_sc + font_size_sc * 0.35), sc, **insert_sc_kwargs)
         else:
             # === TATA LETAK STANDAR 1-KOLOM (WESEL, SINYAL, CTC-CTS, CATU DAYA, DLL.) ===
-            left_dila = next((s for s in spans if "DILAKSANAKAN" in s["text"].upper() and s["bbox"][0] < 300 and 150 <= s["bbox"][1] <= 260), None)
-            y_center = (left_dila["bbox"][1] + left_dila["bbox"][3]) / 2 if left_dila else 210.0
+            # Prioritaskan pemanggilan replace_page1_employee_names dari employee_manager
+            handled = False
+            if replace_page1_employee_names:
+                try:
+                    handled = replace_page1_employee_names(doc, clean_employees, sc_only=False)
+                except Exception as ex:
+                    print(f"[WARN] replace_page1_employee_names failed: {ex}, fallback to internal drawing-based layout")
+                    handled = False
 
-            # Redact area nama & nomor SC
-            page.add_redact_annot(fitz.Rect(255.0, y_center - 34.0, 395.0, y_center + 34.0), fill=(1, 1, 1))
-            page.add_redact_annot(fitz.Rect(465.0, y_center - 34.0, 565.0, y_center + 34.0), fill=(1, 1, 1))
-            page.apply_redactions()
+            if not handled:
+                # Fallback algoritma deteksi garis dinamis page.get_drawings()
+                left_dila = next((s for s in spans if "DILAKSANAKAN" in s["text"].upper() and s["bbox"][0] < 300 and 150 <= s["bbox"][1] <= 260), None)
+                sc_label = next((s for s in spans if any(k in s["text"].upper() for k in ["NO. SC", "NO.SC", "SC"]) and s["bbox"][0] > 350 and 150 <= s["bbox"][1] <= 260), None)
+                if not left_dila:
+                    left_dila = {"bbox": (196.6, 200.0, 250.1, 210.0), "text": "DILAKSANAKAN"}
+                if not sc_label:
+                    sc_label = {"bbox": (407.4, 205.0, 436.5, 215.0), "text": "NO. SC."}
 
-            n = len(clean_employees)
-            for idx, emp in enumerate(clean_employees):
-                nm = emp["nama"]
-                sc = emp["no_sc"]
-                if n == 1:
-                    y_pos = y_center
-                elif n == 2:
-                    y_pos = (y_center - 9.0) + idx * 18.0
-                elif n == 3:
-                    y_pos = (y_center - 15.6) + idx * 15.6
+                y_mid = (left_dila["bbox"][1] + left_dila["bbox"][3]) / 2
+                drawings = page.get_drawings()
+                h_lines = set()
+                v_lines = set()
+                for d in drawings:
+                    r = d["rect"]
+                    if r.width > 20 and r.height < 2 and (y_mid - 60 <= r.y0 <= y_mid + 60):
+                        h_lines.add(round(r.y0, 2))
+                    elif r.height > 20 and r.width < 2 and (y_mid - 60 <= (r.y0 + r.y1) / 2 <= y_mid + 60):
+                        v_lines.add(round(r.x0, 2))
+
+                sorted_h = sorted(h_lines)
+                sorted_v = sorted(v_lines)
+                top_lines = [y for y in sorted_h if y <= y_mid]
+                bottom_lines = [y for y in sorted_h if y >= y_mid]
+                y_top = max(top_lines) if top_lines else y_mid - 25.0
+                y_bottom = min(bottom_lines) if bottom_lines else y_mid + 35.0
+
+                v_between = [x for x in sorted_v if left_dila["bbox"][0] <= x <= sc_label["bbox"][2]]
+                if len(v_between) >= 4:
+                    x_name_left, x_name_right = v_between[2], v_between[3]
+                elif len(v_between) >= 2:
+                    x_name_left, x_name_right = v_between[-2], v_between[-1]
                 else:
-                    step = 56.0 / n
-                    y_pos = (y_center - 25.0) + (idx + 0.5) * step
+                    x_name_left, x_name_right = 267.77, 389.80
 
-                w_nm = _calc_w(nm, font_size_name)
-                x_nm = 255.0 + (395.0 - 255.0 - w_nm) / 2
-                page.insert_text((x_nm, y_pos + font_size_name * 0.35), nm, **insert_kwargs)
+                v_right = [x for x in sorted_v if x >= sc_label["bbox"][0]]
+                if len(v_right) >= 4:
+                    x_sc_left, x_sc_right = v_right[2] + 2.0, min(563.5, v_right[3] - 2.5)
+                elif len(v_right) >= 2:
+                    x_sc_left, x_sc_right = v_right[-2] + 2.0, min(563.5, v_right[-1] - 2.5)
+                else:
+                    x_sc_left, x_sc_right = 467.8, 563.5
 
-                w_sc = _calc_w(sc, font_size_sc)
-                x_sc = 465.0 + (565.0 - 465.0 - w_sc) / 2
-                page.insert_text((x_sc, y_pos + font_size_sc * 0.35), sc, **insert_sc_kwargs)
+                rect_names = fitz.Rect(x_name_left + 1.0, y_top + 1.0, x_name_right - 1.0, y_bottom - 1.0)
+                rect_sc = fitz.Rect(max(466.0, x_sc_left), y_top + 1.0, min(563.5, x_sc_right), y_bottom - 1.0)
+
+                page.add_redact_annot(rect_names, fill=(1, 1, 1))
+                page.add_redact_annot(rect_sc, fill=(1, 1, 1))
+                page.apply_redactions()
+
+                num_rows = len(clean_employees)
+                avail_h = (y_bottom - 1.0) - (y_top + 1.0)
+                row_h = avail_h / (num_rows + 1)
+
+                for idx, emp in enumerate(clean_employees):
+                    nm = emp["nama"]
+                    sc = emp["no_sc"]
+                    y_row_center = (y_top + 1.0) + (idx + 1) * row_h
+                    y_base_name = y_row_center + (font_size_name * 0.36)
+                    y_base_sc = y_row_center + (font_size_sc * 0.36)
+
+                    w_nm = _calc_w(nm, font_size_name)
+                    x_name_pos = max(x_name_left + 2.0, (x_name_left + x_name_right) / 2 - w_nm / 2)
+                    page.insert_text((x_name_pos, y_base_name), nm, **insert_kwargs)
+
+                    w_sc = _calc_w(sc, font_size_sc)
+                    x_sc_pos = max(x_sc_left + 2.0, (x_sc_left + x_sc_right) / 2 - w_sc / 2)
+                    page.insert_text((x_sc_pos, y_base_sc), sc, **insert_sc_kwargs)
 
         # Simpan ke berkas sementara kemudian swap secara atomik
         doc.save(temp_path, garbage=3, deflate=True)

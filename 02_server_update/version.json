@@ -1,14 +1,15 @@
 {
-  "version": "1.8.6",
+  "version": "1.8.7",
   "releaseDate": "2026-10-18",
-  "downloadUrl": "https://update.sintelboo.my.id/SintelisUtility.exe?v=1.8.6",
-  "fileSize": 191728620,
+  "downloadUrl": "https://update.sintelboo.my.id/SintelisUtility.exe?v=1.8.7",
+  "fileSize": 191736881,
   "changelog": [
-    "v1.8.6: Fix Ubah Personil & No. SC - Perbaikan error perhitungan panjang teks font kustom (Font 'dejavusans-bold' is unsupported) saat penimpaan personil PDF",
-    "v1.8.6: Perbaikan Menyeluruh Auto-Crop Kolase 2x2 & 3-in-1 - Ambang batas seam adaptif, smart auto-quadrant detection ke kuadran Bottom-Left (BL), fallback instan single crop ✂️, dan sinkronisasi preview mentah/editan terpotong",
-    "v1.8.6: Fitur Salin Log (Copy to Clipboard) - Tombol 1-klik salin log pada Console Pipeline dan seluruh window log terminal",
-    "v1.8.6: Window Log Real-Time Koreksi Dokumen & Core Serat Optik - Output step-by-step proses audit personil dan koreksi core",
-    "v1.8.6: Early Binding Multi-Tanggal Menyeluruh - Deteksi frekuensi inspeksi terpadu pada WESEL, PDSE, PTDS, PTLS, SINYAL, AXC",
-    "v1.8.6: Isolasi File Ganda Hari Sama (_part{n}) - Berkas bertanda (2).pdf otomatis mendapat suffix _part2 mencegah saling timpa"
+    "v1.8.7: Fix Ubah Personil & No. SC - Perbaikan presisi layout sel tabel (deteksi garis drawings dinamis, eliminasi overlap shape putih pada garis tabel), pemulihan font DejaVuSans-Bold, dan standardisasi ukuran teks (Nama 7.8, No. SC 7.0)",
+    "v1.8.7: Fix Ubah Personil & No. SC - Perbaikan error perhitungan panjang teks font kustom (Font 'dejavusans-bold' is unsupported) saat penimpaan personil PDF",
+    "v1.8.7: Perbaikan Menyeluruh Auto-Crop Kolase 2x2 & 3-in-1 - Ambang batas seam adaptif, smart auto-quadrant detection ke kuadran Bottom-Left (BL), fallback instan single crop ✂️, dan sinkronisasi preview mentah/editan terpotong",
+    "v1.8.7: Fitur Salin Log (Copy to Clipboard) - Tombol 1-klik salin log pada Console Pipeline dan seluruh window log terminal",
+    "v1.8.7: Window Log Real-Time Koreksi Dokumen & Core Serat Optik - Output step-by-step proses audit personil dan koreksi core",
+    "v1.8.7: Early Binding Multi-Tanggal Menyeluruh - Deteksi frekuensi inspeksi terpadu pada WESEL, PDSE, PTDS, PTLS, SINYAL, AXC",
+    "v1.8.7: Isolasi File Ganda Hari Sama (_part{n}) - Berkas bertanda (2).pdf otomatis mendapat suffix _part2 mencegah saling timpa"
   ]
 }

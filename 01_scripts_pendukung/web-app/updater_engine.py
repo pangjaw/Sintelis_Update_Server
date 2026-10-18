@@ -12,7 +12,7 @@ import threading
 import subprocess
 import tempfile
 
-APP_VERSION = "1.8.6"
+APP_VERSION = "1.8.7"
 DEFAULT_UPDATE_URL = "https://update.sintelboo.my.id/version.json"
 
 _update_state = {
@@ -161,6 +161,7 @@ def apply_update_and_restart():
     current_pid = os.getpid()
 
     cmd_file = os.path.join(tempfile.gettempdir(), "sintelis_updater.cmd")
+    vbs_file = os.path.join(tempfile.gettempdir(), "sintelis_updater.vbs")
     log_file = os.path.join(tempfile.gettempdir(), "sintelis_updater.log")
 
     cmd_content = f"""@echo off
@@ -180,16 +181,21 @@ echo [%date% %time%] TARGET_EXE: %TARGET_EXE% >> "%LOG_FILE%"
 echo [%date% %time%] STANDARD_EXE: %STANDARD_EXE% >> "%LOG_FILE%"
 echo [%date% %time%] TEMP_EXE: %TEMP_EXE% >> "%LOG_FILE%"
 
-:: 1. Jeda 1.5 detik agar respon HTTP sukses diterima oleh antarmuka aplikasi
-timeout /t 2 /nobreak >nul
+:: 1. Jeda 3 detik via ping agar respon HTTP sukses dikirim dan Python melepas handle
+ping 127.0.0.1 -n 4 >nul
 
-:: 2. Hentikan paksa proses pemanggil dan seluruh pohon prosesnya
-echo [%date% %time%] Menghentikan proses pemanggil (PID: %CALLER_PID%)... >> "%LOG_FILE%"
-taskkill /F /PID %CALLER_PID% /T >nul 2>&1
-taskkill /F /IM "SintelisUtility*.exe" /T >nul 2>&1
-timeout /t 2 /nobreak >nul
+:: 2. Cek apakah CALLER_PID masih hidup, jika ya hentikan TANPA flag /T (agar tidak membunuh updater)
+tasklist /FI "PID eq %CALLER_PID%" 2>nul | findstr /i "%CALLER_PID%" >nul
+if not errorlevel 1 (
+    echo [%date% %time%] Menghentikan proses pemanggil (PID: %CALLER_PID%)... >> "%LOG_FILE%"
+    taskkill /F /PID %CALLER_PID% >nul 2>&1
+    ping 127.0.0.1 -n 2 >nul
+)
 
-:: 3. Timpa file dengan perulangan hingga 30 kali
+:: 3. Ekstrak nama berkas target untuk mekanisme rename swap
+for %%F in ("%TARGET_EXE%") do set "TARGET_NAME=%%~nxF"
+
+:: 4. Timpa file dengan perulangan hingga 30 kali
 set "SUCCESS=0"
 for /L %%i in (1,1,30) do (
     if "!SUCCESS!"=="0" (
@@ -201,26 +207,26 @@ for /L %%i in (1,1,30) do (
         ) else (
             :: Coba teknik rename swap jika file masih dikunci
             if exist "%TARGET_EXE%.old" del /F /Q "%TARGET_EXE%.old" >nul 2>&1
-            move /Y "%TARGET_EXE%" "%TARGET_EXE%.old" >nul 2>&1
+            ren "%TARGET_EXE%" "!TARGET_NAME!.old" >nul 2>&1
             copy /Y "%TEMP_EXE%" "%TARGET_EXE%" >nul 2>&1
             if not errorlevel 1 (
                 set "SUCCESS=1"
                 del /F /Q "%TARGET_EXE%.old" >nul 2>&1
                 echo [%date% %time%] TARGET_EXE berhasil ditimpa via rename-swap pada percobaan %%i! >> "%LOG_FILE%"
             ) else (
-                timeout /t 1 /nobreak >nul
+                ping 127.0.0.1 -n 2 >nul
             )
         )
     )
 )
 
-:: 4. Jika TARGET_EXE berbeda dengan STANDARD_EXE, sinkronkan juga STANDARD_EXE
-if not "%TARGET_EXE%"=="%STANDARD_EXE%" (
+:: 5. Jika TARGET_EXE berbeda dengan STANDARD_EXE, sinkronkan juga STANDARD_EXE
+if /i not "%TARGET_EXE%"=="%STANDARD_EXE%" (
     echo [%date% %time%] Menyinkronkan STANDARD_EXE: %STANDARD_EXE% >> "%LOG_FILE%"
     copy /Y "%TEMP_EXE%" "%STANDARD_EXE%" >nul 2>&1
 )
 
-:: 5. Jalankan aplikasi terbaru jika penimpaan berhasil
+:: 6. Jalankan aplikasi terbaru jika penimpaan berhasil
 if "!SUCCESS!"=="1" (
     echo [%date% %time%] Berhasil! Menghapus biner sementara di Temp... >> "%LOG_FILE%"
     del /F /Q "%TEMP_EXE%" >nul 2>&1
@@ -230,28 +236,29 @@ if "!SUCCESS!"=="1" (
     echo [%date% %time%] GAGAL menimpa berkas setelah 30 percobaan! >> "%LOG_FILE%"
 )
 
-:: 6. Selesai dan bersihkan skrip updater ini
+:: 7. Bersihkan script pembungkus VBScript jika ada
+if exist "{vbs_file}" del /F /Q "{vbs_file}" >nul 2>&1
+
+:: 8. Selesai dan bersihkan skrip updater ini
 (goto) 2>nul & del "%~f0"
 """
 
     with open(cmd_file, "w", encoding="utf-8") as f:
         f.write(cmd_content)
 
-    # DETACHED_PROCESS (0x00000008) + CREATE_NEW_PROCESS_GROUP (0x00000200) + CREATE_NO_WINDOW (0x08000000)
-    flags = 0x00000008 | 0x00000200 | 0x08000000
+    vbs_content = f'CreateObject("Wscript.Shell").Run chr(34) & "{cmd_file}" & chr(34), 0, False\n'
+    with open(vbs_file, "w", encoding="utf-8") as f:
+        f.write(vbs_content)
+
     try:
-        subprocess.Popen(
-            ["cmd.exe", "/c", cmd_file],
-            creationflags=flags,
-            close_fds=True
-        )
+        os.startfile(vbs_file)
     except Exception:
         try:
-            os.startfile(cmd_file)
+            subprocess.Popen(["wscript.exe", vbs_file], close_fds=True)
         except Exception:
-            subprocess.Popen(["cmd.exe", "/c", cmd_file])
+            subprocess.Popen(["cmd.exe", "/c", cmd_file], close_fds=True)
 
-    threading.Thread(target=lambda: (time.sleep(1.2), os._exit(0)), daemon=True).start()
+    threading.Thread(target=lambda: (time.sleep(1.0), os._exit(0)), daemon=True).start()
     return {"ok": True, "message": "Restarting application to apply update..."}
 
 

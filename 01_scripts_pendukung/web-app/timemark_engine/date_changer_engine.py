@@ -30,6 +30,27 @@ MONTH_MAP_ID = {
     "november": 11, "nov": 11, "desember": 12, "des": 12
 }
 
+ENGINE_DIR = Path(__file__).resolve().parent
+
+
+def _get_date_font():
+    """Mencari berkas font DejaVuSans-Bold.ttf asli agar identik 100% dengan dokumen P3STE."""
+    candidates = [
+        getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "timemark_engine" / "DejaVuSans-Bold.ttf",
+        getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "config" / "DejaVuSans-Bold.ttf",
+        getattr(sys, "_MEIPASS", "") and Path(sys._MEIPASS) / "DejaVuSans-Bold.ttf",
+        ENGINE_DIR / "DejaVuSans-Bold.ttf",
+        ENGINE_DIR / "config" / "DejaVuSans-Bold.ttf",
+        ENGINE_DIR.parent / "config" / "DejaVuSans-Bold.ttf",
+        Path("config/DejaVuSans-Bold.ttf"),
+        Path("timemark_engine/DejaVuSans-Bold.ttf"),
+        Path("DejaVuSans-Bold.ttf")
+    ]
+    for cand in candidates:
+        if cand and Path(cand).is_file():
+            return "DejaVuSans-Bold", str(Path(cand).resolve())
+    return "Helvetica-Bold", None
+
 
 def parse_date_flexible(date_str: str) -> datetime | None:
     """Mengurai string tanggal dalam berbagai format umum ke objek datetime."""
@@ -267,15 +288,21 @@ def apply_date_change(pdf_path: str, new_date_str: str, create_backup: bool = Fa
                 p1.add_redact_annot(clean_rect, fill=(1, 1, 1))
                 p1.apply_redactions()
 
-                # Sisipkan teks tanggal baru (ISO: YYYY-MM-DD)
-                font_size = target_p1_span.get("size", 7.8)
-                p1.insert_text(
-                    (bbox.x0, bbox.y1 - 1.5),
-                    iso_date,
-                    fontname="Helvetica-Bold",
-                    fontsize=font_size,
-                    color=(0, 0, 0)
-                )
+                # Sisipkan teks tanggal baru (ISO: YYYY-MM-DD) dengan DejaVuSans-Bold asli
+                font_name, font_file = _get_date_font()
+                font_size = target_p1_span.get("size", 7.2)
+                origin = target_p1_span.get("origin")
+                insert_pos = origin if origin else (bbox.x0, bbox.y1 - 1.5)
+
+                insert_kwargs = {
+                    "fontsize": font_size,
+                    "fontname": font_name,
+                    "color": (0, 0, 0)
+                }
+                if font_file:
+                    insert_kwargs["fontfile"] = font_file
+
+                p1.insert_text(insert_pos, iso_date, **insert_kwargs)
                 res["p1_modified"] = True
 
         # ── MODIFIKASI HALAMAN FOTO (Header di bawah FOTO DOKUMENTASI) ──
@@ -309,18 +336,31 @@ def apply_date_change(pdf_path: str, new_date_str: str, create_backup: bool = Fa
                     page.add_redact_annot(clean_rect, fill=(1, 1, 1))
                     page.apply_redactions()
 
-                    # Hitung posisi X tengah persis
+                    font_name, font_file = _get_date_font()
                     font_size = photo_span.get("size", 7.2)
-                    text_w = fitz.get_text_length(indo_date, fontname="Helvetica-Bold", fontsize=font_size)
+                    origin = photo_span.get("origin")
+                    origin_y = origin[1] if origin else (bbox.y1 - 1.5)
+
+                    if font_file:
+                        try:
+                            custom_font = fitz.Font(fontfile=font_file)
+                            text_w = custom_font.text_length(indo_date, fontsize=font_size)
+                        except Exception:
+                            text_w = fitz.get_text_length(indo_date, fontname="hebo", fontsize=font_size)
+                    else:
+                        text_w = fitz.get_text_length(indo_date, fontname="hebo", fontsize=font_size)
+
                     center_x = (page_w - text_w) / 2.0
 
-                    page.insert_text(
-                        (center_x, bbox.y1 - 1.5),
-                        indo_date,
-                        fontname="Helvetica-Bold",
-                        fontsize=font_size,
-                        color=(0, 0, 0)
-                    )
+                    photo_kwargs = {
+                        "fontsize": font_size,
+                        "fontname": font_name,
+                        "color": (0, 0, 0)
+                    }
+                    if font_file:
+                        photo_kwargs["fontfile"] = font_file
+
+                    page.insert_text((center_x, origin_y), indo_date, **photo_kwargs)
                     res["photo_modified"] = True
 
         # Simpan ke temp file

@@ -94,6 +94,7 @@ if os.path.exists(v_src):
     v_data["releaseDate"] = time.strftime("%Y-%m-%d")
     v_data["downloadUrl"] = f"https://update.sintelboo.my.id/SintelisUtility.exe?v={app_version}"
     v_data["changelog"] = [
+        f"v{app_version}: Fix Ubah Personil & No. SC - Perbaikan presisi layout sel tabel (deteksi garis drawings dinamis, eliminasi overlap shape putih pada garis tabel), pemulihan font DejaVuSans-Bold, dan standardisasi ukuran teks (Nama 7.8, No. SC 7.0)",
         f"v{app_version}: Fix Ubah Personil & No. SC - Perbaikan error perhitungan panjang teks font kustom (Font 'dejavusans-bold' is unsupported) saat penimpaan personil PDF",
         f"v{app_version}: Perbaikan Menyeluruh Auto-Crop Kolase 2x2 & 3-in-1 - Ambang batas seam adaptif, smart auto-quadrant detection ke kuadran Bottom-Left (BL), fallback instan single crop ✂️, dan sinkronisasi preview mentah/editan terpotong",
         f"v{app_version}: Fitur Salin Log (Copy to Clipboard) - Tombol 1-klik salin log pada Console Pipeline dan seluruh window log terminal",
