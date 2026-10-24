@@ -23,16 +23,59 @@ if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
 try:
-    from employee_manager import load_pegawai_config, replace_page1_employee_names
+    from employee_manager import load_pegawai_config, replace_page1_employee_names, detect_raster_table_lines
 except ImportError:
     load_pegawai_config = None
     replace_page1_employee_names = None
+    detect_raster_table_lines = None
 
 try:
     from audit_and_correct_personnel import extract_personnel_from_pdf, get_roster_sets
 except ImportError:
     extract_personnel_from_pdf = None
     get_roster_sets = None
+
+
+def _extract_ocr_words(page: fitz.Page) -> list:
+    """Fallback OCR word extractor for scanned or Print-to-PDF pages lacking digital text."""
+    try:
+        import pytesseract
+        from PIL import Image
+
+        tesseract_candidates = [
+            os.environ.get("TESSERACT_CMD"),
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        ]
+        tesseract_bin = next((c for c in tesseract_candidates if c and os.path.isfile(c)), None)
+        if not tesseract_bin:
+            import shutil
+            tesseract_bin = shutil.which("tesseract")
+        if tesseract_bin:
+            pytesseract.pytesseract.tesseract_cmd = str(tesseract_bin)
+
+        pix = page.get_pixmap(dpi=200)
+        scale = 72.0 / 200.0
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        y_top_px = int(160.0 / scale)
+        y_bot_px = int(min(300.0, page.rect.height) / scale)
+        crop_img = img.crop((0, y_top_px, img.width, y_bot_px))
+
+        data = pytesseract.image_to_data(crop_img, output_type=pytesseract.Output.DICT)
+        words = []
+        for i in range(len(data["text"])):
+            t = data["text"][i].strip()
+            if not t:
+                continue
+            x0 = data["left"][i] * scale
+            y0 = 160.0 + data["top"][i] * scale
+            x1 = x0 + data["width"][i] * scale
+            y1 = y0 + data["height"][i] * scale
+            # (x0, y0, x1, y1, word, block_no, line_no, word_no)
+            words.append((x0, y0, x1, y1, t, data["block_num"][i], data["line_num"][i], data["word_num"][i]))
+        return words
+    except Exception:
+        return []
 
 
 def _get_page1_font(doc: fitz.Document = None):
@@ -68,6 +111,11 @@ def extract_personnel_from_layout(page: fitz.Page) -> list[str]:
     sehingga mendukung baik personil dalam daftar profil maupun personil kustom/manual.
     """
     words = page.get_text("words", sort=True)
+    if not words or not any("DILAKSANAKAN" in w[4].upper() for w in words):
+        ocr_words = _extract_ocr_words(page)
+        if ocr_words:
+            words = ocr_words
+
     if not words:
         return []
 
@@ -105,8 +153,10 @@ def extract_personnel_from_layout(page: fitz.Page) -> list[str]:
         names.extend(_group_by_y(left_words))
         names.extend(_group_by_y(right_words))
     else:
-        # Standar 1-Kolom: x in [250, 400], y in [175, 245]
-        mid_words = [w for w in words if 250 <= w[0] <= 400 and 175 <= w[1] <= 245]
+        # Standar 1-Kolom: cari posisi baris DILAKSANAKAN
+        dila_w = next((w for w in words if "DILAKSANAKAN" in w[4].upper() or "DILAKS" in w[4].upper()), None)
+        y_dila = (dila_w[1] + dila_w[3]) / 2 if dila_w else 210.0
+        mid_words = [w for w in words if 250 <= w[0] <= 380 and (y_dila - 22.0 <= (w[1] + w[3]) / 2 <= y_dila + 28.0)]
         lines = []
         for w in sorted(mid_words, key=lambda x: (round(x[1], -1), x[0])):
             if not lines or abs(w[1] - lines[-1][0][1]) > 5:
@@ -365,6 +415,16 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
                     elif r.height > 20 and r.width < 2 and (y_mid - 60 <= (r.y0 + r.y1) / 2 <= y_mid + 60):
                         v_lines.add(round(r.x0, 2))
 
+                is_raster_table = False
+                if (len(h_lines) < 2 or len(v_lines) < 2) and detect_raster_table_lines:
+                    r_h, r_v = detect_raster_table_lines(page, y_mid)
+                    if len(r_h) >= 2:
+                        h_lines = set(r_h)
+                        is_raster_table = True
+                    if len(r_v) >= 2:
+                        v_lines = set(r_v)
+                        is_raster_table = True
+
                 sorted_h = sorted(h_lines)
                 sorted_v = sorted(v_lines)
                 top_lines = [y for y in sorted_h if y <= y_mid]
@@ -372,28 +432,45 @@ def apply_personnel_change(pdf_path: str, employees: list[dict]) -> dict:
                 y_top = max(top_lines) if top_lines else y_mid - 25.0
                 y_bottom = min(bottom_lines) if bottom_lines else y_mid + 35.0
 
-                v_between = [x for x in sorted_v if left_dila["bbox"][0] <= x <= sc_label["bbox"][2]]
-                if len(v_between) >= 4:
-                    x_name_left, x_name_right = v_between[2], v_between[3]
-                elif len(v_between) >= 2:
-                    x_name_left, x_name_right = v_between[-2], v_between[-1]
-                else:
-                    x_name_left, x_name_right = 267.77, 389.80
+                # Deteksi batas kolom Nama Personil dan Kolom NO. SC.
+                cand_nl = [x for x in sorted_v if 245 <= x <= 275]
+                cand_nr = [x for x in sorted_v if 375 <= x <= 405]
+                cand_sl = [x for x in sorted_v if 455 <= x <= 475]
+                cand_sr = [x for x in sorted_v if 555 <= x <= 575]
 
-                v_right = [x for x in sorted_v if x >= sc_label["bbox"][0]]
-                if len(v_right) >= 4:
-                    x_sc_left, x_sc_right = v_right[2] + 2.0, min(563.5, v_right[3] - 2.5)
-                elif len(v_right) >= 2:
-                    x_sc_left, x_sc_right = v_right[-2] + 2.0, min(563.5, v_right[-1] - 2.5)
+                if cand_nl and cand_nr:
+                    x_name_left = max(cand_nl)
+                    x_name_right = min(cand_nr)
                 else:
-                    x_sc_left, x_sc_right = 467.8, 563.5
+                    v_between = [x for x in sorted_v if left_dila["bbox"][0] <= x <= sc_label["bbox"][2]]
+                    if len(v_between) >= 2:
+                        x_name_left, x_name_right = v_between[-2], v_between[-1]
+                    else:
+                        x_name_left, x_name_right = 267.77, 389.80
 
-                rect_names = fitz.Rect(x_name_left + 1.0, y_top + 1.0, x_name_right - 1.0, y_bottom - 1.0)
-                rect_sc = fitz.Rect(max(466.0, x_sc_left), y_top + 1.0, min(563.5, x_sc_right), y_bottom - 1.0)
+                if cand_sl and cand_sr:
+                    x_sc_left = max(cand_sl)
+                    x_sc_right = min(cand_sr)
+                else:
+                    v_right = [x for x in sorted_v if x >= sc_label["bbox"][0] - 5.0]
+                    if len(v_right) >= 2:
+                        x_sc_left, x_sc_right = v_right[-2], v_right[-1]
+                    else:
+                        x_sc_left, x_sc_right = 467.82, 563.50
+
+                # Safe margin 1.5pt dari seluruh garis sel tabel untuk mencegah bleed stroke shape putih
+                y_t_safe = y_top + 1.5
+                y_b_safe = y_bottom - 1.5
+                sc_r_bound = (max(x_sc_right, 564.0) if is_raster_table else x_sc_right) - 1.5
+                rect_sc = fitz.Rect(x_sc_left + 1.5, y_t_safe, sc_r_bound, y_b_safe)
+                rect_names = fitz.Rect(x_name_left + 1.5, y_t_safe, x_name_right - 1.5, y_b_safe)
 
                 page.add_redact_annot(rect_names, fill=(1, 1, 1))
                 page.add_redact_annot(rect_sc, fill=(1, 1, 1))
                 page.apply_redactions()
+
+                if is_raster_table:
+                    page.draw_line((x_sc_right + 2.5, y_top), (x_sc_right + 2.5, y_bottom), color=(0, 0, 0), width=0.6)
 
                 num_rows = len(clean_employees)
                 avail_h = (y_bottom - 1.0) - (y_top + 1.0)

@@ -30,15 +30,23 @@ const API_OCR = 'http://localhost:18725/api/ocr';
  * @returns {Promise<HTMLCanvasElement>}
  */
 export async function renderPage1(pdfBuffer, dpi = 200) {
-  const pdf = await pdfjs.getDocument({ data: pdfBuffer.slice(0) }).promise;
-  const page = await pdf.getPage(1);
-  const viewport = page.getViewport({ scale: dpi / 72 });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const ctx = canvas.getContext('2d');
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  return canvas;
+  let pdf = null;
+  try {
+    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBuffer) });
+    pdf = await loadingTask.promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: dpi / 72 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas;
+  } finally {
+    if (pdf) {
+      try { await pdf.destroy(); } catch (e) {}
+    }
+  }
 }
 
 /**
@@ -87,6 +95,15 @@ export async function ocrCanvas(canvas) {
   const { data } = await T.recognize(enhanced, WORKER_LANG, {
     logger: (m) => { /* silent */ },
   });
+
+  // Bebaskan buffer memori grafis Skia canvas seketika
+  try {
+    canvas.width = 0;
+    canvas.height = 0;
+    enhanced.width = 0;
+    enhanced.height = 0;
+  } catch (e) {}
+
   return data.text.toUpperCase();
 }
 
@@ -155,8 +172,10 @@ export async function computeSha256(arrayBuffer) {
  * @returns {Promise<string>}
  */
 export async function extractDigitalText(arrayBuffer) {
+  let pdf = null;
   try {
-    const pdf = await pdfjs.getDocument({ data: arrayBuffer.slice(0) }).promise;
+    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) });
+    pdf = await loadingTask.promise;
     const page = await pdf.getPage(1);
     const content = await page.getTextContent();
     if (!content || !content.items || content.items.length === 0) {
@@ -183,6 +202,10 @@ export async function extractDigitalText(arrayBuffer) {
     return lines.join('\n').toUpperCase();
   } catch (e) {
     return '';
+  } finally {
+    if (pdf) {
+      try { await pdf.destroy(); } catch (e) {}
+    }
   }
 }
 

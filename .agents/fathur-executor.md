@@ -17,7 +17,9 @@ tools:
 2. **Pengujian & Verifikasi**:
    - Menjalankan smoke test pada dataset nyata (misal folder `SIAP DI OCR`).
    - Memastikan tidak ada tabrakan waktu atau penimpaan file foto.
-3. **Build & Release**:
-   - Menjalankan `build_release.py` untuk mengompilasi biner `SintelisUtility.exe` ke folder `02_server_update/`.
-   - Memperbarui `version.json` dan changelog.
-   - Melakukan sinkronisasi skrip yang dimodifikasi ke repositori `OCR-FOTO-P3STE/scripts/`.
+3. **Build & Release (Kebijakan Manual User)**:
+   - **DILARANG menjalankan `build_release.py` atau `build_and_deploy.bat` secara otomatis**.
+   - Hanya lakukan kompilasi frontend (`npm run build`) untuk verifikasi integritas kode.
+   - Serahkan kompilasi biner `SintelisUtility.exe` ke folder `02_server_update/` kepada **User secara manual**.
+   - Sinkronisasi skrip yang dimodifikasi ke repositori `OCR-FOTO-P3STE/scripts/` jika diminta.
+

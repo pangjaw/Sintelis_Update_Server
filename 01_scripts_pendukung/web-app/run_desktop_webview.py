@@ -102,9 +102,16 @@ def _log(msg):
 
 # Fix blank screen setelah minimize lama — disable GPU acceleration WebView2
 # CalculateNativeWinOcclusion: cegah Windows suspend rendering pipeline saat window minimized
+# Optimasi Memori: Batasi heap JS V8 ke 384MB, batasi cache, dan paksa agresif garbage collection
 os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (
     "--disable-gpu "
-    "--disable-features=CalculateNativeWinOcclusion"
+    "--disable-features=CalculateNativeWinOcclusion "
+    "--renderer-process-limit=1 "
+    "--js-flags=--max-old-space-size=384 "
+    "--disk-cache-size=10485760 "
+    "--media-cache-size=10485760 "
+    "--disable-dev-shm-usage "
+    "--aggressive-cache-discard"
 )
 
 APP_DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "SintelisUtility")
@@ -2185,6 +2192,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "image/jpeg")
             self.send_header("Content-Length", str(len(content)))
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, max-age=0, must-revalidate")
             self.end_headers()
             self.wfile.write(content)
         except Exception as e:

@@ -188,6 +188,59 @@ def get_tim2_roster_for_date(
     ]
 
 
+
+def detect_raster_table_lines(page: fitz.Page, y_mid: float) -> tuple[list[float], list[float]]:
+    """
+    Computer Vision line detection via Pixmap for scanned or Print-to-PDF documents
+    where page.get_drawings() contains no vector line elements.
+    Returns (h_lines, v_lines) in PDF point coordinates.
+    """
+    try:
+        from PIL import Image
+        import numpy as np
+
+        pix = page.get_pixmap(dpi=150)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples).convert("L")
+        arr = np.array(img)
+        scale = 72.0 / 150.0
+
+        y_min_px = max(0, int((y_mid - 75.0) / scale))
+        y_max_px = min(arr.shape[0], int((y_mid + 75.0) / scale))
+        sub = arr[y_min_px:y_max_px, :]
+
+        # Horizontal lines across table region
+        x_s_px, x_e_px = int(30.0 / scale), int(min(520.0, page.rect.width - 20) / scale)
+        h_mask = np.mean(sub[:, x_s_px:x_e_px] < 120, axis=1) > 0.60
+        h_y_list = [round((y_min_px + y) * scale, 2) for y in np.where(h_mask)[0]]
+        h_lines = []
+        for y in h_y_list:
+            if not h_lines or abs(y - h_lines[-1]) > 3.0:
+                h_lines.append(y)
+
+        top_lines = [y for y in h_lines if y <= y_mid]
+        bottom_lines = [y for y in h_lines if y >= y_mid]
+        y_top = max(top_lines) if top_lines else y_mid - 25.0
+        y_bottom = min(bottom_lines) if bottom_lines else y_mid + 35.0
+
+        # Vertical lines checked strictly within the row height to eliminate false text stroke detection
+        row_top_px = int((y_top + 1.5) / scale)
+        row_bot_px = int((y_bottom - 1.5) / scale)
+        row_slice = arr[row_top_px:row_bot_px, :]
+
+        # Real table lines are continuous through the row (> 55% dark); text strokes are < 25%
+        v_mask = np.mean(row_slice < 120, axis=0) > 0.55
+        v_x_list = [round(x * scale, 2) for x in np.where(v_mask)[0]]
+        v_lines = []
+        for x in v_x_list:
+            if not v_lines or abs(x - v_lines[-1]) > 3.0:
+                v_lines.append(x)
+
+        return h_lines, v_lines
+    except Exception as e:
+        print(f"[DEBUG] detect_raster_table_lines fallback failed: {e}")
+        return [], []
+
+
 def replace_page1_employee_names(
     doc: fitz.Document,
     new_employees: list[dict],
@@ -256,6 +309,11 @@ def replace_page1_employee_names(
             if d['rect'].width < 2 and d['rect'].height > 5
             and d['rect'].y0 - 1 <= sample_y <= d['rect'].y1 + 1
         })
+        if len(verticals) < 2:
+            _, r_v = detect_raster_table_lines(page, sample_y)
+            if len(r_v) >= 2:
+                verticals = sorted(r_v)
+
         name_right = max(s['bbox'][2] for s in name_spans)
         right_lines = [x for x in verticals if x > name_right + 2]
         separator_index = next(
@@ -270,15 +328,14 @@ def replace_page1_employee_names(
         else:
             x_label_left = right_lines[separator_index - 1] if separator_index > 0 else 400.0
             x_label_right = right_lines[separator_index]
-            x_sc_left = max(466.0, right_lines[separator_index + 1] + 2.5)
-            x_sc_right = min(563.5, right_lines[separator_index + 2] - 2.5)
+            x_sc_left = right_lines[separator_index + 1] + 2.5
+            x_sc_right = right_lines[separator_index + 2] - 2.5
 
         for name_span in name_spans:
             y0, y1 = name_span['bbox'][1], name_span['bbox'][3]
             # Bersihkan hanya nilai SC pada sel kanan; label NO. SC. tetap dipertahankan.
-            # Pastikan batas tidak menyentuh garis pembatas kiri (463.0) maupun garis tepi kanan (565.8-567.0).
-            safe_sc_left = max(466.0, x_sc_left)
-            safe_sc_right = min(563.5, x_sc_right)
+            safe_sc_left = x_sc_left
+            safe_sc_right = x_sc_right
             page.add_redact_annot(
                 fitz.Rect(safe_sc_left, y0 - 1, safe_sc_right, y1 + 1),
                 fill=(1, 1, 1)
@@ -287,8 +344,8 @@ def replace_page1_employee_names(
                 text = span['text'].strip().upper()
                 if (text.startswith('PRP.') or text.startswith('NIPP.')) and span['bbox'][1] < y1 + 3 and span['bbox'][3] > y0 - 3:
                     s_rect = fitz.Rect(span['bbox'])
-                    s_left = max(466.0, s_rect.x0 - 1)
-                    s_right = min(563.5, s_rect.x1 + 1)
+                    s_left = max(safe_sc_left, s_rect.x0 - 1)
+                    s_right = min(safe_sc_right, s_rect.x1 + 1)
                     page.add_redact_annot(fitz.Rect(s_left, s_rect.y0 - 1, s_right, s_rect.y1 + 1), fill=(1, 1, 1))
         # Deteksi dan bersihkan jika ada teks 'NO. SC.' ganda/duplikat di sel label (akibat koreksi sebelumnya)
         if x_label_left is not None:
@@ -388,29 +445,44 @@ def replace_page1_employee_names(
                     elif ("NO. SC" in txt or "NO.SC" in txt) and not sc_span:
                         sc_span = s
 
-    # Pass 3: OCR fallback for scanned/image-only pages
+    # Pass 3: OCR fallback for scanned/image-only/Print-to-PDF pages
     if not dila_span or not sc_span:
         try:
             import pytesseract
             from PIL import Image
-            import io
-            tesseract_bin = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
-            if tesseract_bin.is_file():
+            tesseract_candidates = [
+                os.environ.get("TESSERACT_CMD"),
+                r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+            ]
+            tesseract_bin = next((c for c in tesseract_candidates if c and os.path.isfile(c)), None)
+            if not tesseract_bin:
+                import shutil
+                tesseract_bin = shutil.which("tesseract")
+            if tesseract_bin:
                 pytesseract.pytesseract.tesseract_cmd = str(tesseract_bin)
-            pix = page.get_pixmap(dpi=150)
-            img = Image.open(io.BytesIO(pix.tobytes("png")))
-            data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-            scale = 72.0 / 150.0
+
+            pix = page.get_pixmap(dpi=200)
+            scale = 72.0 / 200.0
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            # Crop the table header band (y: 160 to 300 pt) for sharp OCR text segmentation
+            y_top_px = int(160.0 / scale)
+            y_bot_px = int(min(300.0, page.rect.height) / scale)
+            crop_img = img.crop((0, y_top_px, img.width, y_bot_px))
+
+            data = pytesseract.image_to_data(crop_img, output_type=pytesseract.Output.DICT)
             for i in range(len(data["text"])):
                 w = data["text"][i].strip().upper()
                 if not w:
                     continue
-                if ("DILAKSANAKAN" in w or "PILAKSANAKAN" in w) and not dila_span:
-                    x0, y0 = data["left"][i] * scale, data["top"][i] * scale
-                    dila_span = {"bbox": (x0, y0, x0 + data["width"][i] * scale, y0 + data["height"][i] * scale), "text": "DILAKSANAKAN"}
-                elif "SC" in w and 350 <= data["left"][i] * scale <= 480 and not sc_span:
-                    x0, y0 = data["left"][i] * scale, data["top"][i] * scale
-                    sc_span = {"bbox": (x0 - 20, y0, x0 + data["width"][i] * scale, y0 + data["height"][i] * scale), "text": "NO. SC."}
+                x0 = data["left"][i] * scale
+                y0 = 160.0 + data["top"][i] * scale
+                w_pt = data["width"][i] * scale
+                h_pt = data["height"][i] * scale
+                if ("DILAKSANAKAN" in w or "PILAKSANAKAN" in w or "DILAKS" in w) and not dila_span:
+                    dila_span = {"bbox": (x0, y0, x0 + w_pt, y0 + h_pt), "text": "DILAKSANAKAN"}
+                elif ("SC" in w or "NO.SC" in w or "NO. SC" in w) and 350 <= x0 <= 480 and not sc_span:
+                    sc_span = {"bbox": (max(350.0, x0 - 25.0), y0, x0 + w_pt, y0 + h_pt), "text": "NO. SC."}
         except Exception:
             pass
 
@@ -432,33 +504,63 @@ def replace_page1_employee_names(
         elif r.height > 20 and r.width < 2 and (y_mid - 60 <= (r.y0 + r.y1)/2 <= y_mid + 60):
             v_lines.add(round(r.x0, 2))
 
+    is_raster_table = False
+    if len(h_lines) < 2 or len(v_lines) < 2:
+        r_h, r_v = detect_raster_table_lines(page, y_mid)
+        if len(r_h) >= 2:
+            h_lines = set(r_h)
+            is_raster_table = True
+        if len(r_v) >= 2:
+            v_lines = set(r_v)
+            is_raster_table = True
+
     sorted_h = sorted(h_lines)
     sorted_v = sorted(v_lines)
     top_lines = [y for y in sorted_h if y <= y_mid]
     bottom_lines = [y for y in sorted_h if y >= y_mid]
     y_top = max(top_lines) if top_lines else y_mid - 25.0
     y_bottom = min(bottom_lines) if bottom_lines else y_mid + 35.0
-    v_between = [x for x in sorted_v if dila_span["bbox"][0] <= x <= sc_span["bbox"][2]]
-    if len(v_between) >= 4:
-        x_name_left, x_name_right = v_between[2], v_between[3]
-    elif len(v_between) >= 2:
-        x_name_left, x_name_right = v_between[-2], v_between[-1]
-    else:
-        x_name_left, x_name_right = dila_span["bbox"][2] + 15.0, sc_span["bbox"][0] - 15.0
-    v_right = [x for x in sorted_v if x >= sc_span["bbox"][0]]
-    if len(v_right) >= 4:
-        x_sc_left, x_sc_right = v_right[2] + 2.0, min(563.5, v_right[3] - 2.5)
-    elif len(v_right) >= 2:
-        x_sc_left, x_sc_right = v_right[-2] + 2.0, min(563.5, v_right[-1] - 2.5)
-    else:
-        x_sc_left, x_sc_right = 466.0, 563.5
+    # Deteksi batas kolom Nama Personil dan Kolom NO. SC.
+    cand_nl = [x for x in sorted_v if 245 <= x <= 275]
+    cand_nr = [x for x in sorted_v if 375 <= x <= 405]
+    cand_sl = [x for x in sorted_v if 455 <= x <= 475]
+    cand_sr = [x for x in sorted_v if 555 <= x <= 575]
 
-    rect_sc = fitz.Rect(max(466.0, x_sc_left), y_top + 1.0, min(563.5, x_sc_right), y_bottom - 1.0)
+    if cand_nl and cand_nr:
+        x_name_left = max(cand_nl)
+        x_name_right = min(cand_nr)
+    else:
+        v_between = [x for x in sorted_v if dila_span["bbox"][0] <= x <= sc_span["bbox"][2]]
+        if len(v_between) >= 2:
+            x_name_left, x_name_right = v_between[-2], v_between[-1]
+        else:
+            x_name_left, x_name_right = 267.77, 389.80
+
+    if cand_sl and cand_sr:
+        x_sc_left = max(cand_sl)
+        x_sc_right = min(cand_sr)
+    else:
+        v_right = [x for x in sorted_v if x >= sc_span["bbox"][0] - 5.0]
+        if len(v_right) >= 2:
+            x_sc_left, x_sc_right = v_right[-2], v_right[-1]
+        else:
+            x_sc_left, x_sc_right = 467.82, 563.50
+
+    # Safe margin 1.5pt dari seluruh garis sel tabel untuk mencegah bleed stroke shape putih
+    y_t_safe = y_top + 1.5
+    y_b_safe = y_bottom - 1.5
+    sc_r_bound = (max(x_sc_right, 564.0) if is_raster_table else x_sc_right) - 1.5
+    rect_sc = fitz.Rect(x_sc_left + 1.5, y_t_safe, sc_r_bound, y_b_safe)
+
     if not sc_only:
-        rect_names = fitz.Rect(x_name_left + 1.0, y_top + 1.0, x_name_right - 1.0, y_bottom - 1.0)
+        rect_names = fitz.Rect(x_name_left + 1.5, y_t_safe, x_name_right - 1.5, y_b_safe)
         page.add_redact_annot(rect_names, fill=(1, 1, 1))
     page.add_redact_annot(rect_sc, fill=(1, 1, 1))
     page.apply_redactions()
+
+    if is_raster_table:
+        # Restore outer right border line cleanly for raster forms
+        page.draw_line((x_sc_right + 2.5, y_top), (x_sc_right + 2.5, y_bottom), color=(0, 0, 0), width=0.6)
 
     num_rows = len(new_employees)
     font_size_name = 7.8

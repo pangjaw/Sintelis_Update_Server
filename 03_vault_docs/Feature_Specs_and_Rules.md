@@ -393,3 +393,15 @@ Seluruh checklist perawatan P3STE dibuat menggunakan pustaka TCPDF dengan format
 
 
 
+
+
+---
+
+## 🚫 11. ATURAN KERJA AI: DILARANG AUTO-BUILD (MANUAL BUILD OLEH USER)
+
+> [!CAUTION]
+> **Wajib Ditaati oleh Seluruh Sesi Chat & AI Agent (Antigravity):**
+> Setelah AI menyelesaikan pengubahan kode, penambahan fitur, atau perbaikan bug:
+> 1. **Dilarang mengeksekusi otomatis:** `build_and_deploy.bat`, `python build_release.py`, atau PyInstaller.
+> 2. **AI hanya boleh memverifikasi frontend:** menjalankan `npm run build` untuk memeriksa tidak ada galat sintaks/JSX.
+> 3. **Eksekusi build diserahkan kepada User:** Biarkan user yang mengeksekusi `build_and_deploy.bat` secara manual guna mencegah bentrok (*file lock / race condition*) antar sesi chat yang berjalan simultan.

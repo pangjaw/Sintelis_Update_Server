@@ -329,6 +329,9 @@ export default function App() {
         globalIdx++;
         setProgress({ current: globalIdx, total: targetFiles.length });
 
+        // Bebaskan buffer biner temporer dari File object untuk menghemat RAM
+        try { delete file._arrayBuffer; } catch (e) {}
+
         if (res.status === 'skip') { continue; }
         if (res.status === 'error' || res.status === 'exception') {
           errorList.push(`ERROR|${res.filename}|${res.error}`);
@@ -568,6 +571,9 @@ export default function App() {
       if (failCount === 0) {
         addLog('success', `${savedCount} file tersimpan ke "${dirHandle.name}"`);
         setMessage({ type: 'success', text: `${savedCount} file tersimpan ke "${dirHandle.name}"` });
+        // Bebaskan data biner file dari memori UI setelah tersimpan di disk
+        setResults(prev => prev.map(r => ({ ...r, data: null })));
+        setFiles(prev => prev.map(f => { try { delete f._arrayBuffer; } catch (e) {} return f; }));
       } else {
         addLog('warning', `${savedCount} file berhasil disimpan, ${failCount} gagal.`);
         setMessage({ type: 'warning', text: `${savedCount} file berhasil disimpan, ${failCount} gagal (lihat log). Klik tombol "Simpan Ulang Gagal" untuk mencoba lagi.` });
