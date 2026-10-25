@@ -67,7 +67,7 @@ export default function TimemarkModule() {
     };
 
     if (pipelineState.running) {
-      interval = setInterval(checkStatus, 1000);
+      interval = setInterval(checkStatus, 500);
     } else {
       checkStatus();
     }
@@ -117,12 +117,16 @@ export default function TimemarkModule() {
     const effectiveSource = isSingle ? singleDir : sourceDir;
     const effectiveTarget = isSingle ? singleDir : targetDir;
 
-    if (!effectiveSource) {
+    if (selectedSteps.includes('1') && !effectiveSource) {
       alert(isSingle ? 'Silakan pilih Folder Dokumen PDF terlebih dahulu!' : 'Silakan pilih Folder PDF Sumber 2026 terlebih dahulu!');
       return;
     }
-    if (!isSingle && !effectiveTarget) {
+    if (!isSingle && selectedSteps.some(s => ['2', '3', '5'].includes(s)) && !effectiveTarget) {
       alert('Silakan pilih Folder PDF Target 2025 terlebih dahulu!');
+      return;
+    }
+    if (!effectiveSource && !effectiveTarget && !exportDir) {
+      alert('Silakan pilih minimal Folder PDF Target atau Folder Ekstraksi Foto terlebih dahulu!');
       return;
     }
     if (selectedSteps.length === 0) {
@@ -136,8 +140,8 @@ export default function TimemarkModule() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: folderMode,
-          sourceDir: effectiveSource,
-          targetDir: effectiveTarget,
+          sourceDir: effectiveSource || effectiveTarget || exportDir,
+          targetDir: effectiveTarget || effectiveSource || exportDir,
           exportDir: exportDir || undefined,
           mergedDir: mergedDir || undefined,
           overwriteOriginal: isSingle && overwriteOriginal,
@@ -148,6 +152,42 @@ export default function TimemarkModule() {
       const data = await res.json();
       if (!data.ok) {
         alert('Gagal memulai pipeline: ' + (data.error || 'Terjadi kesalahan'));
+      } else {
+        setPipelineState(prev => ({ ...prev, running: true, error: null, logs: [] }));
+      }
+    } catch (err) {
+      alert('Gagal menghubungi server: ' + err.message);
+    }
+  };
+
+  const handleFastUpdateTimemark = async () => {
+    const isSingle = folderMode === 'single';
+    const effectiveSource = isSingle ? singleDir : sourceDir;
+    const effectiveTarget = isSingle ? singleDir : targetDir;
+
+    if (!exportDir && !effectiveTarget && !effectiveSource) {
+      alert('Silakan pilih Folder Ekstraksi Foto (03/04) atau Folder PDF Target terlebih dahulu!');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/timemark/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: folderMode,
+          sourceDir: effectiveSource || effectiveTarget || exportDir,
+          targetDir: effectiveTarget || effectiveSource || exportDir,
+          exportDir: exportDir || undefined,
+          mergedDir: mergedDir || undefined,
+          overwriteOriginal: isSingle && overwriteOriginal,
+          steps: ['4_fast'],
+          detector: 'fast_meta'
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert('Gagal memulai Fast Update Timemark: ' + (data.error || 'Terjadi kesalahan'));
       } else {
         setPipelineState(prev => ({ ...prev, running: true, error: null, logs: [] }));
       }
@@ -175,8 +215,8 @@ export default function TimemarkModule() {
   ];
 
   // Active target folder for other tabs
-  const currentActiveTarget = folderMode === 'single' ? singleDir : (targetDir || sourceDir);
-  const currentActiveExport = exportDir || singleDir || '';
+  const currentActiveTarget = folderMode === 'single' ? singleDir : targetDir;
+  const currentActiveExport = folderMode === 'single' ? (exportDir || singleDir || '') : (exportDir || '');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', gap: '1rem', overflow: 'hidden' }}>
@@ -513,30 +553,75 @@ export default function TimemarkModule() {
                       Deteksi garis panduan warna merah/oranye klasik
                     </div>
                   </button>
+
+                  <button
+                    type="button"
+                    disabled={pipelineState.running}
+                    onClick={() => setDetector('fast_meta')}
+                    style={{
+                      padding: '0.6rem 0.75rem',
+                      borderRadius: '8px',
+                      border: detector === 'fast_meta' ? '2px solid #10b981' : '1px solid var(--border-color)',
+                      background: detector === 'fast_meta' ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-secondary)',
+                      color: detector === 'fast_meta' ? '#34d399' : 'var(--text-secondary)',
+                      cursor: pipelineState.running ? 'not-allowed' : 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.2s',
+                      boxShadow: detector === 'fast_meta' ? '0 0 12px rgba(16, 185, 129, 0.25)' : 'none'
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>⚡</span> Fast Update (Ikuti meta.json)
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.3 }}>
+                      Langsung pakai koordinat xPos/yPos tersimpan di meta.json tanpa deteksi ulang
+                    </div>
+                  </button>
                 </div>
               </div>
             )}
           </div>
 
           {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: 'auto', paddingBottom: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.6rem', marginTop: 'auto', paddingBottom: '0.5rem' }}>
             {!pipelineState.running ? (
-              <button
-                onClick={handleStartPipeline}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  background: 'var(--accent)',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontWeight: 600,
-                  fontSize: '0.9rem',
-                  cursor: 'pointer'
-                }}
-              >
-                🚀 Mulai Pipeline
-              </button>
+              <>
+                <button
+                  onClick={handleStartPipeline}
+                  style={{
+                    flex: 1.2,
+                    padding: '0.75rem',
+                    background: 'var(--accent)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontWeight: 600,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🚀 Mulai Pipeline
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFastUpdateTimemark}
+                  title="Hanya perbarui tanggal dan jam di textbox memakai koordinat tersimpan di meta.json tanpa OCR/deteksi ulang"
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem 0.65rem',
+                    background: '#8957e5',
+                    color: '#ffffff',
+                    border: '1px solid #a371f7',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  ⚡ Fast Update Timemark
+                </button>
+              </>
             ) : (
               <button
                 onClick={handleCancelPipeline}
@@ -566,7 +651,9 @@ export default function TimemarkModule() {
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem 1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {pipelineState.running ? `Sedang Berjalan: ${pipelineState.step_name}` : 'Siap menjalankan proses'}
+                {pipelineState.running
+                  ? `Sedang Berjalan: ${pipelineState.step_name}${pipelineState.sub_total > 0 ? ` (${pipelineState.sub_current}/${pipelineState.sub_total})` : ''}`
+                  : 'Siap menjalankan proses'}
               </span>
               <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                 {pipelineState.progress}%

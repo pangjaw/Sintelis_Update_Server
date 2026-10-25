@@ -1,0 +1,15 @@
+{
+  "month": "UNKNOWN_202610",
+  "generated_at": "2026-10-25T02:45:42.373276",
+  "summary": {
+    "gagal_merge": 0,
+    "gagal_edit": 0,
+    "fallback_edit": 0,
+    "skipped_merge": 0,
+    "total_issues": 0
+  },
+  "gagal_merge": [],
+  "gagal_edit": [],
+  "fallback_edit": [],
+  "skipped_merge": []
+}

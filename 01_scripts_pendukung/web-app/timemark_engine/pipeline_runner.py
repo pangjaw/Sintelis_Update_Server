@@ -20,6 +20,8 @@ state = {
     "current_step": 0,
     "step_name": "",
     "progress": 0,
+    "sub_current": 0,
+    "sub_total": 0,
     "logs": [],
     "step_statuses": {
         "step1": "pending",
@@ -27,6 +29,7 @@ state = {
         "step2": "pending",
         "step3": "pending",
         "step4": "pending",
+        "step4_fast": "pending",
         "step5": "pending",
     },
     "error": None,
@@ -51,6 +54,8 @@ def get_state():
             "current_step": state["current_step"],
             "step_name": state["step_name"],
             "progress": state["progress"],
+            "sub_current": state.get("sub_current", 0),
+            "sub_total": state.get("sub_total", 0),
             "logs": list(state["logs"]),
             "step_statuses": dict(state["step_statuses"]),
             "error": state["error"],
@@ -70,18 +75,25 @@ def cancel_pipeline():
         except Exception as e:
             add_log("error", f"Gagal menghentikan proses: {e}")
 
-def run_cmd(cmd_list, step_key, step_name):
+def run_cmd(cmd_list, step_key, step_name, start_pct=0.0, end_pct=100.0):
+    import re
     with _state_lock:
         if state["cancelled"]:
             return False
         state["step_statuses"][step_key] = "running"
         state["step_name"] = step_name
+        state["sub_current"] = 0
+        state["sub_total"] = 0
+        state["progress"] = int(round(start_pct))
     add_log("info", f"🚀 Memulai {step_name}...")
+
+    prog_re = re.compile(r'(?:\[PROGRESS\]\s*(\d+)\s*/\s*(\d+)|\[(\d+)\s*/\s*(\d+)\])')
 
     try:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONWARNINGS"] = "ignore::FutureWarning,ignore::DeprecationWarning"
         proc = subprocess.Popen(
             cmd_list,
             stdout=subprocess.PIPE,
@@ -98,15 +110,42 @@ def run_cmd(cmd_list, step_key, step_name):
 
         for line in proc.stdout:
             line_str = line.strip()
-            if line_str:
-                if "error" in line_str.lower() or "traceback" in line_str.lower():
-                    add_log("error", line_str)
-                elif "warn" in line_str.lower():
-                    add_log("warn", line_str)
-                elif "success" in line_str.lower() or "selesai" in line_str.lower():
-                    add_log("success", line_str)
-                else:
-                    add_log("info", line_str)
+            if not line_str:
+                continue
+            # Abaikan pesan FutureWarning / DeprecationWarning internal library (seperti fitz/__init__.py)
+            if "FutureWarning:" in line_str or "DeprecationWarning:" in line_str or "fitz\__init__.py" in line_str or "fitz/__init__.py" in line_str:
+                continue
+            # Abaikan baris JSON telemetri internal agar log tetap bersih
+            if line_str.startswith('{"type": "stage"') or line_str.startswith("__SUMMARY__:"):
+                continue
+
+            # Tangkap progres [cur/tot] atau [PROGRESS] cur/tot untuk menggerakkan progress bar secara real-time
+            m_prog = prog_re.search(line_str)
+            if m_prog:
+                c_str = m_prog.group(1) or m_prog.group(3)
+                t_str = m_prog.group(2) or m_prog.group(4)
+                try:
+                    cur_v = int(c_str)
+                    tot_v = int(t_str)
+                    if tot_v > 0 and 0 <= cur_v <= tot_v:
+                        ratio = cur_v / tot_v
+                        calc_pct = int(round(start_pct + ratio * (end_pct - start_pct)))
+                        with _state_lock:
+                            state["sub_current"] = cur_v
+                            state["sub_total"] = tot_v
+                            if calc_pct > state["progress"]:
+                                state["progress"] = min(int(round(end_pct)), calc_pct)
+                except Exception:
+                    pass
+
+            if "error" in line_str.lower() or "traceback" in line_str.lower():
+                add_log("error", line_str)
+            elif "warn" in line_str.lower():
+                add_log("warn", line_str)
+            elif "success" in line_str.lower() or "selesai" in line_str.lower():
+                add_log("success", line_str)
+            else:
+                add_log("info", line_str)
 
         proc.wait()
         with _state_lock:
@@ -119,6 +158,9 @@ def run_cmd(cmd_list, step_key, step_name):
         if proc.returncode == 0:
             with _state_lock:
                 state["step_statuses"][step_key] = "done"
+                state["progress"] = int(round(end_pct))
+                state["sub_current"] = 0
+                state["sub_total"] = 0
             add_log("success", f"✓ {step_name} selesai.")
             return True
         else:
@@ -213,10 +255,13 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 state["progress"] = int((step_idx - 1) / total_steps * 100)
             cmd = make_cmd("export_pdf_foto.py", [
                 "--input", source_dir,
+                "--target-dir", target_dir,
                 "--output", raw_photos_dir,
                 "--sap-mapping", sap_mapping
             ])
-            ok = run_cmd(cmd, "step1", f"Step 1: Ekstraksi Foto ({'PDF Sumber' if mode == 'single' else 'PDF 2026'})")
+            s_pct = (step_idx - 1) / total_steps * 100.0
+            e_pct = step_idx / total_steps * 100.0
+            ok = run_cmd(cmd, "step1", f"Step 1: Ekstraksi Foto ({'PDF Sumber' if mode == 'single' else 'PDF 2026'})", s_pct, e_pct)
             if not ok:
                 return
 
@@ -235,7 +280,9 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 "--manifest", manifest_file,
                 "--cropped-set", cropped_set_file
             ])
-            ok = run_cmd(cmd, "step1_5", "Step 1.5: Auto-Crop Kolase (White-Seam Isolation)")
+            s_pct = (step_idx - 1) / total_steps * 100.0
+            e_pct = step_idx / total_steps * 100.0
+            ok = run_cmd(cmd, "step1_5", "Step 1.5: Auto-Crop Kolase (White-Seam Isolation)", s_pct, e_pct)
             if not ok:
                 return
 
@@ -249,7 +296,9 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 "--pdf-dir", target_dir,
                 "--output-dir", raw_photos_dir
             ])
-            ok = run_cmd(cmd, "step2", f"Step 2: Ekstraksi Tanggal ({'PDF Sumber' if mode == 'single' else 'PDF Target 2025'})")
+            s_pct = (step_idx - 1) / total_steps * 100.0
+            e_pct = step_idx / total_steps * 100.0
+            ok = run_cmd(cmd, "step2", f"Step 2: Ekstraksi Tanggal ({'PDF Sumber' if mode == 'single' else 'PDF Target 2025'})", s_pct, e_pct)
             if not ok:
                 return
 
@@ -266,7 +315,9 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 "--data-acuan", data_acuan,
                 "--output", schedule_file
             ])
-            ok = run_cmd(cmd, "step3", "Step 3: Penjadwalan Tim & Alokasi Waktu")
+            s_pct = (step_idx - 1) / total_steps * 100.0
+            e_pct = step_idx / total_steps * 100.0
+            ok = run_cmd(cmd, "step3", "Step 3: Penjadwalan Tim & Alokasi Waktu", s_pct, e_pct)
             if not ok:
                 return
 
@@ -280,7 +331,7 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                         pass
 
         # STEP 4: Edit Timemark Watermark
-        if "4" in steps_to_run:
+        if "4" in steps_to_run and detector != "fast_meta":
             step_idx += 1
             with _state_lock:
                 state["current_step"] = 4
@@ -293,7 +344,31 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 "--schedule", schedule_file,
                 "--detector", chosen_detector
             ])
-            ok = run_cmd(cmd, "step4", f"Step 4: Edit Watermark Timemark Foto ({'AI Vision' if chosen_detector == 'google_vision' else 'HSV'})")
+            s_pct = (step_idx - 1) / total_steps * 100.0
+            e_pct = step_idx / total_steps * 100.0
+            ok = run_cmd(cmd, "step4", f"Step 4: Edit Watermark Timemark Foto ({'AI Vision' if chosen_detector == 'google_vision' else 'HSV'})", s_pct, e_pct)
+            if not ok:
+                return
+
+        # STEP 4 FAST: Fast Update Timemark (Membaca koordinat xPos/yPos dari meta.json tanpa OCR/Vision)
+        if "4_fast" in steps_to_run or "step4_fast" in steps_to_run or ("4" in steps_to_run and detector == "fast_meta"):
+            step_idx += 1
+            with _state_lock:
+                state["current_step"] = 4
+                state["progress"] = int((step_idx - 1) / total_steps * 100)
+            temp_crops_dir = os.path.join(export_root, "03_photos_cropped_temp")
+            add_log("info", "⚡ Mode Fast Update Timemark: Mengikuti koordinat (xPos, yPos) dari meta.json tanpa deteksi ulang...")
+            cmd = make_cmd("fast_update_timemark.py", [
+                "--schedule", schedule_file,
+                "--input", raw_photos_dir,
+                "--temp", temp_crops_dir,
+                "--output", edited_photos_dir,
+                "--force"
+            ])
+            s_pct = (step_idx - 1) / total_steps * 100.0
+            e_pct = step_idx / total_steps * 100.0
+            step_key = "step4_fast" if ("4_fast" in steps_to_run or "step4_fast" in steps_to_run) else "step4"
+            ok = run_cmd(cmd, step_key, "Step 4 (Fast): Fast Update Timemark (Ikuti meta.json)", s_pct, e_pct)
             if not ok:
                 return
 
@@ -329,9 +404,12 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
             cmd = make_cmd("merge_pdf_foto.py", [
                 "--input", target_dir,
                 "--photos", edited_photos_dir,
-                "--output", actual_step5_output
+                "--output", actual_step5_output,
+                "--schedule", schedule_file
             ])
-            ok = run_cmd(cmd, "step5", "Step 5: Penggabungan PDF Final A4")
+            s_pct = (step_idx - 1) / total_steps * 100.0
+            e_pct = step_idx / total_steps * 100.0
+            ok = run_cmd(cmd, "step5", "Step 5: Penggabungan PDF Final A4", s_pct, e_pct)
             if not ok:
                 return
 
@@ -375,14 +453,24 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
             state["running"] = False
 
 def start_pipeline(source_dir, target_dir=None, export_dir=None, merged_dir=None, selected_steps=None, mode="dual", overwrite_original=False, detector="google_vision"):
-    if not source_dir or not os.path.isdir(source_dir):
-        return {"ok": False, "error": f"Folder PDF Sumber tidak valid: {source_dir}"}
+    steps_list = selected_steps if isinstance(selected_steps, list) else ["1", "1.5", "2", "3", "4", "5"]
 
     if mode == "single":
+        if not source_dir and target_dir:
+            source_dir = target_dir
         target_dir = source_dir
     else:
-        if not target_dir or not os.path.isdir(target_dir):
-            return {"ok": False, "error": f"Folder PDF Target tidak valid: {target_dir}"}
+        # Jika Step 1 tidak dipilih (mis. memakai Stok Foto langsung ke file 2025), source_dir 2026 boleh kosong
+        if "1" not in steps_list and (not source_dir or not os.path.isdir(source_dir)):
+            source_dir = target_dir or export_dir
+        if not any(s in steps_list for s in ("1", "2", "3", "5")) and (not target_dir or not os.path.isdir(target_dir)):
+            target_dir = source_dir or export_dir
+
+    if "1" in steps_list and (not source_dir or not os.path.isdir(source_dir)):
+        return {"ok": False, "error": f"Folder PDF Sumber tidak valid: {source_dir}"}
+
+    if any(s in steps_list for s in ("2", "3", "5")) and (not target_dir or not os.path.isdir(target_dir)):
+        return {"ok": False, "error": f"Folder PDF Target tidak valid: {target_dir}"}
 
     default_base = os.path.join(os.path.expanduser("~"), "Documents", "Sintelis")
     if not export_dir:

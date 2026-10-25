@@ -26,7 +26,12 @@ if hasattr(sys.stdout, 'reconfigure'):
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
-import fitz
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 APP_DIR = Path(__file__).resolve().parent.parent
 CONFIG_DIR = APP_DIR / "config"

@@ -1,0 +1,483 @@
+{
+  "BTP JAK/AXC/ZP 60 BOO": {
+    "btp": "BTP JAK",
+    "category": "AXC",
+    "base_identifier": "ZP 60 BOO",
+    "dates": [
+      "07-05",
+      "08-05"
+    ],
+    "folders": {
+      "07-05": "ZP 60 BOO_07-05",
+      "08-05": "ZP 60 BOO_08-05"
+    }
+  },
+  "BTP JAK/AXC/ZP 61 BOO": {
+    "btp": "BTP JAK",
+    "category": "AXC",
+    "base_identifier": "ZP 61 BOO",
+    "dates": [
+      "07-05",
+      "08-05"
+    ],
+    "folders": {
+      "07-05": "ZP 61 BOO_07-05",
+      "08-05": "ZP 61 BOO_08-05"
+    }
+  },
+  "BTP JAK/AXC/ZP 62A BOO": {
+    "btp": "BTP JAK",
+    "category": "AXC",
+    "base_identifier": "ZP 62A BOO",
+    "dates": [
+      "07-05",
+      "08-05"
+    ],
+    "folders": {
+      "07-05": "ZP 62A BOO_07-05",
+      "08-05": "ZP 62A BOO_08-05"
+    }
+  },
+  "BTP JAK/AXC/ZP 42C BOO": {
+    "btp": "BTP JAK",
+    "category": "AXC",
+    "base_identifier": "ZP 42C BOO",
+    "dates": [
+      "07-05",
+      "08-05"
+    ],
+    "folders": {
+      "07-05": "ZP 42C BOO_07-05",
+      "08-05": "ZP 42C BOO_08-05"
+    }
+  },
+  "BTP JAK/AXC/ZP 41 BOO": {
+    "btp": "BTP JAK",
+    "category": "AXC",
+    "base_identifier": "ZP 41 BOO",
+    "dates": [
+      "07-05",
+      "08-05"
+    ],
+    "folders": {
+      "07-05": "ZP 41 BOO_07-05",
+      "08-05": "ZP 41 BOO_08-05"
+    }
+  },
+  "BTP JAK/WESEL/W81 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W81 BOO",
+    "dates": [
+      "02-05",
+      "16-05"
+    ],
+    "folders": {
+      "02-05": "W81 BOO_02-05",
+      "16-05": "W81 BOO_16-05"
+    }
+  },
+  "BTP JAK/WESEL/W11 CLT": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W11 CLT",
+    "dates": [
+      "05-05",
+      "17-05"
+    ],
+    "folders": {
+      "05-05": "W11 CLT_05-05",
+      "17-05": "W11 CLT_17-05"
+    }
+  },
+  "BTP JAK/WESEL/W21 CLT": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W21 CLT",
+    "dates": [
+      "05-05",
+      "17-05"
+    ],
+    "folders": {
+      "05-05": "W21 CLT_05-05",
+      "17-05": "W21 CLT_17-05"
+    }
+  },
+  "BTP JAK/WESEL/W13 CLT": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W13 CLT",
+    "dates": [
+      "05-05",
+      "17-05"
+    ],
+    "folders": {
+      "05-05": "W13 CLT_05-05",
+      "17-05": "W13 CLT_17-05"
+    }
+  },
+  "BTP JAK/WESEL/W23 CLT": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W23 CLT",
+    "dates": [
+      "05-05",
+      "17-05"
+    ],
+    "folders": {
+      "05-05": "W23 CLT_05-05",
+      "17-05": "W23 CLT_17-05"
+    }
+  },
+  "BTP BD/WESEL/W11 MSG": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W11 MSG",
+    "dates": [
+      "06-05",
+      "19-05"
+    ],
+    "folders": {
+      "06-05": "W11 MSG_06-05",
+      "19-05": "W11 MSG_19-05"
+    }
+  },
+  "BTP BD/WESEL/W21 MSG": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W21 MSG",
+    "dates": [
+      "06-05",
+      "19-05"
+    ],
+    "folders": {
+      "06-05": "W21 MSG_06-05",
+      "19-05": "W21 MSG_19-05"
+    }
+  },
+  "BTP BD/WESEL/W23 MSG": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W23 MSG",
+    "dates": [
+      "06-05",
+      "19-05"
+    ],
+    "folders": {
+      "06-05": "W23 MSG_06-05",
+      "19-05": "W23 MSG_19-05"
+    }
+  },
+  "BTP BD/WESEL/W13 MSG": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W13 MSG",
+    "dates": [
+      "06-05",
+      "19-05"
+    ],
+    "folders": {
+      "06-05": "W13 MSG_06-05",
+      "19-05": "W13 MSG_19-05"
+    }
+  },
+  "BTP JAK/WESEL/W41 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W41 BOO",
+    "dates": [
+      "02-05",
+      "16-05"
+    ],
+    "folders": {
+      "02-05": "W41 BOO_02-05",
+      "16-05": "W41 BOO_16-05"
+    }
+  },
+  "BTP JAK/WESEL/W43 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W43 BOO",
+    "dates": [
+      "02-05",
+      "16-05"
+    ],
+    "folders": {
+      "02-05": "W43 BOO_02-05",
+      "16-05": "W43 BOO_16-05"
+    }
+  },
+  "BTP JAK/WESEL/W13 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W13 BOO",
+    "dates": [
+      "02-05",
+      "16-05"
+    ],
+    "folders": {
+      "02-05": "W13 BOO_02-05",
+      "16-05": "W13 BOO_16-05"
+    }
+  },
+  "BTP JAK/WESEL/W23A BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W23A BOO",
+    "dates": [
+      "02-05",
+      "16-05"
+    ],
+    "folders": {
+      "02-05": "W23A BOO_02-05",
+      "16-05": "W23A BOO_16-05"
+    }
+  },
+  "BTP JAK/WESEL/W23B BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W23B BOO",
+    "dates": [
+      "02-05",
+      "16-05"
+    ],
+    "folders": {
+      "02-05": "W23B BOO_02-05",
+      "16-05": "W23B BOO_16-05"
+    }
+  },
+  "BTP JAK/WESEL/W21A BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W21A BOO",
+    "dates": [
+      "03-05",
+      "15-05"
+    ],
+    "folders": {
+      "03-05": "W21A BOO_03-05",
+      "15-05": "W21A BOO_15-05"
+    }
+  },
+  "BTP JAK/WESEL/W21B1 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W21B1 BOO",
+    "dates": [
+      "03-05",
+      "15-05"
+    ],
+    "folders": {
+      "03-05": "W21B1 BOO_03-05",
+      "15-05": "W21B1 BOO_15-05"
+    }
+  },
+  "BTP JAK/WESEL/W21B2 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W21B2 BOO",
+    "dates": [
+      "03-05",
+      "15-05"
+    ],
+    "folders": {
+      "03-05": "W21B2 BOO_03-05",
+      "15-05": "W21B2 BOO_15-05"
+    }
+  },
+  "BTP JAK/WESEL/W51A2 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W51A2 BOO",
+    "dates": [
+      "03-05",
+      "15-05"
+    ],
+    "folders": {
+      "03-05": "W51A2 BOO_03-05",
+      "15-05": "W51A2 BOO_15-05"
+    }
+  },
+  "BTP JAK/WESEL/W51A1 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W51A1 BOO",
+    "dates": [
+      "03-05",
+      "15-05"
+    ],
+    "folders": {
+      "03-05": "W51A1 BOO_03-05",
+      "15-05": "W51A1 BOO_15-05"
+    }
+  },
+  "BTP BD/WESEL/W25 BOP": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W25 BOP",
+    "dates": [
+      "04-05",
+      "18-05"
+    ],
+    "folders": {
+      "04-05": "W25 BOP_04-05",
+      "18-05": "W25 BOP_18-05"
+    }
+  },
+  "BTP BD/WESEL/W67 BOP": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W67 BOP",
+    "dates": [
+      "04-05",
+      "18-05"
+    ],
+    "folders": {
+      "04-05": "W67 BOP_04-05",
+      "18-05": "W67 BOP_18-05"
+    }
+  },
+  "BTP BD/WESEL/W47A BOP": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W47A BOP",
+    "dates": [
+      "04-05",
+      "18-05"
+    ],
+    "folders": {
+      "04-05": "W47A BOP_04-05",
+      "18-05": "W47A BOP_18-05"
+    }
+  },
+  "BTP BD/WESEL/W47C BOP": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W47C BOP",
+    "dates": [
+      "04-05",
+      "18-05"
+    ],
+    "folders": {
+      "04-05": "W47C BOP_04-05",
+      "18-05": "W47C BOP_18-05"
+    }
+  },
+  "BTP BD/WESEL/W27A BOP": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W27A BOP",
+    "dates": [
+      "04-05",
+      "18-05"
+    ],
+    "folders": {
+      "04-05": "W27A BOP_04-05",
+      "18-05": "W27A BOP_18-05"
+    }
+  },
+  "BTP BD/WESEL/W27B BOP": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W27B BOP",
+    "dates": [
+      "04-05",
+      "18-05"
+    ],
+    "folders": {
+      "04-05": "W27B BOP_04-05",
+      "18-05": "W27B BOP_18-05"
+    }
+  },
+  "BTP BD/WESEL/W47D BOP": {
+    "btp": "BTP BD",
+    "category": "WESEL",
+    "base_identifier": "W47D BOP",
+    "dates": [
+      "04-05",
+      "18-05"
+    ],
+    "folders": {
+      "04-05": "W47D BOP_04-05",
+      "18-05": "W47D BOP_18-05"
+    }
+  },
+  "BTP JAK/WESEL/W31E BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W31E BOO",
+    "dates": [
+      "03-05",
+      "15-05"
+    ],
+    "folders": {
+      "03-05": "W31E BOO_03-05",
+      "15-05": "W31E BOO_15-05"
+    }
+  },
+  "BTP JAK/WESEL/W31D BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W31D BOO",
+    "dates": [
+      "03-05",
+      "15-05"
+    ],
+    "folders": {
+      "03-05": "W31D BOO_03-05",
+      "15-05": "W31D BOO_15-05"
+    }
+  },
+  "BTP JAK/WESEL/W31A BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W31A BOO",
+    "dates": [
+      "03-05",
+      "15-05"
+    ],
+    "folders": {
+      "03-05": "W31A BOO_03-05",
+      "15-05": "W31A BOO_15-05"
+    }
+  },
+  "BTP JAK/WESEL/W31B BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W31B BOO",
+    "dates": [
+      "03-05",
+      "15-05"
+    ],
+    "folders": {
+      "03-05": "W31B BOO_03-05",
+      "15-05": "W31B BOO_15-05"
+    }
+  },
+  "BTP JAK/WESEL/W61A1 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W61A1 BOO",
+    "dates": [
+      "02-05",
+      "16-05"
+    ],
+    "folders": {
+      "02-05": "W61A1 BOO_02-05",
+      "16-05": "W61A1 BOO_16-05"
+    }
+  },
+  "BTP JAK/WESEL/W61A2 BOO": {
+    "btp": "BTP JAK",
+    "category": "WESEL",
+    "base_identifier": "W61A2 BOO",
+    "dates": [
+      "02-05",
+      "16-05"
+    ],
+    "folders": {
+      "02-05": "W61A2 BOO_02-05",
+      "16-05": "W61A2 BOO_16-05"
+    }
+  }
+}

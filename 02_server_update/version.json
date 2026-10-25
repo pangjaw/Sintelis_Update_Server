@@ -1,8 +1,8 @@
 {
   "version": "1.9.0",
-  "releaseDate": "2026-10-18",
+  "releaseDate": "2026-10-25",
   "downloadUrl": "https://update.sintelboo.my.id/SintelisUtility.exe?v=1.9.0",
-  "fileSize": 191767428,
+  "fileSize": 190912006,
   "changelog": [
     "v1.9.0: Fix Ubah Personil & No. SC - Perbaikan presisi layout sel tabel (deteksi garis drawings dinamis, eliminasi overlap shape putih pada garis tabel), pemulihan font DejaVuSans-Bold, dan standardisasi ukuran teks (Nama 7.8, No. SC 7.0)",
     "v1.9.0: Fix Ubah Personil & No. SC - Perbaikan error perhitungan panjang teks font kustom (Font 'dejavusans-bold' is unsupported) saat penimpaan personil PDF",

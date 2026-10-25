@@ -1,6 +1,7 @@
 @echo off
 title Build and Deploy Sintelis Utility
-cd /d "C:\Users\SINTEL 1.21 BOO\Documents\Server\Sintelis_Update_Server\01_scripts_pendukung"
+set "ROOT_DIR=%~dp0"
+cd /d "%ROOT_DIR%01_scripts_pendukung"
 echo Menjalankan build and deploy...
 python build_release.py
 if %ERRORLEVEL% NEQ 0 (
@@ -10,6 +11,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo Merestart Update Server...
-powershell -Command "$p = [wmiclass]'Win32_Process'; $p.Create('C:\Users\SINTEL 1.21 BOO\AppData\Local\Programs\Python\Python314\python.exe "C:\Users\SINTEL 1.21 BOO\Documents\Server\Sintelis_Update_Server\02_server_update\server_update.py"', 'C:\Users\SINTEL 1.21 BOO\Documents\Server\Sintelis_Update_Server\02_server_update', $null)"
+set "SERVER_DIR=%ROOT_DIR%02_server_update"
+wscript.exe "%SERVER_DIR%\run_update_server.vbs"
 echo [SUKSES] Build dan rilis berhasil diterapkan!
 pause

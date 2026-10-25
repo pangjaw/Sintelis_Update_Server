@@ -6,7 +6,12 @@ from pathlib import Path
 from datetime import datetime
 import argparse
 
-import fitz
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 sys.path.insert(0, str(Path(__file__).parent))
 try:

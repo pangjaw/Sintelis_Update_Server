@@ -376,11 +376,11 @@ export default function App() {
           identitas = identitas.replace(/\s+/g, ' ').trim();
 
           if (asset.firstOtb !== undefined && asset.erType !== undefined) {
-            soErAssets.push({ fileBytes, fname: filename, firstOtb: asset.firstOtb, erType: asset.erType, loc, kode, kategori, tglFull, prefixPeriode, jenisKegiatan, formatBd, otbMin: asset.otbMin ?? asset.firstOtb, otbMax: asset.otbMax ?? asset.firstOtb, hasOtbNumbers: asset.hasOtbNumbers });
+            soErAssets.push({ fileBytes, fileObj: file, fname: filename, firstOtb: asset.firstOtb, erType: asset.erType, loc, kode, kategori, tglFull, prefixPeriode, jenisKegiatan, formatBd, otbMin: asset.otbMin ?? asset.firstOtb, otbMax: asset.otbMax ?? asset.firstOtb, hasOtbNumbers: asset.hasOtbNumbers });
           } else if (asset.isBulanan) {
-            soBulananAssets.push({ fileBytes, fname: filename, seqNum: asset.seqNum ?? 1, loc, kode, kategori, tglFull, prefixPeriode, jenisKegiatan, formatBd });
+            soBulananAssets.push({ fileBytes, fileObj: file, fname: filename, seqNum: asset.seqNum ?? 1, loc, kode, kategori, tglFull, prefixPeriode, jenisKegiatan, formatBd });
           } else {
-            allResultItems.push({ fileBytes, identitas, kode, kategori, jenisKegiatan, tglFull, prefixPeriode, formatBd });
+            allResultItems.push({ fileBytes, fileObj: file, identitas, kode, kategori, jenisKegiatan, tglFull, prefixPeriode, formatBd });
           }
         }
       }
@@ -417,7 +417,7 @@ export default function App() {
         } else {
           identitas = `${item.kategori} OTB ${item.erType} ${item.loc}`.replace(/\s+/g, ' ').trim();
         }
-        allResultItems.push({ fileBytes: item.fileBytes, identitas, kode: item.kode, kategori: item.kategori, jenisKegiatan: item.jenisKegiatan, tglFull: item.tglFull, prefixPeriode: item.prefixPeriode, formatBd: item.formatBd });
+        allResultItems.push({ fileBytes: item.fileBytes, fileObj: item.fileObj, identitas, kode: item.kode, kategori: item.kategori, jenisKegiatan: item.jenisKegiatan, tglFull: item.tglFull, prefixPeriode: item.prefixPeriode, formatBd: item.formatBd });
       }
     }
 
@@ -432,7 +432,7 @@ export default function App() {
       items.forEach((item, idx) => {
         const suffix = idx > 0 ? ` (${idx + 1})` : '';
         const identitas = `${item.kategori} ${item.loc}${suffix}`.replace(/\s+/g, ' ').trim();
-         allResultItems.push({ fileBytes: item.fileBytes, identitas, kode: item.kode, kategori: item.kategori, jenisKegiatan: item.jenisKegiatan, tglFull: item.tglFull, prefixPeriode: item.prefixPeriode, formatBd: item.formatBd });
+         allResultItems.push({ fileBytes: item.fileBytes, fileObj: item.fileObj, identitas, kode: item.kode, kategori: item.kategori, jenisKegiatan: item.jenisKegiatan, tglFull: item.tglFull, prefixPeriode: item.prefixPeriode, formatBd: item.formatBd });
       });
     }
 
@@ -458,7 +458,7 @@ export default function App() {
       }
        uniqueNames.add(finalName);
        if (outputMode === 'asset' && !mapped?.ok) addLog('warn', `${newName}: mapping folder aset gagal, disimpan di root.`);
-       finalNames.push({ data: item.fileBytes, name: finalName, relativePath: outputMode === 'asset' && mapped?.ok ? relativePath : finalName });
+       finalNames.push({ data: item.fileBytes, fileObj: item.fileObj, name: finalName, relativePath: outputMode === 'asset' && mapped?.ok ? relativePath : finalName });
     }
 
     setProgress({ current: targetFiles.length, total: targetFiles.length });
@@ -557,7 +557,11 @@ export default function App() {
         const chunk = targetItems.slice(i, i + SAVE_CONCURRENCY);
         await Promise.all(chunk.map(async (f) => {
           try {
-            await writeFileToDir(dirHandle, f.name, f.data, f.relativePath || f.name, conflictMode);
+            let fileData = f.data;
+            if ((!fileData || fileData.byteLength === 0) && f.fileObj) {
+              fileData = await f.fileObj.arrayBuffer();
+            }
+            await writeFileToDir(dirHandle, f.name, fileData, f.relativePath || f.name, conflictMode);
             savedCount++;
           } catch (err) {
             failCount++;

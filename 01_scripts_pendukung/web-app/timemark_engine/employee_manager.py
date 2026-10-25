@@ -14,7 +14,12 @@ import re
 import json
 import random
 from pathlib import Path
-import fitz
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 # Default fallback config path
 CONFIG_PATH = Path("config/daftar_pegawai.json")
@@ -128,8 +133,7 @@ def get_tim2_roster_for_date(
 ) -> list[dict]:
     """
     Determines 1 KAUR (top row) and 2 PNC (middle & bottom rows) for Tim 2 on date_str.
-    Prioritizes personnel not present in Tim 1 on that date.
-    Deterministic PRNG seeded by date_str guarantees identical team on that date.
+    Uses exact same deterministic rotation of remaining personnel (not in Tim 1) as audit_and_correct_personnel.py.
     """
     if pegawai_config is None:
         pegawai_config = load_pegawai_config()
@@ -147,39 +151,75 @@ def get_tim2_roster_for_date(
             {"nama": "IWAN SETIAWAN", "no_sc": "PRP.03071990.36476"}
         ]
 
-    # Normalize date string for stable seeding
-    norm_date = re.sub(r'[^0-9]', '', str(date_str))
-    seed_str = f"tim2_roster_seed_{norm_date}"
-    rng = random.Random(seed_str)
+    m_day = re.match(r'^(\d{2})', str(date_str).strip())
+    day_num = int(m_day.group(1)) if m_day else 1
 
-    # Helper to check if person is present in Tim 1 tokens
+    upper_tokens = {str(t).strip().upper() for t in tim1_personnel_tokens if t}
+
     def is_in_tim1(person: dict) -> bool:
         nama = person.get("nama", "").strip().upper()
         no_sc = person.get("no_sc", "").strip().upper()
-        if nama in tim1_personnel_tokens or no_sc in tim1_personnel_tokens:
+        if nama in upper_tokens or (no_sc and no_sc in upper_tokens):
             return True
-        # Check if full name or substantial part matches
-        for tok in tim1_personnel_tokens:
-            if tok and (tok in nama or (len(tok) > 5 and tok in no_sc)):
-                return True
         return False
 
-    # 1. Select 1 KAUR
-    avail_kaur = [k for k in all_kaur if not is_in_tim1(k)]
-    if avail_kaur:
-        chosen_kaur = rng.choice(avail_kaur)
-    else:
-        chosen_kaur = rng.choice(all_kaur)
+    # 1. Select 1 KAUR from remaining KAUR not in Tim 1
+    rem_kaur = [k for k in all_kaur if not is_in_tim1(k)]
+    chosen_kaur = rem_kaur[0] if rem_kaur else all_kaur[day_num % len(all_kaur)]
 
-    # 2. Select 2 PNCs
-    avail_pnc = [p for p in all_pnc if not is_in_tim1(p)]
-    if len(avail_pnc) >= 2:
-        chosen_pncs = rng.sample(avail_pnc, 2)
-    elif len(avail_pnc) == 1:
-        pool = [p for p in all_pnc if p != avail_pnc[0]]
-        chosen_pncs = [avail_pnc[0], rng.choice(pool) if pool else avail_pnc[0]]
+    # 2. Select 2 PNCs from remaining PNC not in Tim 1
+    rem_pnc = [p for p in all_pnc if not is_in_tim1(p)]
+    if len(rem_pnc) >= 2:
+        shift = (day_num - 1) % len(rem_pnc)
+        chosen_pncs = [rem_pnc[shift], rem_pnc[(shift + 1) % len(rem_pnc)]]
+    elif len(rem_pnc) == 1:
+        chosen_pncs = [rem_pnc[0]]
+        for p in all_pnc:
+            if p not in chosen_pncs:
+                chosen_pncs.append(p)
+                break
     else:
-        chosen_pncs = rng.sample(all_pnc, min(2, len(all_pnc)))
+        chosen_pncs = [all_pnc[(day_num - 1) % len(all_pnc)], all_pnc[day_num % len(all_pnc)]]
+
+    return [
+        {"role": "KAUR", **chosen_kaur},
+        {"role": "PNC", **chosen_pncs[0]},
+        {"role": "PNC", **chosen_pncs[1]}
+    ]
+
+
+def get_tim3_roster_for_date(
+    date_str: str,
+    pegawai_config: dict = None
+) -> list[dict]:
+    """
+    Determines 1 KAUR and 2 PNC for Tim 3 on date_str using once-per-date deterministic random seed,
+    matching audit_and_correct_personnel.py 100%.
+    """
+    if pegawai_config is None:
+        pegawai_config = load_pegawai_config()
+
+    all_kaur = list(pegawai_config.get("kaur", []))
+    all_pnc = list(pegawai_config.get("pnc", []))
+
+    if not all_kaur:
+        all_kaur = [{"nama": "S. SLAMET RIYADI", "no_sc": "PRP.070474.126088"}]
+    if len(all_pnc) < 2:
+        all_pnc = [
+            {"nama": "AGUS PRIYONO", "no_sc": "PRP.030886.126116"},
+            {"nama": "IWAN SETIAWAN", "no_sc": "PRP.03071990.36476"}
+        ]
+
+    seed = sum(ord(c) for c in f"{str(date_str).strip()}_tim3")
+    rng = random.Random(seed)
+    chosen_kaur = rng.choice(all_kaur)
+    sample_pnc = rng.sample(all_pnc, min(2, len(all_pnc)))
+    chosen_pncs = list(sample_pnc)
+    while len(chosen_pncs) < 2:
+        for p in all_pnc:
+            if p not in chosen_pncs:
+                chosen_pncs.append(p)
+                break
 
     return [
         {"role": "KAUR", **chosen_kaur},

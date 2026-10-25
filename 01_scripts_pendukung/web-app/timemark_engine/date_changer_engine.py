@@ -14,7 +14,12 @@ import sys
 import shutil
 from datetime import datetime
 from pathlib import Path
-import fitz
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 INDONESIAN_MONTHS = [
     "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",

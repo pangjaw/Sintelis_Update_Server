@@ -44,7 +44,12 @@ try:
 except ImportError:
     pass
 
-import fitz
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 MONTH_NAMES_ID = {
     1: "JANUARI", 2: "FEBRUARI", 3: "MARET", 4: "APRIL",

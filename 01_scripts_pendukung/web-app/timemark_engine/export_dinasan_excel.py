@@ -38,7 +38,12 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
     from audit_and_correct_personnel import extract_personnel_from_pdf, get_roster_sets
 
-import fitz
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 MONTH_NAMES_ID = {
     1: "JANUARI", 2: "FEBRUARI", 3: "MARET", 4: "APRIL",

@@ -45,40 +45,41 @@ COLLAGE_ELIGIBLE_CATEGORIES = {
 def detect_white_seam_collage(img_path: Path, requested_quadrant: str | None = None) -> tuple[str, tuple[int, int, int, int] | None, dict]:
     """
     Mendeteksi apakah gambar memiliki garis pembatas putih/netral khas kolase 2x2 atau 3-in-1.
-    Memilih kuadran terbaik berdasarkan deteksi guideline timemark (atau default ke Bottom-Left 'BL').
+    Menggunakan ambang batas ketat (White-Seam Isolation: sat < 8%, max_c > 110, v_pct >= 0.88, h_pct >= 0.80)
+    agar 0% false positive pada foto tunggal.
     Returns: (layout_type, crop_box, stats)
     """
     try:
         img = Image.open(img_path).convert("RGB")
         w, h = img.size
-        arr = np.array(img).astype(float)
+        arr = np.array(img)
 
-        r = arr[:, :, 0]
-        g = arr[:, :, 1]
-        b = arr[:, :, 2]
+        r = arr[:, :, 0].astype(float)
+        g = arr[:, :, 1].astype(float)
+        b = arr[:, :, 2].astype(float)
 
-        # 1. Filter Garis Pembatas Putih/Netral (Saturation < 18% dan Brightness > 90)
+        # 1. Filter Garis Pembatas Putih/Netral (Saturation < 8% dan Brightness > 110)
         max_c = np.maximum(np.maximum(r, g), b)
         min_c = np.minimum(np.minimum(r, g), b)
         delta = max_c - min_c
         sat = np.where(max_c > 0, (delta / max_c) * 100.0, 0.0)
 
-        is_neutral_line = (sat < 18.0) & (max_c > 90.0)
+        is_neutral_line = (sat < 8.0) & (max_c > 110.0)
 
-        # 2. Pindai Garis Putih Vertikal di Sumbu Tengah (45%..55%)
+        # 2. Pindai Garis Putih Vertikal di Sumbu Tengah (X: 46%..54%)
         best_v_col = w // 2
         max_v_pct = 0.0
-        for x in range(int(w * 0.45), int(w * 0.55)):
+        for x in range(int(w * 0.46), int(w * 0.54)):
             strip = is_neutral_line[:, max(0, x - 1):min(w, x + 2)]
             col_hits = np.sum(np.any(strip, axis=1)) / h
             if col_hits > max_v_pct:
                 max_v_pct = float(col_hits)
                 best_v_col = x
 
-        # 3. Pindai Garis Putih Horizontal di Sumbu Tengah (45%..55%)
+        # 3. Pindai Garis Putih Horizontal di Sumbu Tengah (Y: 46%..54%)
         best_h_row = h // 2
         max_h_pct = 0.0
-        for y in range(int(h * 0.45), int(h * 0.55)):
+        for y in range(int(h * 0.46), int(h * 0.54)):
             strip = is_neutral_line[max(0, y - 1):min(h, y + 2), :]
             row_hits = np.sum(np.any(strip, axis=0)) / w
             if row_hits > max_h_pct:
@@ -87,65 +88,42 @@ def detect_white_seam_collage(img_path: Path, requested_quadrant: str | None = N
 
         # 4. Pindai Garis Putih Vertikal pada Paruh Bawah Saja (Layout 3-in-1)
         max_bottom_v_pct = 0.0
-        for x in range(int(w * 0.45), int(w * 0.55)):
+        for x in range(int(w * 0.46), int(w * 0.54)):
             strip = is_neutral_line[int(h * 0.55):, max(0, x - 1):min(w, x + 2)]
             bottom_hits = np.sum(np.any(strip, axis=1)) / (h * 0.45)
             if bottom_hits > max_bottom_v_pct:
                 max_bottom_v_pct = float(bottom_hits)
 
-        # Gunakan pembagian simetris sempurna jika offset kecil (standar kolase 150x150)
-        split_x = w // 2 if abs(best_v_col - w // 2) <= 12 else best_v_col
-        split_y = h // 2 if abs(best_h_row - h // 2) <= 12 else best_h_row
-
         stats = {
             "v_pct": round(max_v_pct, 3),
             "h_pct": round(max_h_pct, 3),
             "bottom_v_pct": round(max_bottom_v_pct, 3),
-            "split_x": split_x,
-            "split_y": split_y
+            "split_x": best_v_col,
+            "split_y": best_h_row
         }
 
-        # Klasifikasi 2x2: Garis vertikal & horizontal saling membelah di sumbu tengah
-        is_2x2 = (
-            (max_v_pct >= 0.40 and max_h_pct >= 0.40) or
-            (max_v_pct >= 0.35 and max_h_pct >= 0.50) or
-            (max_v_pct >= 0.50 and max_h_pct >= 0.35)
-        )
-        # Klasifikasi 3-in-1: Garis horizontal penuh dan paruh bawah vertikal
-        is_3in1 = (max_h_pct >= 0.55 and max_bottom_v_pct >= 0.45)
+        quads = {
+            "TL": (0, 0, best_v_col, best_h_row),
+            "TR": (best_v_col, 0, w, best_h_row),
+            "BL": (0, best_h_row, best_v_col, h),
+            "BR": (best_v_col, best_h_row, w, h)
+        }
 
-        if is_2x2:
-            quads = {
-                "BL": (0, split_y, split_x, h),
-                "TL": (0, 0, split_x, split_y),
-                "TR": (split_x, 0, w, split_y),
-                "BR": (split_x, split_y, w, h)
-            }
-            if requested_quadrant and requested_quadrant.upper() in quads:
-                chosen = requested_quadrant.upper()
-                stats["chosen_quadrant"] = chosen
-                return "2x2", quads[chosen], stats
-
-            # Pemilihan kuadran otomatis: Pindai guideline merah/cyan timemark
-            chosen = "BL"  # Default ke Bottom-Left untuk checklist kolase
-            max_guide_hits = 0
-            arr_int = np.array(img)
-            for qn, (x1, y1, x2, y2) in quads.items():
-                qarr = arr_int[y1:y2, x1:x2]
-                qr, qg, qb = qarr[:, :, 0].astype(int), qarr[:, :, 1].astype(int), qarr[:, :, 2].astype(int)
-                guide_mask = ((qr > 140) & (qg < 90) & (qb < 90)) | ((qg > 140) & (qb > 140) & (qr < 90))
-                ghits = int(np.sum(guide_mask))
-                if ghits > max_guide_hits and ghits >= 300:
-                    max_guide_hits = ghits
-                    chosen = qn
-
+        # Jika user meminta kuadran eksplisit secara manual dari UI
+        if requested_quadrant and requested_quadrant.upper() in quads:
+            chosen = requested_quadrant.upper()
             stats["chosen_quadrant"] = chosen
-            stats["guide_hits"] = max_guide_hits
             return "2x2", quads[chosen], stats
 
-        if is_3in1:
+        # Klasifikasi 2x2: Garis vertikal >= 88% dan horizontal >= 80%
+        if max_v_pct >= 0.88 and max_h_pct >= 0.80:
+            stats["chosen_quadrant"] = "TL"
+            return "2x2", quads["TL"], stats
+
+        # Klasifikasi 3-in-1: Garis horizontal >= 80% dan paruh bawah vertikal >= 80%
+        if max_h_pct >= 0.80 and max_bottom_v_pct >= 0.80:
             stats["chosen_quadrant"] = "TOP_PANEL"
-            return "3_in_1", (0, 0, w, split_y), stats
+            return "3_in_1", (0, 0, w, best_h_row), stats
 
         return "single_photo", None, stats
 
@@ -171,8 +149,11 @@ def process_all_collages(input_dir: Path, output_dir: Path, manifest_path: Path,
 
     cropped_rel_set = set()
 
-    for p in all_jpgs:
+    total_jpgs = len(all_jpgs)
+    for idx_jpg, p in enumerate(all_jpgs, 1):
         try:
+            if idx_jpg == 1 or idx_jpg % 50 == 0 or idx_jpg == total_jpgs:
+                print(f"[PROGRESS] {idx_jpg}/{total_jpgs} foto dipindai...", flush=True)
             rel = p.relative_to(input_dir)
             rel_str = str(rel).replace("\\", "/")
             parts = rel.parts

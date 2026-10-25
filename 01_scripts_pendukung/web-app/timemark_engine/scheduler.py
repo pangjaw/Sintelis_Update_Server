@@ -191,9 +191,11 @@ MULTI_ROW_CATEGORIES = {"SINYAL", "WESEL", "AXC"}
 
 def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, p_map: dict, photos_dir: Path | None = None, multi_date_lookup: dict | None = None):
     from extract_pdf_dates import parse_target_filename, parse_date_from_filename, parse_date_indonesian
-    import fitz
-
-    # 1. Parse date and basic info
+    import warnings; warnings.filterwarnings("ignore", category=FutureWarning)
+    try:
+        import pymupdf as fitz
+    except ImportError:
+        import fitz
     target_info = parse_target_filename(pdf_path.name)
     category = None
     identifier = None
@@ -267,16 +269,10 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
                 btp = _determine_btp(ident, pdf_path)
                 
                 target_ident = ident
-                should_suffix = (
-                    category == "WESEL" or
-                    (photos_dir and date_suffix and (photos_dir / btp / category / f"{ident}{date_suffix}").is_dir()) or
-                    (multi_date_lookup and (
-                        multi_date_lookup.get((category, ident), 0) > 1 or
-                        multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
-                    ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
-                )
-                if should_suffix and date_suffix:
-                    target_ident = f"{ident}{date_suffix}"
+                if photos_dir and date_suffix:
+                    suffixed_candidate = f"{ident}{date_suffix}"
+                    if (photos_dir / btp / category / suffixed_candidate).is_dir():
+                        target_ident = suffixed_candidate
 
                 asset_items.append({
                     "identifier": target_ident,
@@ -310,16 +306,10 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
 
         btp = _determine_btp(identifier, pdf_path)
         target_ident = identifier
-        should_suffix = (
-            category == "WESEL" or
-            (photos_dir and date_suffix and (photos_dir / btp / category / f"{identifier}{date_suffix}").is_dir()) or
-            (multi_date_lookup and (
-                multi_date_lookup.get((category, identifier), 0) > 1 or
-                multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
-            ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
-        )
-        if should_suffix and date_suffix:
-            target_ident = f"{identifier}{date_suffix}"
+        if photos_dir and date_suffix:
+            suffixed_candidate = f"{identifier}{date_suffix}"
+            if (photos_dir / btp / category / suffixed_candidate).is_dir():
+                target_ident = suffixed_candidate
 
         asset_items.append({
             "identifier": target_ident,
@@ -366,14 +356,7 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
     except Exception:
         pass
 
-    # Pre-scan PDF files to detect multi-inspection assets (e.g. WESEL, PDSE, PTDS, PTLS)
-    from collections import Counter
-    multi_date_lookup = Counter()
-    for p in files:
-        cat = detect_category_from_filename(p.name)
-        st = extract_station_from_filename(p.name)
-        if st and cat:
-            multi_date_lookup[(cat, st)] += 1
+    multi_date_lookup = {}
 
     import concurrent.futures
 

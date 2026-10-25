@@ -1,0 +1,58 @@
+{
+  "month": "UNKNOWN_202610",
+  "generated_at": "2026-10-25T02:09:26.526850",
+  "summary": {
+    "gagal_merge": 0,
+    "gagal_edit": 0,
+    "fallback_edit": 6,
+    "skipped_merge": 0,
+    "total_issues": 6
+  },
+  "gagal_merge": [],
+  "gagal_edit": [],
+  "fallback_edit": [
+    {
+      "file": "BTP JAK\\PTLS\\BOO_30-05\\100.jpg",
+      "category": "PTLS",
+      "detail": "BOO_30-05",
+      "btp": "BTP JAK",
+      "penyebab": "NO red guide detected"
+    },
+    {
+      "file": "BTP JAK\\PTDS\\CLT\\100.jpg",
+      "category": "PTDS",
+      "detail": "CLT",
+      "btp": "BTP JAK",
+      "penyebab": "NO red guide detected"
+    },
+    {
+      "file": "BTP JAK\\PTDS\\CLT_03-05\\100.jpg",
+      "category": "PTDS",
+      "detail": "CLT_03-05",
+      "btp": "BTP JAK",
+      "penyebab": "NO red guide detected"
+    },
+    {
+      "file": "BTP BD\\CATUDAYA\\BTT\\0.jpg",
+      "category": "CATUDAYA",
+      "detail": "BTT",
+      "btp": "BTP BD",
+      "penyebab": "NO red guide detected"
+    },
+    {
+      "file": "BTP BD\\CATUDAYA\\COS\\100.jpg",
+      "category": "CATUDAYA",
+      "detail": "COS",
+      "btp": "BTP BD",
+      "penyebab": "NO red guide detected"
+    },
+    {
+      "file": "BTP BD\\CATUDAYA\\RADIO_COS\\0.jpg",
+      "category": "CATUDAYA",
+      "detail": "RADIO_COS",
+      "btp": "BTP BD",
+      "penyebab": "NO red guide detected"
+    }
+  ],
+  "skipped_merge": []
+}

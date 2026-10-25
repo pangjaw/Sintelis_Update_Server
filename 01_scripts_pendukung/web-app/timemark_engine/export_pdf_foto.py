@@ -311,7 +311,9 @@ def parse_args() -> argparse.Namespace:
         help="PDF yang diproses. Jika kosong, script akan ambil semua PDF dari --input.",
     )
     parser.add_argument("--input", default=DEFAULT_INPUT_DIR,
-                        help=f"Folder PDF input. Default: {DEFAULT_INPUT_DIR}")
+                        help=f"Folder PDF input (2026). Default: {DEFAULT_INPUT_DIR}")
+    parser.add_argument("--target-dir", default="02_pdf_target",
+                        help="Folder PDF target (2025) untuk lookup tanggal WESEL. Default: 02_pdf_target")
     parser.add_argument("--output", default=DEFAULT_OUTPUT_DIR,
                         help=f"Folder output. Default: {DEFAULT_OUTPUT_DIR}")
     parser.add_argument("--log-dir", default=DEFAULT_LOG_DIR,
@@ -752,6 +754,17 @@ def extract_identifier(funcloc_text: str, category: str) -> str | None:
     # All others: extract station code + RADIO prefix
     codes = re.findall(r'\b(BOO|CLT|BJD|BOP|BTT|CGB|CS|COS|MSG|CCR)\b', funcloc_text, re.I)
     if not codes:
+        fn_upper = funcloc_text.upper()
+        for full_st, st_code in [
+            ("BOGOR PALEDANG", "BOP"), ("BATU TULIS", "BTT"), ("BATUTULIS", "BTT"),
+            ("BOJONGGEDE", "BJD"), ("BOJONG GEDE", "BJD"), ("CIGOMBONG", "CGB"),
+            ("CICURUG", "CCR"), ("CILEBUT", "CLT"), ("CIOMAS", "COS"),
+            ("MASENG", "MSG"), ("BOGOR", "BOO"),
+        ]:
+            if full_st in fn_upper:
+                codes = [st_code]
+                break
+    if not codes:
         return None
     
     has_radio = bool(re.search(r'\bRADIO\b', funcloc_text, re.I))
@@ -781,13 +794,31 @@ def identifier_output_dir(root: Path, btp: str, category: str, identifier: str) 
 # ── Helper: extract all funclocs ──────────────────────────────────
 
 def extract_all_funclocs(page_text: str) -> list[str]:
-    """Extract ALL Funcloc lines from page 1 text (for multi-funcloc detection)."""
+    """Extract ALL Funcloc lines from page 1 text (for multi-funcloc detection).
+    Handles line-wrapped asset identifiers (e.g. 'SIN11782 : SINYAL MUKA \nMJ20 CLT').
+    """
     FCL_PREFIX = r'(?:TRA|TLK|TWR|INB|CDA|JPL|CTC|OTB|GEN|BNR|SIN|WSL|AXL)\d{4,}'
+    STOP_PREFIX = re.compile(
+        r'^(?:LOKASI|DISETUJUI|DIKETAHUI|TANGGAL|PERIODE|DILAKSANAKAN|NO\b|ITEM\b|NOMOR\s+ASET|STE\b|PERAWATAN\b|PEMERIKSAAN\b|FOTO\b|POWERED\b|:)',
+        re.I
+    )
+    raw_lines = [l.strip() for l in page_text.split('\n') if l.strip()]
     results = []
-    for line in page_text.split('\n'):
-        line = line.strip()
+    i = 0
+    while i < len(raw_lines):
+        line = raw_lines[i]
         if re.search(FCL_PREFIX + r'\s*:', line, re.I):
-            results.append(line)
+            combined = line
+            # Jika baris berikutnya adalah lanjutan nama aset yang terpotong baris (seperti 'MJ20 CLT')
+            if i + 1 < len(raw_lines):
+                nxt = raw_lines[i + 1]
+                if (not re.search(FCL_PREFIX + r'\s*:', nxt, re.I)
+                        and not STOP_PREFIX.search(nxt)
+                        and len(nxt) <= 35):
+                    combined = f"{combined} {nxt}"
+                    i += 1
+            results.append(combined)
+        i += 1
     return results
 
 
@@ -848,14 +879,18 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
     page_height = float(page.height)
     page_img = page.to_image(resolution=resolution) if render_crop else None
 
-    # Extract words to find funcloc positions
+    # Extract words grouped by horizontal line to find full funcloc lines on photo page
     words = page.extract_words(use_text_flow=True)
+    line_groups: dict[float, list[dict]] = defaultdict(list)
+    for w in words:
+        line_groups[round(float(w['top']), 1)].append(w)
     FCL_PAT = re.compile(r'(?:SIN|WSL|AXL)\d{4,}\s*:', re.I)
     funcloc_positions: list[tuple[float, str]] = []
-    for w in words:
-        txt = str(w.get('text', '') or '').strip()
-        if FCL_PAT.search(txt):
-            funcloc_positions.append((float(w['top']), txt))
+    for top_val in sorted(line_groups.keys()):
+        ws = sorted(line_groups[top_val], key=lambda item: float(item.get('x0', 0)))
+        line_txt = " ".join(str(item.get('text', '') or '').strip() for item in ws if str(item.get('text', '') or '').strip())
+        if FCL_PAT.search(line_txt):
+            funcloc_positions.append((top_val, line_txt))
     funcloc_positions.sort(key=lambda x: x[0])
 
     # Get all images and sort by top
@@ -917,6 +952,8 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                     continue
 
             identifier = extract_identifier(best_fc, category)
+            if not identifier and len(rows) == 1:
+                identifier = extract_identifier(pdf_name, category)
             if not identifier:
                 writer.writerow({
                     "pdf": pdf_name, "page": page.page_number,
@@ -930,20 +967,10 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
             # Determine BTP BEFORE WESEL suffixing so regex can match station codes
             btp = determine_btp(identifier)
 
-            # Multi-date / 2x monthly folders: append date suffix
-            should_suffix = (
-                category == "WESEL" or
-                (multi_date_lookup and (
-                    multi_date_lookup.get((category, identifier), 0) > 1 or
-                    multi_date_lookup.get((category, extract_station_from_filename(pdf_name)), 0) > 1
-                ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
-            )
-            if should_suffix:
+            # WESEL: append date suffix for 2x monthly folders (using 2025 target date lookup)
+            if category == "WESEL":
                 date_suffix = _extract_date_suffix(pdf_name, wesel_target_lookup, identifier)
                 if date_suffix:
-                    part_match = re.search(r'\((2|3|4)\)', pdf_name)
-                    if part_match:
-                        date_suffix = f"{date_suffix}_part{part_match.group(1)}"
                     identifier = f"{identifier}{date_suffix}"
 
             out_dir = identifier_output_dir(output_root, btp, category, identifier)
@@ -1054,12 +1081,15 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
     except Exception:
         pass
 
-    if not all_funclocs:
+    if not all_funclocs or any(extract_identifier(fc, category) is None for fc in all_funclocs):
         try:
             with pdfplumber.open(str(pdf_path)) as pdf:
                 if pdf.pages:
-                    page1_text = pdf.pages[0].extract_text() or ""
-                    all_funclocs = extract_all_funclocs(page1_text)
+                    p1_plumb = pdf.pages[0].extract_text() or ""
+                    fcs_plumb = extract_all_funclocs(p1_plumb)
+                    if fcs_plumb:
+                        page1_text = p1_plumb
+                        all_funclocs = fcs_plumb
         except Exception:
             pass
 
@@ -1085,6 +1115,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
     btp = "BTP JAK"
     if all_funclocs:
         identifier = extract_identifier(all_funclocs[0], category)
+    if not identifier and category in ("SINYAL", "WESEL", "AXC"):
+        identifier = extract_identifier(pdf_path.name, category)
     if category in ("JPL", "PTPP") and (not identifier or identifier in ("BOO", "CLT", "BOP", "BTT", "BJD", "CGB", "COS", "MSG", "CCR")):
         # Extract JPL identifier directly from PDF filename
         fn_match = re.search(r'\b(JPL\s+(?:BNR|\d+[A-Z]?)\s+[A-Za-z]{2,3}(?:-[A-Za-z]{2,3})?)\b', pdf_path.name, re.I)
@@ -1109,20 +1141,10 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
 
     btp = determine_btp(identifier)
 
-    # ── Append date suffix for multi-occurrence folders (WESEL / 2x monthly inspections) ──
-    should_suffix = (
-        category == "WESEL" or
-        (multi_date_lookup and (
-            multi_date_lookup.get((category, identifier), 0) > 1 or
-            multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
-        ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
-    )
-    if should_suffix:
+    # ── WESEL: append date suffix for 2x monthly folders (using 2025 target date lookup) ──
+    if category == "WESEL":
         date_suffix = _extract_date_suffix(pdf_path.name, wesel_target_lookup, identifier)
         if date_suffix:
-            part_match = re.search(r'\((2|3|4)\)', pdf_path.name)
-            if part_match:
-                date_suffix = f"{date_suffix}_part{part_match.group(1)}"
             identifier = f"{identifier}{date_suffix}"
 
     # ── Build primary output directory ──
@@ -1311,23 +1333,7 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                     written_identifiers: set[str] = set()
                     for funcloc_line in all_funclocs:
                         row_id = extract_identifier(funcloc_line, category)
-                        if not row_id:
-                            continue
-                        should_suffix = (
-                            category == "WESEL" or
-                            (multi_date_lookup and (
-                                multi_date_lookup.get((category, row_id), 0) > 1 or
-                                multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
-                            ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
-                        )
-                        if should_suffix:
-                            date_suffix = _extract_date_suffix(pdf_path.name, wesel_target_lookup, row_id)
-                            if date_suffix:
-                                part_match = re.search(r'\((2|3|4)\)', pdf_path.name)
-                                if part_match:
-                                    date_suffix = f"{date_suffix}_part{part_match.group(1)}"
-                                row_id = f"{row_id}{date_suffix}"
-                        if row_id in written_identifiers:
+                        if not row_id or row_id in written_identifiers:
                             continue
                         written_identifiers.add(row_id)
                         row_btp = determine_btp(row_id)
@@ -1532,17 +1538,9 @@ def main() -> int:
     print(f"[MODE] {mode_label}", flush=True)
     print(f"\n[START] Memulai ekstraksi foto dari {len(pdf_paths)} file PDF...\n", flush=True)
 
-    # Pre-build WESEL target lookup once to avoid repetitive disk scans
-    wesel_target_lookup = _build_wesel_target_lookup("02_pdf_target")
-
-    # Count occurrences of (category, station) across pdf_paths to detect multi-inspection assets
-    from collections import Counter
-    multi_date_lookup = Counter()
-    for p in pdf_paths:
-        cat = detect_category_from_filename(p.name)
-        st = extract_station_from_filename(p.name)
-        if st and cat:
-            multi_date_lookup[(cat, st)] += 1
+    # Pre-build WESEL target lookup once from 2025 target folder to avoid repetitive disk scans
+    wesel_target_lookup = _build_wesel_target_lookup(args.target_dir)
+    multi_date_lookup = {}
 
     import concurrent.futures
 

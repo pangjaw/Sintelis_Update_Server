@@ -11,8 +11,24 @@ SERVER_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "02_server_update"))
 
 print("==================================================")
 print("  BUILD & DEPLOY SINTELIS UTILITY DESKTOP APP     ")
-print("  Target: C:\\Users\\SINTEL 1.21 BOO\\Documents\\Server\\Sintelis_Update_Server\\02_server_update")
+print(f"  Target: {SERVER_DIR}")
 print("==================================================")
+
+# 0. Build Frontend Vite (npm install & npm run build)
+npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
+node_modules_dir = os.path.join(WEBAPP_DIR, "node_modules")
+if not os.path.isdir(node_modules_dir):
+    print("[0/4] Menginstal dependensi frontend (npm install)...")
+    res_npm_i = subprocess.run([npm_cmd, "install"], cwd=WEBAPP_DIR)
+    if res_npm_i.returncode != 0:
+        print("[ERROR] npm install gagal!")
+        sys.exit(1)
+
+print("[0.5/4] Mengompilasi frontend React/Vite (npm run build)...")
+res_npm_b = subprocess.run([npm_cmd, "run", "build"], cwd=WEBAPP_DIR)
+if res_npm_b.returncode != 0:
+    print("[ERROR] npm run build gagal!")
+    sys.exit(1)
 
 # 1. Clean old exe in dist
 dist_exe = os.path.join(WEBAPP_DIR, "dist", "SintelisUtility.exe")
@@ -79,11 +95,11 @@ print(f"  -> Biner aktif disalin ke: {target_exe}")
 v_src = os.path.join(SERVER_DIR, "version.json")
 if os.path.exists(v_src):
     # Dapatkan versi terkini dari updater_engine
-    app_version = "1.8.5"
+    app_version = "1.9.0"
     try:
         sys.path.insert(0, WEBAPP_DIR)
         import updater_engine
-        app_version = getattr(updater_engine, "APP_VERSION", "1.8.5")
+        app_version = getattr(updater_engine, "APP_VERSION", "1.9.0")
     except Exception:
         pass
 
@@ -107,4 +123,4 @@ if os.path.exists(v_src):
         json.dump(v_data, f, indent=2, ensure_ascii=False)
     print(f"  -> version.json diperbarui ke v{app_version} di: {v_src}")
 
-print("[SUKSES] Build dan rilis berhasil disiapkan secara eksklusif di Drive C!")
+print(f"[SUKSES] Build dan rilis berhasil disiapkan di {SERVER_DIR}!")

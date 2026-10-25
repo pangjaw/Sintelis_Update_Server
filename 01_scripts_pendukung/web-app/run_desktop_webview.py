@@ -3,6 +3,9 @@ Sintelis Utility — Desktop WebView App
 Menjalankan web-app hasil build Vite dalam native window.
 API folder dialog & save file via HTTP endpoint (tidak pakai pywebview js_api).
 """
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 import base64
 import http.server
 import io
@@ -10,6 +13,7 @@ import json
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 import re
 import socketserver
 import sys
@@ -206,6 +210,44 @@ def _add_p3ste_log(log_type, msg):
     _log(f"P3STE [{log_type.upper()}] {msg}")
 _current_playwright_context = None
 
+def _cleanup_p3ste_browser_profile(user_data_dir=None):
+    """Bersihkan proses msedge/chrome yatim (orphaned) yang mengunci p3ste_browser_profile serta hapus lockfile."""
+    if not user_data_dir:
+        user_data_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "SintelisUtility", "p3ste_browser_profile")
+    try:
+        import psutil
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                pname = (proc.info.get("name") or "").lower()
+                if pname in ("msedge.exe", "chrome.exe"):
+                    cmdline = " ".join(proc.info.get("cmdline") or [])
+                    if "p3ste_browser_profile" in cmdline:
+                        proc.kill()
+            except Exception:
+                pass
+    except Exception:
+        try:
+            subprocess.run(
+                [
+                    "powershell.exe", "-NoProfile", "-Command",
+                    "Get-CimInstance Win32_Process -Filter \"Name = 'msedge.exe' OR Name = 'chrome.exe'\" | Where-Object { $_.CommandLine -like '*p3ste_browser_profile*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+                ],
+                capture_output=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
+                timeout=8
+            )
+        except Exception:
+            pass
+
+    for lock_name in ("lockfile", "SingletonLock", "SingletonCookie", "SingletonSocket"):
+        lock_path = os.path.join(user_data_dir, lock_name)
+        if os.path.exists(lock_path):
+            try:
+                os.remove(lock_path)
+            except Exception:
+                pass
+
+
 def _cancel_all_processes():
     global _current_playwright_context, _p3ste_state
     _p3ste_state["cancelled"] = True
@@ -218,6 +260,7 @@ def _cancel_all_processes():
         except Exception as e:
             _log(f"Notice closing browser context: {e}")
         _current_playwright_context = None
+    _cleanup_p3ste_browser_profile()
 
 def _get_unique_p3ste_filename(target_folder, filename, existing_names=None):
     """
@@ -455,13 +498,15 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
 
         user_data_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "SintelisUtility", "p3ste_browser_profile")
         os.makedirs(user_data_dir, exist_ok=True)
+        _cleanup_p3ste_browser_profile(user_data_dir)
 
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p:
             context = None
             last_err = None
-            for ch in ["msedge", "chrome", None]:
+            primary_err = None
+            for ch in ["msedge", "msedge", "chrome", None]:
                 try:
                     ch_label = f"Channel: {ch}" if ch else "Default Chromium"
                     context = p.chromium.launch_persistent_context(
@@ -482,7 +527,11 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                     _current_playwright_context = context
                     break
                 except Exception as b_err:
-                    last_err = b_err
+                    if ch in ("msedge", "chrome") and primary_err is None:
+                        primary_err = b_err
+                    last_err = primary_err or b_err
+                    _cleanup_p3ste_browser_profile(user_data_dir)
+                    time.sleep(0.8)
                     continue
 
             if not context:
@@ -684,7 +733,7 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
 
             # 2. Tunggu 10 data awal & tombol Cetak muncul di layar (seperti Gambar 3)
             initial_ready = False
-            for _ in range(45):
+            for _ in range(90):
                 if _p3ste_state["cancelled"]: break
                 page.wait_for_timeout(1000)
                 row_status = _safe_evaluate(page, """() => {
@@ -795,7 +844,7 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                 _add_p3ste_log("info", f"--- Memproses Halaman {page_index} ---")
                 
                 # Tunggu agar baris data di halaman aktif siap
-                for _ in range(20):
+                for _ in range(30):
                     rows_ready = _safe_evaluate(page, """() => {
                         const trs = document.querySelectorAll('#table tbody tr, table tbody tr');
                         if (trs.length === 0 || document.querySelector('.dataTables_empty')) return 0;
@@ -804,6 +853,38 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                     if rows_ready > 0:
                         break
                     page.wait_for_timeout(1000)
+
+                # Re-evaluasi total data jika saat pre-check awal tabel belum selesai dimuat
+                if _p3ste_state["total"] <= 10:
+                    late_diag = _safe_evaluate(page, r"""() => {
+                        let total = 0;
+                        try {
+                            if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable) {
+                                const tbls = Array.from(document.querySelectorAll('table'));
+                                for (const t of tbls) {
+                                    if ($.fn.DataTable.isDataTable(t)) {
+                                        const info = $(t).DataTable().page.info();
+                                        if (info && info.recordsDisplay > 0) total = info.recordsDisplay;
+                                        else if (info && info.recordsTotal > 0) total = info.recordsTotal;
+                                        if (total > 0) break;
+                                    }
+                                }
+                            }
+                        } catch (e) {}
+                        const infoEl = document.querySelector('.dataTables_info, #table_info, [id*="_info"]');
+                        const infoText = infoEl ? infoEl.innerText : null;
+                        if (!total && infoText) {
+                            const m = infoText.match(/(?:dari|of)\s+([\d.,]+)/i);
+                            if (m) total = parseInt(m[1].replace(/[.,]/g, ''), 10) || 0;
+                        }
+                        return { info: infoText, total: total };
+                    }""") or {}
+                    late_total = late_diag.get("total", 0)
+                    if late_total > _p3ste_state["total"]:
+                        _p3ste_state["total"] = late_total
+                        if late_diag.get("info"):
+                            _add_p3ste_log("info", f"Status Tabel: {late_diag['info']}")
+                        _add_p3ste_log("info", f"📊 Terdeteksi target total: {late_total} file checklist.")
 
                 # Pastikan cookie Requests session selalu up-to-date
                 try:
@@ -957,6 +1038,7 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                         _add_p3ste_log("info", "Tidak ada file PDF baru pada halaman ini. Selesai.")
                         break
 
+                downloaded_on_this_page = 0
                 for item in new_page_pdfs:
                     if _p3ste_state["cancelled"]: break
                     fid = item["id"]
@@ -1045,6 +1127,7 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                                     retry_tag = f" (setelah coba ulang ke-{attempt})" if attempt > 0 else ""
                                     _add_p3ste_log("success", f"✓ [{total_downloaded}] Tersimpan: {fn} ({file_size // 1024} KB){retry_tag}")
                                     download_success = True
+                                    downloaded_on_this_page += 1
                                     break
                                 else:
                                     last_err = "Bukan file PDF valid"
@@ -1060,6 +1143,8 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                                 break
                         except Exception as fe:
                             last_err = str(fe)
+                            if "has been closed" in last_err.lower() or "target closed" in last_err.lower():
+                                raise Exception("Jendela browser Edge ditutup paksa saat pengunduhan berlangsung. Silakan klik Mulai Download kembali untuk melanjutkan dari checkpoint.")
                             if attempt < max_attempts - 1:
                                 sleep_sec = 2.0 * (attempt + 1)
                                 _add_p3ste_log("warn", f"⚠️ [{total_downloaded}] {fn}: Error koneksi ({last_err}) - Mencoba ulang ({attempt + 1}/{max_attempts}) dalam {sleep_sec:.0f} detik...")
@@ -1081,8 +1166,13 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
 
                 old_first_id = new_page_pdfs[0]["id"] if new_page_pdfs else None
 
-                # Pengecekan halaman selanjutnya (Next Page) dengan retry cerdas
-                max_next_retries = 3 if (_p3ste_state["total"] > 0 and total_downloaded < _p3ste_state["total"]) else 1
+                # Jika seluruh file di halaman ini dilewati secara instan dari checkpoint (<10ms),
+                # beri jeda stabilisasi 2 detik agar DataTables selesai mengikat event pagination.
+                if downloaded_on_this_page == 0:
+                    page.wait_for_timeout(2000)
+
+                # Pengecekan halaman selanjutnya (Next Page) dengan retry cerdas (selalu 3x)
+                max_next_retries = 3
                 page_changed = False
 
                 for next_attempt in range(max_next_retries):
@@ -1090,25 +1180,28 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                         break
 
                     can_go_next = _safe_evaluate(page, """() => {
-                        // 1. Cek DOM Tombol Next
-                        const nextLi = document.querySelector('li#table_next, #table_next, li.paginate_button.next, li.next, #tblData_next');
+                        // 1. Prioritaskan DataTables API langsung jika tersedia
+                        try {
+                            if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable) {
+                                const tables = Array.from(document.querySelectorAll('table'));
+                                for (const tbl of tables) {
+                                    if ($.fn.DataTable.isDataTable(tbl)) {
+                                        const dt = $(tbl).DataTable();
+                                        const info = dt.page.info();
+                                        if (info && info.pages > 1 && info.page < info.pages - 1) {
+                                            dt.page('next').draw('page');
+                                            return { hasNext: true, page: info.page + 2, totalPages: info.pages, method: 'api' };
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e) {}
+                        // 2. Fallback Cek DOM Tombol Next spesifik DataTables
+                        const nextLi = document.querySelector('li#table_next, #table_next, li.paginate_button.next, #tblData_next');
                         if (nextLi && !nextLi.classList.contains('disabled') && nextLi.getAttribute('aria-disabled') !== 'true') {
                             const a = nextLi.querySelector('a') || nextLi;
                             a.click();
                             return { hasNext: true, method: 'dom' };
-                        }
-                        // 2. Cek DataTables API
-                        if (typeof $ !== 'undefined' && $.fn.DataTable) {
-                            const tables = Array.from(document.querySelectorAll('table'));
-                            for (const tbl of tables) {
-                                if ($.fn.DataTable.isDataTable(tbl)) {
-                                    const info = $(tbl).DataTable().page.info();
-                                    if (info && info.page < info.pages - 1) {
-                                        $(tbl).DataTable().page('next').draw('page');
-                                        return { hasNext: true, page: info.page + 2, totalPages: info.pages, method: 'api' };
-                                    }
-                                }
-                            }
                         }
                         return { hasNext: false };
                     }""") or {}
@@ -1127,15 +1220,26 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                     else:
                         _add_p3ste_log("warn", f"Mencoba ulang klik 'Selanjutnya' ke Halaman {page_index + 1} (Percobaan {next_attempt + 1}/{max_next_retries})...")
 
-                    # Tunggu proses AJAX DataTables selesai memuat halaman berikutnya (hingga 60 detik)
-                    for wait_sec in range(60):
+                    # Tunggu proses AJAX DataTables selesai memuat halaman berikutnya (hingga 90 detik)
+                    for wait_sec in range(90):
                         if _p3ste_state["cancelled"]: break
                         page.wait_for_timeout(1000)
 
-                        # Re-click jika setelah 25 detik server belum merespons
-                        if wait_sec == 25:
+                        # Re-trigger hanya pada detik ke-45 (agar tidak membatalkan AJAX P3-STE yang memakan 25-35 detik)
+                        if wait_sec == 45:
                             _safe_evaluate(page, """() => {
-                                const nextLi = document.querySelector('li#table_next, #table_next, li.paginate_button.next, li.next, #tblData_next');
+                                try {
+                                    if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable) {
+                                        const tables = Array.from(document.querySelectorAll('table'));
+                                        for (const tbl of tables) {
+                                            if ($.fn.DataTable.isDataTable(tbl)) {
+                                                $(tbl).DataTable().page('next').draw('page');
+                                                return;
+                                            }
+                                        }
+                                    }
+                                } catch (e) {}
+                                const nextLi = document.querySelector('li#table_next, #table_next, li.paginate_button.next, #tblData_next');
                                 if (nextLi && !nextLi.classList.contains('disabled')) {
                                     const a = nextLi.querySelector('a') || nextLi;
                                     a.click();
@@ -1263,6 +1367,7 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
     finally:
         _current_playwright_context = None
         _p3ste_state["running"] = False
+        _cleanup_p3ste_browser_profile()
 
 
 def on_restored():
@@ -1586,7 +1691,8 @@ def get_active_pegawai_config(preset_id=None):
 def _resolve_photo_directories(folder_path: str) -> tuple[str, str, str]:
     """
     Menentukan direktori root, direktori foto mentah (03_export_foto / 03_photos_export),
-    dan direktori foto editan (04_photos_edited). Secara otomatis membuat folder 03 dan 04 di dalam root jika belum ada.
+    dan direktori foto editan (04_photos_edited) tanpa membuat folder baru secara paksa
+    (read-only resolution agar pemilihan folder PDF 2026/2025 tidak memunculkan folder 03/04).
     """
     if not folder_path:
         folder_path = os.path.join(os.path.expanduser("~"), "Documents", "Sintelis", "03_export_foto")
@@ -1599,7 +1705,7 @@ def _resolve_photo_directories(folder_path: str) -> tuple[str, str, str]:
     else:
         export_root = norm
 
-    # 1. Cari atau buat folder 03 (foto mentah)
+    # 1. Cari path folder 03 (foto mentah) tanpa membuat direktori di disk
     dir_raw = None
     for cand_name in ["03_export_foto", "03_photos_export"]:
         cand = os.path.join(export_root, cand_name)
@@ -1612,12 +1718,8 @@ def _resolve_photo_directories(folder_path: str) -> tuple[str, str, str]:
             dir_raw = norm
         else:
             dir_raw = os.path.join(export_root, "03_export_foto")
-            try:
-                os.makedirs(dir_raw, exist_ok=True)
-            except Exception:
-                pass
 
-    # 2. Cari atau buat folder 04 (foto editan)
+    # 2. Cari path folder 04 (foto editan) tanpa membuat direktori di disk
     dir_edited = None
     for cand_name in ["04_photos_edited", "04_foto_edited"]:
         cand = os.path.join(export_root, cand_name)
@@ -1627,10 +1729,6 @@ def _resolve_photo_directories(folder_path: str) -> tuple[str, str, str]:
 
     if not dir_edited:
         dir_edited = os.path.join(export_root, "04_photos_edited")
-        try:
-            os.makedirs(dir_edited, exist_ok=True)
-        except Exception:
-            pass
 
     return export_root, dir_raw, dir_edited
 
@@ -1989,6 +2087,19 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             tim = p.replace("_", " ").title()
                             break
 
+                    def _dir_latest_mtime(d_p):
+                        if not d_p or not os.path.isdir(d_p):
+                            return 0.0
+                        mts = []
+                        for _fn in ("0.jpg", "50.jpg", "100.jpg", "meta.json"):
+                            _fp = os.path.join(d_p, _fn)
+                            if os.path.isfile(_fp):
+                                try:
+                                    mts.append(os.path.getmtime(_fp))
+                                except Exception:
+                                    pass
+                        return max(mts) if mts else 0.0
+
                     key = (station.upper(), category.upper(), detail.upper())
                     if key not in asset_dict:
                         asset_dict[key] = {
@@ -2000,9 +2111,11 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             "tim": tim
                         }
                     else:
-                        asset_dict[key]["edited_dir"] = root
-                        if tim and not asset_dict[key]["tim"]:
-                            asset_dict[key]["tim"] = tim
+                        prev_ed = asset_dict[key].get("edited_dir")
+                        if not prev_ed or _dir_latest_mtime(root) >= _dir_latest_mtime(prev_ed):
+                            asset_dict[key]["edited_dir"] = root
+                            if tim:
+                                asset_dict[key]["tim"] = tim
 
             # 3. Check jika dir_edited punya subfolder Tim_1/Tim_2 untuk asset_dict yang belum terhubung
             if os.path.isdir(dir_edited):
@@ -2512,6 +2625,14 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
 
                 if os.path.isfile(out_target):
                     processed += 1
+                    # Sinkronkan ke folder Tim lain jika aset ini memiliki duplikat di Tim_1/Tim_2/Tim_3/root
+                    for alt_t in ["", "Tim_1", "Tim_2", "Tim_3", "Tim_4"]:
+                        ao = os.path.join(photos_edited, alt_t, asset_rel, fname) if alt_t else os.path.join(photos_edited, asset_rel, fname)
+                        if os.path.abspath(ao) != os.path.abspath(out_target) and os.path.isfile(ao):
+                            try:
+                                shutil.copy2(out_target, ao)
+                            except Exception:
+                                pass
                     meta_saved[fname] = {
                         "dateText": p_date,
                         "detector": detector,
@@ -2519,18 +2640,26 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     }
 
             if meta_saved:
-                target_meta_dir = os.path.join(photos_edited, tim_group, asset_rel)
-                meta_file = os.path.join(target_meta_dir, "meta.json")
-                curr_meta = {}
-                if os.path.isfile(meta_file):
+                meta_dirs = {os.path.join(photos_edited, tim_group, asset_rel)}
+                for alt_t in ["", "Tim_1", "Tim_2", "Tim_3", "Tim_4"]:
+                    ad = os.path.join(photos_edited, alt_t, asset_rel) if alt_t else os.path.join(photos_edited, asset_rel)
+                    if os.path.isdir(ad):
+                        meta_dirs.add(ad)
+                for target_meta_dir in meta_dirs:
+                    meta_file = os.path.join(target_meta_dir, "meta.json")
+                    curr_meta = {}
+                    if os.path.isfile(meta_file):
+                        try:
+                            with open(meta_file, "r", encoding="utf-8") as mf:
+                                curr_meta = json.load(mf)
+                        except Exception:
+                            pass
+                    curr_meta.update(meta_saved)
                     try:
-                        with open(meta_file, "r", encoding="utf-8") as mf:
-                            curr_meta = json.load(mf)
+                        with open(meta_file, "w", encoding="utf-8") as mf:
+                            json.dump(curr_meta, mf, indent=2, ensure_ascii=False)
                     except Exception:
                         pass
-                curr_meta.update(meta_saved)
-                with open(meta_file, "w", encoding="utf-8") as mf:
-                    json.dump(curr_meta, mf, indent=2, ensure_ascii=False)
 
             if processed > 0:
                 detector_title = "Google AI Vision" if detector == "google_vision" else "Metode Biasa (HSV)"
@@ -2876,12 +3005,14 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
 
     def _handle_timemark_crop_collage_single(self):
         try:
+            from pathlib import Path
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
             data = json.loads(body) if body else {}
 
             base_dir = data.get("baseExportDir") or data.get("folder") or ""
             rel = (data.get("rel") or "").replace("\\", "/").strip("/")
+            detector = data.get("detector") or "google_vision"
 
             if not rel:
                 self._json({"ok": False, "error": "Parameter rel wajib diisi."}, 400)
@@ -2893,76 +3024,120 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 self._json({"ok": False, "error": f"Foto mentah tidak ditemukan: {src_path}"}, 404)
                 return
 
-            # Import helper deteksi & crop kolase
-            sys.path.insert(0, os.path.join(APP_DIR, "timemark_engine"))
-            from auto_crop_collages import detect_white_seam_collage
-            from PIL import Image
-            import numpy as np
-
-            req_quad = data.get("quadrant")
-            layout, crop_box, stats = detect_white_seam_collage(src_path, requested_quadrant=req_quad)
-
-            img = Image.open(src_path).convert("RGB")
-            w, h = img.size
-
-            # Jika deteksi garis putih terlalu tipis, gunakan fallback kuadran 2x2 cerdas (berbasis guideline timemark)
-            if layout == "single_photo" or not crop_box:
-                layout = "2x2"
-                quads = {
-                    "BL": (0, h // 2, w // 2, h),
-                    "TL": (0, 0, w // 2, h // 2),
-                    "TR": (w // 2, 0, w, h // 2),
-                    "BR": (w // 2, h // 2, w, h)
-                }
-                if req_quad and req_quad.upper() in quads:
-                    chosen = req_quad.upper()
-                else:
-                    chosen = "BL"
-                    arr_int = np.array(img)
-                    max_g = 0
-                    for qn, (qx1, qy1, qx2, qy2) in quads.items():
-                        qarr = arr_int[qy1:qy2, qx1:qx2]
-                        qr, qg, qb = qarr[:, :, 0].astype(int), qarr[:, :, 1].astype(int), qarr[:, :, 2].astype(int)
-                        gmask = ((qr > 140) & (qg < 90) & (qb < 90)) | ((qg > 140) & (qb > 140) & (qr < 90))
-                        hits = int(np.sum(gmask))
-                        if hits > max_g and hits >= 250:
-                            max_g = hits
-                            chosen = qn
-                crop_box = quads[chosen]
-                stats = stats or {}
-                stats["chosen_quadrant"] = chosen
-                stats["fallback"] = True
-
-            x1, y1, x2, y2 = crop_box
-            cropped_img = img.crop((x1, y1, x2, y2))
-            resized_img = cropped_img.resize((300, 300), Image.Resampling.LANCZOS)
-
             temp_dst = Path(export_root) / "03_photos_cropped_temp" / rel
-            temp_dst.parent.mkdir(parents=True, exist_ok=True)
-            resized_img.save(temp_dst, quality=95, subsampling=0)
-
-            # Update cropped_collages.json
             set_file = Path(export_root) / "logs" / "cropped_collages.json"
-            set_file.parent.mkdir(parents=True, exist_ok=True)
-            crops_list = []
-            if set_file.is_file():
-                try:
-                    crops_list = json.loads(set_file.read_text(encoding="utf-8"))
-                except Exception:
-                    crops_list = []
-            if rel.lower() not in [x.lower() for x in crops_list]:
-                crops_list.append(rel)
-                set_file.write_text(json.dumps(sorted(crops_list), indent=2, ensure_ascii=False), encoding="utf-8")
-
-            # Sinkronisasi otomatis: Re-proses timemark di 04_photos_edited menggunakan foto hasil crop ini
             asset_rel = os.path.dirname(rel).replace("\\", "/")
             fname = os.path.basename(rel)
             stem = os.path.splitext(fname)[0]
 
+            # Cek kuadran terakhir dari meta.json jika sudah pernah di-crop
+            prev_quad = None
+            for tim_cand in ["Tim_1", "Tim_2", "Tim_3", "Tim_4", ""]:
+                mf_cand = os.path.join(photos_edited, tim_cand, asset_rel, "meta.json") if tim_cand else os.path.join(photos_edited, asset_rel, "meta.json")
+                if os.path.isfile(mf_cand):
+                    try:
+                        with open(mf_cand, "r", encoding="utf-8") as mf:
+                            mdata = json.load(mf)
+                        if isinstance(mdata.get(fname), dict) and mdata[fname].get("cropQuadrant"):
+                            prev_quad = str(mdata[fname]["cropQuadrant"]).upper()
+                            break
+                    except Exception:
+                        pass
+
+            req_quad = (data.get("quadrant") or "").strip().upper()
+            if not req_quad and temp_dst.is_file():
+                # Jika user klik "Potong Ulang" tanpa parameter kuadran, putar siklus kuadran:
+                # TL (Kiri-Atas) -> TR (Kanan-Atas) -> BL (Kiri-Bawah) -> BR (Kanan-Bawah) -> ORIGINAL (Utuh)
+                cycle_order = ["TL", "TR", "BL", "BR", "ORIGINAL"]
+                if prev_quad in cycle_order:
+                    next_idx = (cycle_order.index(prev_quad) + 1) % len(cycle_order)
+                    req_quad = cycle_order[next_idx]
+                else:
+                    req_quad = "TL"
+
+            quad_labels = {
+                "TL": "Kiri-Atas (TL)",
+                "TR": "Kanan-Atas (TR)",
+                "BL": "Kiri-Bawah (BL)",
+                "BR": "Kanan-Bawah (BR)",
+                "TOP_PANEL": "Panel Atas (3-in-1)",
+                "ORIGINAL": "Utuh (Tanpa Crop)"
+            }
+
+            # Mode ORIGINAL / UNCROP: Hapus hasil crop dan kembalikan ke foto utuh (03_export_foto)
+            is_uncrop = req_quad in ("ORIGINAL", "NONE", "UNCROP", "FULL")
+            if is_uncrop:
+                if temp_dst.is_file():
+                    try:
+                        temp_dst.unlink()
+                    except Exception:
+                        pass
+                if set_file.is_file():
+                    try:
+                        crops_list = json.loads(set_file.read_text(encoding="utf-8"))
+                        crops_list = [x for x in crops_list if x.lower() != rel.lower()]
+                        set_file.write_text(json.dumps(sorted(crops_list), indent=2, ensure_ascii=False), encoding="utf-8")
+                    except Exception:
+                        pass
+                input_for_timemark = src_path
+                layout = "single_photo"
+                crop_box = None
+                stats = {"chosen_quadrant": "ORIGINAL"}
+            else:
+                # Import helper deteksi & crop kolase
+                sys.path.insert(0, os.path.join(APP_DIR, "timemark_engine"))
+                from auto_crop_collages import detect_white_seam_collage
+                from PIL import Image
+
+                layout, crop_box, stats = detect_white_seam_collage(src_path, requested_quadrant=req_quad or None)
+
+                img = Image.open(src_path).convert("RGB")
+                w, h = img.size
+
+                # Jika user meminta potong manual pada foto yang garis putihnya tipis, gunakan kuadran 2x2 standar (default TL)
+                if layout == "single_photo" or not crop_box:
+                    layout = "2x2"
+                    quads = {
+                        "TL": (0, 0, w // 2, h // 2),
+                        "TR": (w // 2, 0, w, h // 2),
+                        "BL": (0, h // 2, w // 2, h),
+                        "BR": (w // 2, h // 2, w, h)
+                    }
+                    chosen = req_quad if req_quad in quads else "TL"
+                    crop_box = quads[chosen]
+                    stats = stats or {}
+                    stats["chosen_quadrant"] = chosen
+                    stats["fallback"] = True
+
+                x1, y1, x2, y2 = crop_box
+                cropped_img = img.crop((x1, y1, x2, y2))
+                resized_img = cropped_img.resize((300, 300), Image.Resampling.LANCZOS)
+
+                temp_dst.parent.mkdir(parents=True, exist_ok=True)
+                resized_img.save(temp_dst, quality=95, subsampling=0)
+
+                # Update cropped_collages.json
+                set_file.parent.mkdir(parents=True, exist_ok=True)
+                crops_list = []
+                if set_file.is_file():
+                    try:
+                        crops_list = json.loads(set_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        crops_list = []
+                if rel.lower() not in [x.lower() for x in crops_list]:
+                    crops_list.append(rel)
+                    set_file.write_text(json.dumps(sorted(crops_list), indent=2, ensure_ascii=False), encoding="utf-8")
+
+                input_for_timemark = temp_dst
+
+            # Sinkronisasi otomatis: Re-proses timemark di 04_photos_edited
             date_to_use = ""
             for cand_date in [
                 os.path.join(photos_export, asset_rel, "date.txt"),
-                os.path.join(photos_edited, asset_rel, "date.txt")
+                os.path.join(photos_edited, asset_rel, "date.txt"),
+                os.path.join(photos_edited, "Tim_1", asset_rel, "date.txt"),
+                os.path.join(photos_edited, "Tim_2", asset_rel, "date.txt"),
+                os.path.join(photos_edited, "Tim_3", asset_rel, "date.txt"),
             ]:
                 if os.path.isfile(cand_date):
                     try:
@@ -2986,39 +3161,89 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
 
             p_date = calc_photo_date(date_to_use, stem) if date_to_use else ""
 
-            # Cari folder tim yang ada (Tim_1 / Tim_2)
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
 
-            for tim_group in ["Tim_1", "Tim_2", ""]:
+            # Cari semua target folder aset yang sudah ada di 04_photos_edited (Tim_1/Tim_2/Tim_3/Tim_4/root)
+            existing_targets = []
+            for tim_group in ["Tim_1", "Tim_2", "Tim_3", "Tim_4", ""]:
                 t_folder = os.path.join(photos_edited, tim_group) if tim_group else photos_edited
-                out_target = os.path.join(t_folder, asset_rel, fname)
-                if os.path.isfile(out_target) or os.path.isdir(t_folder):
-                    os.makedirs(os.path.dirname(out_target), exist_ok=True)
-                    args = [
-                        "--input", str(temp_dst),
-                        "--single-out", out_target,
-                        "--detector", "google_vision"
-                    ]
-                    if p_date:
-                        args.extend(["--date", p_date])
-                    cmd = make_script_cmd("edit_timemark_ide1.py", args)
-                    try:
-                        subprocess.run(
-                            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                            env=sub_env, cwd=BASE_DIR, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-                        )
-                    except Exception as err:
-                        _log(f"Auto re-timemark after crop failed: {err}")
+                asset_folder = os.path.join(t_folder, asset_rel)
+                if os.path.isdir(asset_folder):
+                    existing_targets.append(os.path.join(asset_folder, fname))
+            if not existing_targets:
+                existing_targets.append(os.path.join(photos_edited, "Tim_1", asset_rel, fname))
 
-            mtime_t = int(os.path.getmtime(temp_dst))
-            temp_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(temp_dst))}&t={mtime_t}"
+            primary_out = existing_targets[0]
+            os.makedirs(os.path.dirname(primary_out), exist_ok=True)
+            args = [
+                "--input", str(input_for_timemark),
+                "--single-out", primary_out,
+                "--detector", detector
+            ]
+            if p_date:
+                args.extend(["--date", p_date])
+            cmd = make_script_cmd("edit_timemark_ide1.py", args)
+            try:
+                subprocess.run(
+                    cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    env=sub_env, cwd=BASE_DIR, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                )
+            except Exception as err:
+                _log(f"Auto re-timemark after crop failed: {err}")
+
+            if os.path.isfile(primary_out):
+                for extra_out in existing_targets[1:]:
+                    try:
+                        os.makedirs(os.path.dirname(extra_out), exist_ok=True)
+                        shutil.copy2(primary_out, extra_out)
+                    except Exception:
+                        pass
+
+            chosen_q = stats.get("chosen_quadrant", "TL")
+            for target_out in existing_targets:
+                meta_file = os.path.join(os.path.dirname(target_out), "meta.json")
+                curr_meta = {}
+                if os.path.isfile(meta_file):
+                    try:
+                        with open(meta_file, "r", encoding="utf-8") as mf:
+                            curr_meta = json.load(mf)
+                    except Exception:
+                        pass
+                f_entry = curr_meta.get(fname, {}) if isinstance(curr_meta.get(fname), dict) else {}
+                if is_uncrop:
+                    f_entry.pop("cropQuadrant", None)
+                else:
+                    f_entry["cropQuadrant"] = chosen_q
+                if p_date:
+                    f_entry["dateText"] = p_date
+                f_entry["timestamp"] = time.time()
+                curr_meta[fname] = f_entry
+                try:
+                    with open(meta_file, "w", encoding="utf-8") as mf:
+                        json.dump(curr_meta, mf, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+
+            temp_url = None
+            if not is_uncrop and temp_dst.is_file():
+                mtime_t = int(os.path.getmtime(temp_dst))
+                temp_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(temp_dst))}&t={mtime_t}"
+
+            q_label = quad_labels.get(chosen_q, chosen_q)
+            msg = (
+                f"Foto dikembalikan ke ukuran utuh (Tanpa Crop) dan timemark diperbarui!"
+                if is_uncrop
+                else f"Kolase dipotong ke kuadran {q_label} dan timemark diperbarui!"
+            )
 
             self._json({
                 "ok": True,
-                "message": f"Kolase ({layout} - {stats.get('chosen_quadrant', 'BL')}) berhasil dipotong dan timemark diperbarui!",
+                "message": msg,
                 "tempUrl": temp_url,
+                "uncropped": is_uncrop,
+                "quadrant": chosen_q,
                 "layout": layout,
                 "cropBox": crop_box,
                 "stats": stats

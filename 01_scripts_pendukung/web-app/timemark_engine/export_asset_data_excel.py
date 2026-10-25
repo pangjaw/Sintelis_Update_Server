@@ -17,7 +17,11 @@ def _asset_code(funcloc: str) -> str:
 def _pdf_asset_codes(pdf_path: Path, category: str) -> dict[str, str]:
     """Fallback untuk schedule lama yang belum memiliki field funcloc."""
     try:
-        import fitz
+        import warnings; warnings.filterwarnings("ignore", category=FutureWarning)
+        try:
+            import pymupdf as fitz
+        except ImportError:
+            import fitz
         from export_pdf_foto import extract_all_funclocs, extract_identifier
         with fitz.open(pdf_path) as doc:
             text = doc[0].get_text() if len(doc) else ""

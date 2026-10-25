@@ -938,8 +938,15 @@ def normalize_schedule_identifier(identifier: str) -> str:
     return "ZP 41 BOO" if identifier.strip().upper() == "ZP 41B BOO" else identifier
 
 
+def _strip_date_suffix(ident: str) -> str:
+    return re.sub(r'_\d{2}-\d{2}(?:_part\d+)?$', '', ident.strip())
+
+
 def build_schedule_lookup(schedule_data: dict, tim_filter: int | None = None):
-    """Build {(btp, category, identifier, photo): (timemark_text, tim_n)}."""
+    """Build {(btp, category, identifier, photo): (timemark_text, tim_n)}.
+    Also indexes base_identifier (without _DD-MM suffix) so 2026 photo folders (e.g. MJ20 CLT_22-05)
+    match 2025 schedule entries (e.g. MJ20 CLT_13-05).
+    """
     lookup = {}
     for sched in schedule_data.get("schedules", []):
         tim_n = sched.get("tim", 1)
@@ -948,12 +955,17 @@ def build_schedule_lookup(schedule_data: dict, tim_filter: int | None = None):
         btp = sched.get("btp", "BTP JAK")
         category = sched.get("category", "UNKNOWN")
         identifier = normalize_schedule_identifier(sched.get("identifier") or sched.get("pdf_stem", ""))
+        base_id = _strip_date_suffix(identifier)
         for pname, iso_ts in sched.get("photos", {}).items():
-            key = (btp, category, identifier, pname)
             new_val = (iso_to_timemark(iso_ts), tim_n)
+            key = (btp, category, identifier, pname)
             existing = lookup.get(key)
             if existing is None or tim_n > existing[1]:
                 lookup[key] = new_val
+            if base_id and base_id != identifier:
+                base_key = (btp, category, base_id, pname)
+                if base_key not in lookup:
+                    lookup[base_key] = new_val
     return lookup
 
 
@@ -1020,21 +1032,58 @@ def _write_yolo_label(image_path: Path, image_size: tuple[int, int], guide):
     """Write one class-0 YOLO label beside the source image."""
     label_path = image_path.with_suffix(".txt")
     if guide is None:
-        if label_path.exists():
-            label_path.unlink()
         return
     width, height = image_size
+    if width <= 0 or height <= 0:
+        return
     x1, y1, x2, y2 = guide
     x1 = max(0, min(int(x1), width))
     y1 = max(0, min(int(y1), height))
     x2 = max(x1, min(int(x2), width))
     y2 = max(y1, min(int(y2), height))
     if x2 <= x1 or y2 <= y1:
-        if label_path.exists():
-            label_path.unlink()
         return
     label = f"0 {(x1 + x2) / 2 / width:.6f} {(y1 + y2) / 2 / height:.6f} {(x2 - x1) / width:.6f} {(y2 - y1) / height:.6f}\n"
-    label_path.write_text(label, encoding="utf-8")
+    try:
+        label_path.write_text(label, encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _read_yolo_label(image_path: Path, w: int, h: int) -> tuple[int, int, int, int] | None:
+    """Read coordinate from beside the source image (0.txt, 50.txt, 100.txt).
+    Supports both:
+    - Narrow vertical guide YOLO box (bw < 0.08) -> converted via place_textbox_fixed_offset()
+    - Full textbox YOLO box (bw >= 0.08) -> used directly as (x1, y1, x2, y2)
+    """
+    label_path = image_path.with_suffix(".txt")
+    if not label_path.is_file():
+        return None
+    try:
+        raw = label_path.read_text(encoding="utf-8", errors="ignore").strip()
+        if not raw:
+            return None
+        first_line = raw.splitlines()[0].strip()
+        parts = first_line.split()
+        if len(parts) >= 5:
+            xc = float(parts[1])
+            yc = float(parts[2])
+            bw = float(parts[3])
+            bh = float(parts[4])
+            if 0.0 <= xc <= 1.0 and 0.0 <= yc <= 1.0 and 0.0 < bw <= 1.0 and 0.0 < bh <= 1.0:
+                x1 = max(0, min(w - 1, int(round((xc - bw / 2.0) * w))))
+                y1 = max(0, min(h - 1, int(round((yc - bh / 2.0) * h))))
+                x2 = max(x1 + 1, min(w, int(round((xc + bw / 2.0) * w))))
+                y2 = max(y1 + 1, min(h, int(round((yc + bh / 2.0) * h))))
+                # Jika lebar < 8% gambar, berarti label berisi garis vertikal guide (gx1, gy1, gx2, gy2)
+                if bw < 0.08:
+                    return place_textbox_fixed_offset((x1, y1, x2, y2), w, h)
+                # Jika lebar >= 8%, berarti label berisi bounding box textbox langsung
+                box_h = max(16, int(h * BOX_HEIGHT_RATIO))
+                return (x1, y1, x2, min(h, y1 + box_h))
+    except Exception:
+        return None
+    return None
 
 
 # ─── Google Cloud Vision Integration ───
@@ -1075,6 +1124,8 @@ def detect_timemark_via_google_vision(image_path: Path, w: int, h: int, arr_orig
         load_google_vision_cache()
 
     rel_key = str(image_path).replace("\\", "/")
+    if "03_photos_cropped_temp" in rel_key and Path(image_path).is_file():
+        rel_key = f"{rel_key}@{int(Path(image_path).stat().st_mtime)}"
     if rel_key in _GV_CACHE:
         cached_box = _GV_CACHE[rel_key]
         # Only use cache if it was not an anomalous narrow/offset box
@@ -1273,45 +1324,8 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
     img_orig = Image.open(actual_input_path).convert("RGB")
     w, h = img_orig.size
     arr_orig = np.array(img_orig)
-    _write_yolo_label(image_path, (w, h), _detect_guideline_for_label(arr_orig, w, h, is_collage))
 
-    # Detection logic
-    initial_box = None
-    initial_stage = None
-
-    eff_detector = detector or CURRENT_DETECTOR
-    if eff_detector == "google_vision":
-        gv_box, gv_stage = detect_timemark_via_google_vision(actual_input_path, w, h, arr_orig=arr_orig, is_collage=is_collage)
-        if gv_box is not None:
-            initial_box = gv_box
-            initial_stage = gv_stage
-        elif gv_stage == "quota_exceeded":
-            # Signal quota exceeded to frontend
-            print(json.dumps({
-                "type": "quota_exceeded",
-                "message": "Kuota Google Cloud Vision telah habis atau penagihan dinonaktifkan."
-            }), flush=True)
-            # Wait for stdin input: continue_guide or stop
-            action = "continue_guide"
-            if sys.stdin.isatty():
-                ans = input("\n[PAUSE] Kuota Google Vision habis. Lanjutkan dengan Metode Biasa (Garis Merah)? [Y/n]: ").strip().lower()
-                action = "stop" if ans == "n" else "continue_guide"
-            else:
-                line = sys.stdin.readline().strip()
-                if line:
-                    action = line
-            if action == "continue_guide":
-                print("  │   ├── ⚠️ [FALLBACK] Beralih ke Metode Biasa (Garis Panduan Merah)", flush=True)
-                CURRENT_DETECTOR = "guide"
-                initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1, is_collage=is_collage)
-            else:
-                print("  │   ├── 🛑 [STOP] Proses dihentikan pengguna karena kuota Google Vision habis.", flush=True)
-                sys.exit(42)
-        else:
-            initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1, is_collage=is_collage)
-    else:
-        initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1, is_collage=is_collage)
-
+    # Prioritas 1: Override manual (dari UI / parameter CLI) -> Bypass semua deteksi
     if y_override is not None:
         box_w = int(w * BOX_WIDTH_RATIO)
         box_h = int(h * BOX_HEIGHT_RATIO)
@@ -1332,15 +1346,64 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
         y2 = min(h, y1 + box_h)
         box = (x1, y1, x2, y2)
         stage = "stage_0_override"
+        initial_box, initial_stage = box, stage
+        # Simpan/perbarui koordinat manual ke .txt di folder sumber agar menjadi stok foto permanen
+        _write_yolo_label(image_path, (w, h), box)
+        if actual_input_path != image_path:
+            _write_yolo_label(actual_input_path, (w, h), box)
+
+    # Prioritas 2: Mode Mask Eksplisit (Pixel Inspector)
     elif mask_mode is not None:
         guide = find_guide_by_mask_direct(arr_orig, mask_mode)
         if guide is not None:
             box = place_textbox_fixed_offset(guide, w, h)
             stage = f"stage_pixel_inspector_{mask_mode}"
+            _write_yolo_label(image_path, (w, h), guide)
         else:
-            box, stage = initial_box, initial_stage
+            box, stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+        initial_box, initial_stage = box, stage
+
+    # Prioritas 3: Deteksi otomatis (Google Vision / HSV Guide / OCR)
     else:
-        box, stage = initial_box, initial_stage
+        if True:
+            eff_detector = detector or CURRENT_DETECTOR
+            if eff_detector == "google_vision":
+                gv_box, gv_stage = detect_timemark_via_google_vision(actual_input_path, w, h, arr_orig=arr_orig, is_collage=is_collage)
+                if gv_box is not None:
+                    initial_box = gv_box
+                    initial_stage = gv_stage
+                elif gv_stage == "quota_exceeded":
+                    print(json.dumps({
+                        "type": "quota_exceeded",
+                        "message": "Kuota Google Cloud Vision telah habis atau penagihan dinonaktifkan."
+                    }), flush=True)
+                    action = "continue_guide"
+                    if sys.stdin.isatty():
+                        ans = input("\n[PAUSE] Kuota Google Vision habis. Lanjutkan dengan Metode Biasa (Garis Merah)? [Y/n]: ").strip().lower()
+                        action = "stop" if ans == "n" else "continue_guide"
+                    else:
+                        line = sys.stdin.readline().strip()
+                        if line:
+                            action = line
+                    if action == "continue_guide":
+                        print("  │   ├── ⚠️ [FALLBACK] Beralih ke Metode Biasa (Garis Panduan Merah)", flush=True)
+                        CURRENT_DETECTOR = "guide"
+                        initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+                    else:
+                        print("  │   ├── 🛑 [STOP] Proses dihentikan pengguna karena kuota Google Vision habis.", flush=True)
+                        sys.exit(42)
+                else:
+                    initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+            else:
+                initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+
+            box, stage = initial_box, initial_stage
+            # Simpan hasil deteksi ke 0.txt / 50.txt / 100.txt untuk dipakai otomatis di kemudian hari
+            guide_for_label = _detect_guideline_for_label(arr_orig, w, h, is_collage)
+            if guide_for_label is not None:
+                _write_yolo_label(image_path, (w, h), guide_for_label)
+            elif stage != "stage_fallback" and box is not None:
+                _write_yolo_label(image_path, (w, h), box)
 
     detector_meta = {
         "stage": initial_stage,
@@ -1563,8 +1626,9 @@ def main():
 
     current_asset_folder = None
     asset_folder_count = 0
+    total_all_jpgs = len(all_jpgs)
 
-    for src in all_jpgs:
+    for idx_jpg, src in enumerate(all_jpgs, 1):
         src_resolved = src.resolve()
         parts = src_resolved.parts
         if "03_photos_export" in parts:
@@ -1611,6 +1675,10 @@ def main():
             dst_dir = output_dir / f"Tim_{tim_n}"
         elif schedule_lookup and asset_key:
             result = schedule_lookup.get(asset_key)
+            if not result:
+                base_ident = _strip_date_suffix(identifier)
+                if base_ident != identifier:
+                    result = schedule_lookup.get((btp, category, base_ident, photo_name))
             if result:
                 timemark_text, tim_n = result
                 dst_dir = output_dir / f"Tim_{tim_n}" / asset_output_dir(Path(""), btp, category, identifier)
@@ -1676,7 +1744,7 @@ def main():
                 print(f"  └── [OK] Folder selesai diproses\n", flush=True)
             current_asset_folder = asset_folder_key
             asset_folder_count += 1
-            print(f"[{asset_folder_count}] 📁 {btp}/{category}/{identifier} (Tim {tim_n})", flush=True)
+            print(f"[{idx_jpg}/{total_all_jpgs}] 📁 [Folder #{asset_folder_count}] {btp}/{category}/{identifier} (Tim {tim_n})", flush=True)
             print(f"  ├── Target Timemark : {timemark_text}", flush=True)
 
         is_coll = str(rel).replace('\\', '/').lower() in cropped_collages_set

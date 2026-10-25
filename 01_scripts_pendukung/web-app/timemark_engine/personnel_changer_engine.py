@@ -15,7 +15,12 @@ import re
 import sys
 import shutil
 from pathlib import Path
-import fitz
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 # Pastikan timemark_engine ada di sys.path
 ENGINE_DIR = Path(__file__).resolve().parent

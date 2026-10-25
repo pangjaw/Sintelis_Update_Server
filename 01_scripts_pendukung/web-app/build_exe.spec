@@ -85,6 +85,7 @@ a = Analysis(
         'sklearn', 'scikit_learn', 'nltk', 'spacy',
         'lxml', 'websockets', 'uvicorn', 'anyio',
         'jsonschema', 'setuptools', 'pip', 'wheel', 'tensorboard',
+        'pymupdf.layout', 'pymupdf_layout', 'pymupdf4llm', 'onnxruntime',
     ],
     cipher=block_cipher, noarchive=False,
 )

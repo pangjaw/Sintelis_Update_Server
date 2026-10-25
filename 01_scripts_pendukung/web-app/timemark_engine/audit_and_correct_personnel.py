@@ -13,7 +13,12 @@ if hasattr(sys.stdout, 'reconfigure'):
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
-import fitz
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 # Ensure scripts folder is on path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -405,9 +410,16 @@ def audit_folder(folder_path: Path, pegawai_cfg: dict = None):
     all_kaur = list(kaur_map.values())
     all_pnc = list(pnc_map.values())
 
+    def _resolve_file_tim(f_path_str: str, f_name: str) -> int:
+        for part in Path(f_path_str).parts:
+            m_t = re.match(r'^tim[_\s-]*(\d+)$', part.strip(), re.I)
+            if m_t:
+                return int(m_t.group(1))
+        return file_to_tim.get(f_name, 1)
+
     files_by_date = defaultdict(list)
     for f in files_result:
-        f['tim'] = file_to_tim.get(f['file'], 1)
+        f['tim'] = _resolve_file_tim(f.get('path', ''), f['file'])
         f['team_label'] = f"Tim {f['tim']}"
         d = f.get('date') or 'UNKNOWN'
         files_by_date[d].append(f)
@@ -421,15 +433,24 @@ def audit_folder(folder_path: Path, pegawai_cfg: dict = None):
         tim3_files = [f for f in date_files if f.get('tim', 1) >= 3]
 
         # ── 1. TIM 1: selalu memakai personil yang sudah tertulis di berkas fisik asli ──
-        t1_kaur_found = []
-        t1_pnc_found = []
+        t1_kaur_counts = Counter()
+        t1_pnc_counts = Counter()
         for f in tim1_files:
             for k in f.get('kaur', []):
-                if k in kaur_map and kaur_map[k] not in t1_kaur_found:
-                    t1_kaur_found.append(kaur_map[k])
+                if k in kaur_map:
+                    t1_kaur_counts[k] += 1
             for p in f.get('pnc', []):
-                if p in pnc_map and pnc_map[p] not in t1_pnc_found:
-                    t1_pnc_found.append(pnc_map[p])
+                if p in pnc_map:
+                    t1_pnc_counts[p] += 1
+
+        kaur_order = {k['nama']: idx for idx, k in enumerate(all_kaur)}
+        pnc_order = {p['nama']: idx for idx, p in enumerate(all_pnc)}
+
+        t1_kaur_sorted = sorted(t1_kaur_counts.keys(), key=lambda n: (-t1_kaur_counts[n], kaur_order.get(n, 999)))
+        t1_pnc_sorted = sorted(t1_pnc_counts.keys(), key=lambda n: (-t1_pnc_counts[n], pnc_order.get(n, 999)))
+
+        t1_kaur_found = [kaur_map[n] for n in t1_kaur_sorted[:1]]
+        t1_pnc_found = [pnc_map[n] for n in t1_pnc_sorted[:2]]
 
         if not t1_kaur_found and all_kaur:
             k_idx = (day_num - 1) % len(all_kaur)
@@ -440,8 +461,8 @@ def audit_folder(folder_path: Path, pegawai_cfg: dict = None):
                     t1_pnc_found.append(p)
                     break
 
-        t1_kaur_names = {k['nama'] for k in t1_kaur_found}
-        t1_pnc_names = {p['nama'] for p in t1_pnc_found}
+        t1_kaur_names = {k['nama'] for k in t1_kaur_found[:1]}
+        t1_pnc_names = {p['nama'] for p in t1_pnc_found[:2]}
 
         for f in tim1_files:
             f['expected_kaur'] = list(t1_kaur_names)
@@ -586,7 +607,10 @@ def load_or_build_file_tim_mapping(folder_path: Path) -> dict[str, int]:
     candidates = [
         folder_path / "schedule.json",
         folder_path.parent / "schedule.json",
+        folder_path.parent / "Fixed" / "schedule.json",
+        folder_path.parent / "FOTO" / "schedule.json",
         folder_path.parent.parent / "schedule.json",
+        folder_path.parent.parent / "FOTO" / "schedule.json",
         folder_path / "temp_custom_schedule.json",
         folder_path / "temp_dinasan_schedule.json",
         Path("schedule.json"),
@@ -677,26 +701,32 @@ def auto_correct_files(folder_path: Path, target_file_names: list = None, pegawa
         m_day = re.match(r'^(\d{2})', d_str)
         day_num = int(m_day.group(1)) if m_day else 1
 
-        # Pisahkan file pada tanggal ini berdasarkan tim
-        tim1_files = [f for f in date_files if file_to_tim.get(f['file'], 1) == 1]
-        tim2_files = [f for f in date_files if file_to_tim.get(f['file'], 1) == 2]
-        tim3_files = [f for f in date_files if file_to_tim.get(f['file'], 1) >= 3]
+        # Pisahkan file pada tanggal ini berdasarkan tim (mendukung subfolder Tim_N maupun schedule.json)
+        tim1_files = [f for f in date_files if f.get('tim', file_to_tim.get(f['file'], 1)) == 1]
+        tim2_files = [f for f in date_files if f.get('tim', file_to_tim.get(f['file'], 1)) == 2]
+        tim3_files = [f for f in date_files if f.get('tim', file_to_tim.get(f['file'], 1)) >= 3]
 
         # ── 1. TIM 1 ──
         # Kumpulkan personil yang ada di berkas Tim 1
-        t1_kaur_found = []
-        t1_pnc_found = []
+        t1_kaur_counts = Counter()
         t1_pnc_usage = Counter()
 
         for f in tim1_files:
             for k in f.get('kaur', []):
-                if k in kaur_map and kaur_map[k] not in t1_kaur_found:
-                    t1_kaur_found.append(kaur_map[k])
+                if k in kaur_map:
+                    t1_kaur_counts[k] += 1
             for p in f.get('pnc', []):
                 if p in pnc_map:
-                    if pnc_map[p] not in t1_pnc_found:
-                        t1_pnc_found.append(pnc_map[p])
                     t1_pnc_usage[p] += 1
+
+        kaur_order = {k['nama']: idx for idx, k in enumerate(all_kaur)}
+        pnc_order = {p['nama']: idx for idx, p in enumerate(all_pnc)}
+
+        t1_kaur_sorted = sorted(t1_kaur_counts.keys(), key=lambda n: (-t1_kaur_counts[n], kaur_order.get(n, 999)))
+        t1_pnc_sorted = sorted(t1_pnc_usage.keys(), key=lambda n: (-t1_pnc_usage[n], pnc_order.get(n, 999)))
+
+        t1_kaur_found = [kaur_map[n] for n in t1_kaur_sorted[:1]]
+        t1_pnc_found = [pnc_map[n] for n in t1_pnc_sorted[:2]]
 
         # Pastikan pool Tim 1 memiliki minimal 1 KAUR dan 2 PNC
         if not t1_kaur_found:

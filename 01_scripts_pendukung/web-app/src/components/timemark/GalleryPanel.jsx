@@ -1183,7 +1183,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   };
 
   // Potong Kolase Per Foto (Crop Single Collage) Handler
-  const handleCropCollageSingle = async (targetKey) => {
+  const handleCropCollageSingle = async (targetKey, quadrant = null) => {
     if (!targetKey) return;
     setActionLoadingRel(targetKey);
     try {
@@ -1192,7 +1192,9 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           baseExportDir: exportDir,
-          rel: targetKey
+          rel: targetKey,
+          quadrant: quadrant || undefined,
+          detector: activeDetector
         })
       });
       const data = await res.json();
@@ -1937,24 +1939,46 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                               </span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 {photoObj?.isCollage && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCropCollageSingle(targetKey)}
-                                    disabled={actionLoadingRel === targetKey}
-                                    style={{
-                                      background: photoObj.hasTemp ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                                      border: photoObj.hasTemp ? '1px solid #22c55e' : '1px solid #f59e0b',
-                                      color: photoObj.hasTemp ? '#4ade80' : '#fbbf24',
-                                      cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
-                                      padding: '1px 5px',
-                                      borderRadius: '4px',
-                                      fontSize: '0.68rem',
-                                      fontWeight: 600
-                                    }}
-                                    title={photoObj.hasTemp ? "Kolase sudah dipotong. Klik untuk potong ulang (auto-crop)" : "Potong otomatis kolase ini (auto-crop 300x300)"}
-                                  >
-                                    ✂️ {actionLoadingRel === targetKey ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong')}
-                                  </button>
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCropCollageSingle(targetKey)}
+                                      disabled={actionLoadingRel === targetKey}
+                                      style={{
+                                        background: photoObj.hasTemp ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                                        border: photoObj.hasTemp ? '1px solid #22c55e' : '1px solid #f59e0b',
+                                        color: photoObj.hasTemp ? '#4ade80' : '#fbbf24',
+                                        cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                        padding: '1px 5px',
+                                        borderRadius: '4px',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 600
+                                      }}
+                                      title={photoObj.hasTemp ? "Klik untuk ganti kuadran potong (Kiri-Atas ➔ Kanan-Atas ➔ Kiri-Bawah ➔ Kanan-Bawah ➔ Utuh)" : "Potong otomatis kolase ini (auto-crop 300x300)"}
+                                    >
+                                      ✂️ {actionLoadingRel === targetKey ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong')}
+                                    </button>
+                                    {photoObj.hasTemp && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCropCollageSingle(targetKey, 'ORIGINAL')}
+                                        disabled={actionLoadingRel === targetKey}
+                                        style={{
+                                          background: 'rgba(239, 68, 68, 0.18)',
+                                          border: '1px solid #ef4444',
+                                          color: '#f87171',
+                                          cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                          padding: '1px 5px',
+                                          borderRadius: '4px',
+                                          fontSize: '0.68rem',
+                                          fontWeight: 600
+                                        }}
+                                        title="Kembalikan ke foto utuh (batal potong kolase) dan perbarui timemark"
+                                      >
+                                        ↩️ Utuh
+                                      </button>
+                                    )}
+                                  </>
                                 )}
                                 {photoObj?.rawUrl && (
                                   <button
@@ -2444,28 +2468,54 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                           )}
 
                           {viewMode !== 'dual' && photoObj.isCollage && (
-                            <button
-                              type="button"
-                              onClick={() => handleCropCollageSingle(targetKey)}
-                              disabled={actionLoadingRel === targetKey}
-                              style={{
-                                padding: '0.4rem 0.6rem',
-                                background: photoObj.hasTemp ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                                color: photoObj.hasTemp ? '#4ade80' : '#fbbf24',
-                                border: photoObj.hasTemp ? '1px solid #22c55e' : '1px solid #f59e0b',
-                                borderRadius: '6px',
-                                cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.25rem'
-                              }}
-                              title={photoObj.hasTemp ? "Kolase sudah dipotong. Klik untuk potong ulang" : "Potong otomatis foto kolase ini (auto-crop 300x300)"}
-                            >
-                              <span>✂️</span>
-                              <span>{actionLoadingRel === targetKey ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong Kolase')}</span>
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleCropCollageSingle(targetKey)}
+                                disabled={actionLoadingRel === targetKey}
+                                style={{
+                                  padding: '0.4rem 0.6rem',
+                                  background: photoObj.hasTemp ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                                  color: photoObj.hasTemp ? '#4ade80' : '#fbbf24',
+                                  border: photoObj.hasTemp ? '1px solid #22c55e' : '1px solid #f59e0b',
+                                  borderRadius: '6px',
+                                  cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}
+                                title={photoObj.hasTemp ? "Klik untuk ganti kuadran potong (Kiri-Atas ➔ Kanan-Atas ➔ Kiri-Bawah ➔ Kanan-Bawah ➔ Utuh)" : "Potong otomatis foto kolase ini (auto-crop 300x300)"}
+                              >
+                                <span>✂️</span>
+                                <span>{actionLoadingRel === targetKey ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong Kolase')}</span>
+                              </button>
+                              {photoObj.hasTemp && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCropCollageSingle(targetKey, 'ORIGINAL')}
+                                  disabled={actionLoadingRel === targetKey}
+                                  style={{
+                                    padding: '0.4rem 0.6rem',
+                                    background: 'rgba(239, 68, 68, 0.18)',
+                                    color: '#f87171',
+                                    border: '1px solid #ef4444',
+                                    borderRadius: '6px',
+                                    cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem'
+                                  }}
+                                  title="Kembalikan ke foto utuh (batal potong kolase) dan perbarui timemark"
+                                >
+                                  <span>↩️</span>
+                                  <span>Utuh</span>
+                                </button>
+                              )}
+                            </>
                           )}
 
                           {viewMode !== 'dual' && (

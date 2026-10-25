@@ -1,0 +1,22 @@
+[
+  {
+    "btp": "BTP BD",
+    "category": "AXC",
+    "identifier": "ZP 28C BTT-BOP",
+    "photo": "50.jpg",
+    "source": "D:\\Dika\\IMO\\MEI\\FOTO\\03_export_foto\\BTP BD\\AXC\\ZP 28C BTT-BOP\\50.jpg",
+    "output": "D:\\Dika\\IMO\\MEI\\FOTO\\04_photos_edited\\Tim_1\\BTP BD\\AXC\\ZP 28C BTT-BOP\\50.jpg",
+    "stage": "stage_fallback_skipped",
+    "timestamp": "2026-10-25 01:47:48"
+  },
+  {
+    "btp": "BTP BD",
+    "category": "AXC",
+    "identifier": "ZP 47D BOP",
+    "photo": "0.jpg",
+    "source": "D:\\Dika\\IMO\\MEI\\FOTO\\03_export_foto\\BTP BD\\AXC\\ZP 47D BOP\\0.jpg",
+    "output": "D:\\Dika\\IMO\\MEI\\FOTO\\04_photos_edited\\Tim_2\\BTP BD\\AXC\\ZP 47D BOP\\0.jpg",
+    "stage": "stage_fallback_skipped",
+    "timestamp": "2026-10-25 01:47:50"
+  }
+]

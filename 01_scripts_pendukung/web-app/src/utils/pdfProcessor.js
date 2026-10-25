@@ -32,7 +32,8 @@ const API_OCR = 'http://localhost:18725/api/ocr';
 export async function renderPage1(pdfBuffer, dpi = 200) {
   let pdf = null;
   try {
-    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBuffer) });
+    // Gunakan .slice(0) agar Web Worker PDF.js men-detach salinan buffer, bukan buffer asli milik file
+    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBuffer.slice(0)) });
     pdf = await loadingTask.promise;
     const page = await pdf.getPage(1);
     const viewport = page.getViewport({ scale: dpi / 72 });
@@ -174,7 +175,8 @@ export async function computeSha256(arrayBuffer) {
 export async function extractDigitalText(arrayBuffer) {
   let pdf = null;
   try {
-    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) });
+    // Gunakan .slice(0) agar Web Worker PDF.js men-detach salinan buffer, bukan buffer asli milik file
+    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) });
     pdf = await loadingTask.promise;
     const page = await pdf.getPage(1);
     const content = await page.getTextContent();
@@ -257,11 +259,12 @@ export async function processSingleFile(file, detectFn) {
     const prefixPeriode = `${thnAngka}-${blnAngka}`;
 
     const { kode, kategori, assets } = detectFn(textFlat, textCrop, nameOnly);
+    const safeBytes = (arrayBuffer && arrayBuffer.byteLength > 0) ? arrayBuffer : await file.arrayBuffer();
 
     return {
       status: 'success',
       filename: fname,
-      fileBytes: arrayBuffer,
+      fileBytes: safeBytes,
       kode,
       kategori,
       assets,

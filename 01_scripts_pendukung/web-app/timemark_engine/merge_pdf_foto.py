@@ -20,7 +20,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from collections import defaultdict, Counter
 from dataclasses import dataclass
 import pdfplumber
-import fitz  # PyMuPDF
+import warnings; warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 from PIL import Image
 import io
 import openpyxl
@@ -36,7 +40,7 @@ from export_pdf_foto import (
 )
 from employee_manager import (
     load_pegawai_config, extract_page1_tim1_personnel,
-    get_tim2_roster_for_date, replace_page1_employee_names
+    get_tim2_roster_for_date, get_tim3_roster_for_date, replace_page1_employee_names
 )
 
 import pytesseract
@@ -539,16 +543,33 @@ def _find_candidate_folders(base_dir: Path, cand: str, expected_suffix: str = ""
     if exact_p.is_dir() and exact_p not in folders:
         folders.append(exact_p)
 
-    cand_clean = cand.replace(" ", "").upper()
+    cand_clean = re.sub(r'_\d{2}-\d{2}(?:_part\d+)?$', '', cand).replace(" ", "").upper()
     suf_clean = f"{cand_clean}{expected_suffix.replace(' ', '').upper()}" if expected_suffix else ""
+    base_fallback = []
+    target_dd = None
+    if expected_suffix:
+        m_dd = re.search(r'_(\d{2})-\d{2}', expected_suffix)
+        if m_dd:
+            target_dd = int(m_dd.group(1))
     try:
         for sub in base_dir.iterdir():
             if sub.is_dir() and sub not in folders:
                 sub_clean = sub.name.replace(" ", "").upper()
                 if (suf_clean and sub_clean == suf_clean) or (sub_clean == cand_clean):
                     folders.append(sub)
+                else:
+                    sub_base = re.sub(r'_\d{2}-\d{2}(?:_PART\d+)?$', '', sub_clean, flags=re.I)
+                    if sub_base == cand_clean:
+                        sub_dd = 999
+                        m_sdd = re.search(r'_(\d{2})-\d{2}', sub.name)
+                        if m_sdd and target_dd is not None:
+                            sub_dd = abs(int(m_sdd.group(1)) - target_dd)
+                        base_fallback.append((sub_dd, sub))
     except Exception:
         pass
+    if not folders and base_fallback:
+        base_fallback.sort(key=lambda x: x[0])
+        folders.extend([ item[1] for item in base_fallback ])
     return folders
 
 
@@ -838,6 +859,11 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
             t1_tokens = tim1_personnel_by_date.get(d_key, set()) if tim1_personnel_by_date else set()
             roster = get_tim2_roster_for_date(d_key, t1_tokens, pegawai_config)
         replace_page1_employee_names(doc, roster)
+    elif output_tim and output_tim.startswith("Tim_") and output_tim not in ("Tim_1", "Tim_2"):
+        m_date = re.search(r'(\d{2})-(\d{2})-(\d{4})', pdf_path.name)
+        d_key = m_date.group(0) if m_date else date_str
+        roster_t3 = get_tim3_roster_for_date(d_key, pegawai_config)
+        replace_page1_employee_names(doc, roster_t3)
 
     # Remove all old photo pages (3-layer: QR code → header → heuristic)
     _delete_photo_pages(doc)
@@ -1209,6 +1235,7 @@ def parse_args():
     p.add_argument("--input", default=DEFAULT_INPUT_DIR)
     p.add_argument("--photos", default=DEFAULT_PHOTOS_DIR)
     p.add_argument("--output", default=DEFAULT_OUTPUT_DIR)
+    p.add_argument("--schedule", default=None, help="Path ke schedule.json")
     p.add_argument("--file", default=None, help="Nama atau path berkas PDF spesifik untuk diproses saja")
     return p.parse_args()
 
@@ -1231,23 +1258,33 @@ def main():
         sap_path = "config/sap_station_mapping.json"
     sap_mapping = load_sap_mapping(sap_path)
 
-    # Load schedule.json for team assignment
+    args = parse_args()
+    input_dir = Path(args.input).resolve()
+    photos_dir = Path(args.photos).resolve()
+    output_dir = Path(args.output).resolve()
+
+    # Load schedule.json for team assignment (prioritize --schedule, photos_dir.parent, input_dir)
     schedule_map = {}
-    sched_path = Path("schedule.json")
-    if sched_path.exists():
+    sched_candidates = []
+    if args.schedule:
+        sched_candidates.append(Path(args.schedule))
+    sched_candidates.extend([
+        photos_dir.parent / "schedule.json",
+        input_dir / "schedule.json",
+        output_dir / "schedule.json",
+        Path("schedule.json"),
+    ])
+    sched_path = next((c for c in sched_candidates if c.is_file()), None)
+    if sched_path:
         try:
             with open(sched_path, "r", encoding="utf-8") as f:
                 s_data = json.load(f)
                 for s in s_data.get("schedules", []):
                     if "file" in s:
                         schedule_map[s["file"]] = s
+            log(f"[SCHEDULE] Memuat jadwal tim dari: {sched_path} ({len(schedule_map)} berkas)")
         except Exception as e:
             log(f"[WARNING] Cannot load schedule.json: {e}")
-
-    args = parse_args()
-    input_dir = Path(args.input).resolve()
-    photos_dir = Path(args.photos).resolve()
-    output_dir = Path(args.output).resolve()
 
     if not input_dir.is_dir():
         print(f"Folder input tidak ditemukan: {input_dir}")
@@ -1285,19 +1322,47 @@ def main():
     tim1_personnel_by_date = defaultdict(set)
     tim2_roster_cache = {}
 
+    try:
+        from audit_and_correct_personnel import extract_personnel_from_pdf, get_roster_sets
+        _km, _pm, _ = get_roster_sets(pegawai_config)
+    except Exception:
+        extract_personnel_from_pdf = None
+        _km, _pm = {}, {}
+
+    _t1_k_counts = defaultdict(Counter)
+    _t1_p_counts = defaultdict(Counter)
     for p in pdf_files:
         assigned_tim_num = schedule_map.get(p.name, {}).get("tim", 1)
         if assigned_tim_num == 1:
             m_dt = re.search(r'(\d{2})-(\d{2})-(\d{4})', p.name)
             d_k = m_dt.group(0) if m_dt else "DEFAULT"
-            if d_k not in tim1_personnel_by_date:
-                try:
-                    with fitz.open(str(p)) as doc_scan:
+            try:
+                with fitz.open(str(p)) as doc_scan:
+                    if extract_personnel_from_pdf:
+                        fk, fp, _ = extract_personnel_from_pdf(doc_scan, _km, _pm)
+                        for k_obj in fk:
+                            _t1_k_counts[d_k][k_obj["nama"]] += 1
+                        for p_obj in fp:
+                            _t1_p_counts[d_k][p_obj["nama"]] += 1
+                    else:
                         t1_toks = extract_page1_tim1_personnel(doc_scan)
                         if t1_toks:
                             tim1_personnel_by_date[d_k].update(t1_toks)
-                except Exception:
-                    pass
+            except Exception:
+                pass
+
+    if extract_personnel_from_pdf:
+        _all_k = list(pegawai_config.get("kaur", []))
+        _all_p = list(pegawai_config.get("pnc", []))
+        _k_ord = {k["nama"].strip().upper(): idx for idx, k in enumerate(_all_k)}
+        _p_ord = {p["nama"].strip().upper(): idx for idx, p in enumerate(_all_p)}
+        for d_k in set(_t1_k_counts.keys()) | set(_t1_p_counts.keys()):
+            kc = _t1_k_counts[d_k]
+            pc = _t1_p_counts[d_k]
+            ks = sorted(kc.keys(), key=lambda n: (-kc[n], _k_ord.get(n, 999)))[:1]
+            ps = sorted(pc.keys(), key=lambda n: (-pc[n], _p_ord.get(n, 999)))[:2]
+            tim1_personnel_by_date[d_k].update(ks)
+            tim1_personnel_by_date[d_k].update(ps)
 
     success = 0
     skipped = 0
@@ -1307,7 +1372,7 @@ def main():
 
     import concurrent.futures
 
-    max_workers = min(len(pdf_files), 4 if args.file else min(4, os.cpu_count() or 2))
+    max_workers = min(len(pdf_files), 4 if args.file else min(12, max(4, (os.cpu_count() or 4) * 2)))
     tasks = [
         (p, photos_dir, output_dir, input_dir, sap_mapping, schedule_map,
          tim2_roster_cache, tim1_personnel_by_date, pegawai_config)
@@ -1420,6 +1485,22 @@ def main():
 
 
     # ── Auto-export GAGAL_FALLBACK ──
+    # Salin schedule.json ke output_dir dan sinkronkan personil Tim 1/2/3 agar 100% sesuai saat diaudit
+    if sched_path and sched_path.is_file():
+        try:
+            shutil.copy2(sched_path, output_dir / "schedule.json")
+        except Exception:
+            pass
+    # Hapus cache audit lama agar tab Koreksi Dokumen langsung menampilkan status terbaru
+    try:
+        app_d = os.environ.get("LOCALAPPDATA", "")
+        if app_d:
+            c_f = Path(app_d) / "SintelisUtility" / "audit_personnel_cache.json"
+            if c_f.is_file():
+                c_f.unlink()
+    except Exception:
+        pass
+
     export_gagal_fallback(logs_dir, failed_files=failed_files, skipped_files=skipped_files)
 
     summary = {
