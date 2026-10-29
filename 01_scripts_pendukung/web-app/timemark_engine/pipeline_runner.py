@@ -113,7 +113,7 @@ def run_cmd(cmd_list, step_key, step_name, start_pct=0.0, end_pct=100.0):
             if not line_str:
                 continue
             # Abaikan pesan FutureWarning / DeprecationWarning internal library (seperti fitz/__init__.py)
-            if "FutureWarning:" in line_str or "DeprecationWarning:" in line_str or "fitz\__init__.py" in line_str or "fitz/__init__.py" in line_str:
+            if "FutureWarning:" in line_str or "DeprecationWarning:" in line_str or "fitz\\__init__.py" in line_str or "fitz/__init__.py" in line_str:
                 continue
             # Abaikan baris JSON telemetri internal agar log tetap bersih
             if line_str.startswith('{"type": "stage"') or line_str.startswith("__SUMMARY__:"):
@@ -177,7 +177,7 @@ def run_cmd(cmd_list, step_key, step_name, start_pct=0.0, end_pct=100.0):
         add_log("error", f"✗ Galat pada {step_name}: {e}")
         return False
 
-def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode="dual", overwrite_original=False, detector="google_vision"):
+def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode="dual", overwrite_original=False, detector="google_vision", split_multi_asset=False, include_time=True):
     with _state_lock:
         state["running"] = True
         state["cancelled"] = False
@@ -253,12 +253,15 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
             with _state_lock:
                 state["current_step"] = 1
                 state["progress"] = int((step_idx - 1) / total_steps * 100)
-            cmd = make_cmd("export_pdf_foto.py", [
+            step1_args = [
                 "--input", source_dir,
                 "--target-dir", target_dir,
                 "--output", raw_photos_dir,
                 "--sap-mapping", sap_mapping
-            ])
+            ]
+            if split_multi_asset:
+                step1_args.append("--split-multi-asset")
+            cmd = make_cmd("export_pdf_foto.py", step1_args)
             s_pct = (step_idx - 1) / total_steps * 100.0
             e_pct = step_idx / total_steps * 100.0
             ok = run_cmd(cmd, "step1", f"Step 1: Ekstraksi Foto ({'PDF Sumber' if mode == 'single' else 'PDF 2026'})", s_pct, e_pct)
@@ -292,10 +295,13 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
             with _state_lock:
                 state["current_step"] = 2
                 state["progress"] = int((step_idx - 1) / total_steps * 100)
-            cmd = make_cmd("extract_pdf_dates.py", [
+            step2_args = [
                 "--pdf-dir", target_dir,
                 "--output-dir", raw_photos_dir
-            ])
+            ]
+            if split_multi_asset:
+                step2_args.append("--split-multi-asset")
+            cmd = make_cmd("extract_pdf_dates.py", step2_args)
             s_pct = (step_idx - 1) / total_steps * 100.0
             e_pct = step_idx / total_steps * 100.0
             ok = run_cmd(cmd, "step2", f"Step 2: Ekstraksi Tanggal ({'PDF Sumber' if mode == 'single' else 'PDF Target 2025'})", s_pct, e_pct)
@@ -308,13 +314,16 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
             with _state_lock:
                 state["current_step"] = 3
                 state["progress"] = int((step_idx - 1) / total_steps * 100)
-            cmd = make_cmd("scheduler.py", [
+            step3_args = [
                 "--pdf-dir", target_dir,
                 "--photos-dir", raw_photos_dir,
                 "--mapping", time_mapping,
                 "--data-acuan", data_acuan,
                 "--output", schedule_file
-            ])
+            ]
+            if split_multi_asset:
+                step3_args.append("--split-multi-asset")
+            cmd = make_cmd("scheduler.py", step3_args)
             s_pct = (step_idx - 1) / total_steps * 100.0
             e_pct = step_idx / total_steps * 100.0
             ok = run_cmd(cmd, "step3", "Step 3: Penjadwalan Tim & Alokasi Waktu", s_pct, e_pct)
@@ -338,12 +347,15 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 state["progress"] = int((step_idx - 1) / total_steps * 100)
             chosen_detector = detector if detector in ("google_vision", "guide") else "google_vision"
             add_log("info", f"🔍 Detektor Timemark: {'Google Cloud Vision AI' if chosen_detector == 'google_vision' else 'Metode Biasa (HSV Garis Panduan)'}")
-            cmd = make_cmd("edit_timemark_ide1.py", [
+            step4_args = [
                 "--input", raw_photos_dir,
                 "--output", edited_photos_dir,
                 "--schedule", schedule_file,
                 "--detector", chosen_detector
-            ])
+            ]
+            if not include_time:
+                step4_args.append("--no-time")
+            cmd = make_cmd("edit_timemark_ide1.py", step4_args)
             s_pct = (step_idx - 1) / total_steps * 100.0
             e_pct = step_idx / total_steps * 100.0
             ok = run_cmd(cmd, "step4", f"Step 4: Edit Watermark Timemark Foto ({'AI Vision' if chosen_detector == 'google_vision' else 'HSV'})", s_pct, e_pct)
@@ -358,13 +370,16 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 state["progress"] = int((step_idx - 1) / total_steps * 100)
             temp_crops_dir = os.path.join(export_root, "03_photos_cropped_temp")
             add_log("info", "⚡ Mode Fast Update Timemark: Mengikuti koordinat (xPos, yPos) dari meta.json tanpa deteksi ulang...")
-            cmd = make_cmd("fast_update_timemark.py", [
+            fast_args = [
                 "--schedule", schedule_file,
                 "--input", raw_photos_dir,
                 "--temp", temp_crops_dir,
                 "--output", edited_photos_dir,
                 "--force"
-            ])
+            ]
+            if not include_time:
+                fast_args.append("--no-time")
+            cmd = make_cmd("fast_update_timemark.py", fast_args)
             s_pct = (step_idx - 1) / total_steps * 100.0
             e_pct = step_idx / total_steps * 100.0
             step_key = "step4_fast" if ("4_fast" in steps_to_run or "step4_fast" in steps_to_run) else "step4"
@@ -401,12 +416,15 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                         add_log("warn", f"Gagal mencadangkan {p.name}: {be}")
                 add_log("success", f"✓ {len(all_pdfs)} berkas PDF berhasil dicadangkan dengan aman.")
 
-            cmd = make_cmd("merge_pdf_foto.py", [
+            step5_args = [
                 "--input", target_dir,
                 "--photos", edited_photos_dir,
                 "--output", actual_step5_output,
                 "--schedule", schedule_file
-            ])
+            ]
+            if split_multi_asset:
+                step5_args.append("--split-multi-asset")
+            cmd = make_cmd("merge_pdf_foto.py", step5_args)
             s_pct = (step_idx - 1) / total_steps * 100.0
             e_pct = step_idx / total_steps * 100.0
             ok = run_cmd(cmd, "step5", "Step 5: Penggabungan PDF Final A4", s_pct, e_pct)
@@ -452,7 +470,7 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
         with _state_lock:
             state["running"] = False
 
-def start_pipeline(source_dir, target_dir=None, export_dir=None, merged_dir=None, selected_steps=None, mode="dual", overwrite_original=False, detector="google_vision"):
+def start_pipeline(source_dir, target_dir=None, export_dir=None, merged_dir=None, selected_steps=None, mode="dual", overwrite_original=False, detector="google_vision", split_multi_asset=False, include_time=True):
     steps_list = selected_steps if isinstance(selected_steps, list) else ["1", "1.5", "2", "3", "4", "5"]
 
     if mode == "single":
@@ -480,7 +498,7 @@ def start_pipeline(source_dir, target_dir=None, export_dir=None, merged_dir=None
 
     t = threading.Thread(
         target=_execute_pipeline_task,
-        args=(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode, overwrite_original, detector),
+        args=(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode, overwrite_original, detector, split_multi_asset, include_time),
         daemon=True
     )
     t.start()

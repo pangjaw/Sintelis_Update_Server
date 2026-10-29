@@ -31,23 +31,34 @@ function InlineTimemarkBox({
   photoName,
   exportDir,
   activeDetector = 'google_vision',
+  lastTimemarkPos,
+  onPosChange,
   onSaved,
   onOpenModal
 }) {
+  const boxRef = useRef(null);
+  const initialX = photo?.meta?.xPos ?? lastTimemarkPos?.x ?? 14;
+  const initialY = photo?.meta?.yPos ?? lastTimemarkPos?.y ?? 220;
   const [pos, setPos] = useState({
-    x: photo?.meta?.xPos ?? 14,
-    y: photo?.meta?.yPos ?? 220
+    x: initialX,
+    y: initialY
   });
   const [dragging, setDragging] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
+    const nx = photo?.meta?.xPos ?? lastTimemarkPos?.x ?? 14;
+    const ny = photo?.meta?.yPos ?? lastTimemarkPos?.y ?? 220;
     setPos({
-      x: photo?.meta?.xPos ?? 14,
-      y: photo?.meta?.yPos ?? 220
+      x: nx,
+      y: ny
     });
-  }, [photo?.meta?.xPos, photo?.meta?.yPos]);
+    if (boxRef.current) {
+      boxRef.current.style.left = '';
+      boxRef.current.style.top = '';
+    }
+  }, [photo?.meta?.xPos, photo?.meta?.yPos, photo?.meta?.timestamp, photo?.meta?.updatedAt, photo?.meta?.detector, lastTimemarkPos?.x, lastTimemarkPos?.y]);
 
   const handlePointerDown = (e) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -66,6 +77,9 @@ function InlineTimemarkBox({
 
     setDragging(true);
 
+    let lastNormX = pos.x;
+    let lastNormY = pos.y;
+
     const onPointerMove = (ev) => {
       ev.preventDefault();
       const dx = ev.clientX - startPointerX;
@@ -77,6 +91,9 @@ function InlineTimemarkBox({
       const maxTop = containerEl.clientHeight - boxEl.offsetHeight;
       const newLeft = Math.max(0, Math.min(maxLeft, startLeft + dx));
       const newTop = Math.max(0, Math.min(maxTop, startTop + dy));
+
+      lastNormX = Math.min(280, Math.max(0, Math.round((newLeft / containerEl.clientWidth) * 300)));
+      lastNormY = Math.min(280, Math.max(0, Math.round((newTop / containerEl.clientHeight) * 300)));
 
       boxEl.style.left = `${(newLeft / containerEl.clientWidth) * 100}%`;
       boxEl.style.top = `${(newTop / containerEl.clientHeight) * 100}%`;
@@ -94,9 +111,14 @@ function InlineTimemarkBox({
       }
 
       // Hitung koordinat ternormalisasi (0 - 300)
-      const normX = Math.min(280, Math.max(0, Math.round((boxEl.offsetLeft / containerEl.clientWidth) * 300)));
-      const normY = Math.min(280, Math.max(0, Math.round((boxEl.offsetTop / containerEl.clientHeight) * 300)));
-      setPos({ x: normX, y: normY });
+      setPos({ x: lastNormX, y: lastNormY });
+      if (boxRef.current) {
+        boxRef.current.style.left = '';
+        boxRef.current.style.top = '';
+      }
+      if (onPosChange) {
+        onPosChange({ x: lastNormX, y: lastNormY });
+      }
 
       let dateText = photo?.meta?.dateText || asset.dateText || '';
       if (!photo?.meta?.dateText && asset.dateText) {
@@ -114,8 +136,8 @@ function InlineTimemarkBox({
             baseExportDir: exportDir,
             rawRelPath,
             dateText,
-            yPos: normY,
-            xPos: normX,
+            yPos: lastNormY,
+            xPos: lastNormX,
             applyToFolder: false, // HANYA FOTO INI (misal khusus foto kedua)
             detector: activeDetector
           })
@@ -146,6 +168,7 @@ function InlineTimemarkBox({
 
   return (
     <div
+      ref={boxRef}
       className="inline-timemark-box"
       draggable={false}
       onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -203,6 +226,8 @@ function TimemarkEditorModal({
   photo,
   exportDir,
   defaultDetector = 'google_vision',
+  lastTimemarkPos,
+  onPosChange,
   onSaved
 }) {
   if (!isOpen || !asset || !photo) return null;
@@ -216,8 +241,8 @@ function TimemarkEditorModal({
 
   const rawRelPath = `${asset.relDir}/${photo.name}`;
   const [detector, setDetector] = useState(photo.meta?.detector || defaultDetector || 'google_vision');
-  const [yPos, setYPos] = useState(photo.meta?.yPos || 220);
-  const [xPos, setXPos] = useState(photo.meta?.xPos || 14);
+  const [yPos, setYPos] = useState(photo.meta?.yPos ?? lastTimemarkPos?.y ?? 220);
+  const [xPos, setXPos] = useState(photo.meta?.xPos ?? lastTimemarkPos?.x ?? 14);
   const [dateText, setDateText] = useState(calculatedDefaultDate);
   const [previewUrl, setPreviewUrl] = useState(photo.editedUrl || null);
   const [applyToFolder, setApplyToFolder] = useState(!isSecondOrThird);
@@ -244,6 +269,9 @@ function TimemarkEditorModal({
 
     setIsModalDragging(true);
 
+    let curNormX = xPos;
+    let curNormY = yPos;
+
     const onPointerMove = (ev) => {
       ev.preventDefault();
       const dx = ev.clientX - startPointerX;
@@ -253,10 +281,10 @@ function TimemarkEditorModal({
       const newLeft = Math.max(0, Math.min(maxLeft, startLeft + dx));
       const newTop = Math.max(0, Math.min(maxTop, startTop + dy));
 
-      const normX = Math.min(280, Math.max(0, Math.round((newLeft / containerEl.clientWidth) * 300)));
-      const normY = Math.min(280, Math.max(0, Math.round((newTop / containerEl.clientHeight) * 300)));
-      setXPos(normX);
-      setYPos(normY);
+      curNormX = Math.min(280, Math.max(0, Math.round((newLeft / containerEl.clientWidth) * 300)));
+      curNormY = Math.min(280, Math.max(0, Math.round((newTop / containerEl.clientHeight) * 300)));
+      setXPos(curNormX);
+      setYPos(curNormY);
     };
 
     const onPointerUp = () => {
@@ -264,6 +292,9 @@ function TimemarkEditorModal({
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
       setIsModalDragging(false);
+      if (onPosChange) {
+        onPosChange({ x: curNormX, y: curNormY });
+      }
     };
 
     window.addEventListener('pointermove', onPointerMove);
@@ -304,6 +335,19 @@ function TimemarkEditorModal({
         throw new Error(data.error || 'Gagal memproses timemark otomatis');
       }
 
+      let updatedX = xPos;
+      let updatedY = yPos;
+      if (data.xPos != null) { setXPos(data.xPos); updatedX = data.xPos; }
+      if (data.yPos != null) { setYPos(data.yPos); updatedY = data.yPos; }
+      if (data.meta && photo?.name && data.meta[photo.name]) {
+        const m = data.meta[photo.name];
+        if (m.xPos != null) { setXPos(m.xPos); updatedX = m.xPos; }
+        if (m.yPos != null) { setYPos(m.yPos); updatedY = m.yPos; }
+      }
+      if (onPosChange) {
+        onPosChange({ x: Number(updatedX), y: Number(updatedY) });
+      }
+
       // Perbarui preview URL dengan timestamp baru agar cache browser bypass
       const ts = Date.now();
       setPreviewUrl(`${photo.rawUrl.split('?')[0]}?t=${ts}&mode=edited`);
@@ -311,6 +355,9 @@ function TimemarkEditorModal({
         type: 'success',
         text: `✓ Foto berhasil diproses menggunakan ${detector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa (HSV)'}!`
       });
+      if (onPosChange) {
+        onPosChange({ x: Number(xPos), y: Number(yPos) });
+      }
       if (onSaved) onSaved();
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
@@ -895,6 +942,24 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   const [actionLoadingRel, setActionLoadingRel] = useState(null);
   const [draggedPhotoInfo, setDraggedPhotoInfo] = useState(null); // { rel, photoName, assetRel }
 
+  // Persistent Last Timemark Box Position (X, Y)
+  const [lastTimemarkPos, setLastTimemarkPos] = useState(() => {
+    try {
+      const raw = localStorage.getItem('sintelis_last_timemark_pos');
+      return raw ? JSON.parse(raw) : { x: 14, y: 220 };
+    } catch (_) {
+      return { x: 14, y: 220 };
+    }
+  });
+
+  const updateLastTimemarkPos = (newPos) => {
+    if (!newPos || typeof newPos.x !== 'number' || typeof newPos.y !== 'number') return;
+    setLastTimemarkPos(newPos);
+    try {
+      localStorage.setItem('sintelis_last_timemark_pos', JSON.stringify(newPos));
+    } catch (_) {}
+  };
+
   // Zoom Preview Modal State
   const [zoomPhoto, setZoomPhoto] = useState(null); // { url, title }
 
@@ -1102,7 +1167,9 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
             baseExportDir: exportDir,
             assetRelPath: assetRel,
             photoName,
-            imageBase64: base64Data
+            imageBase64: base64Data,
+            xPos: lastTimemarkPos?.x,
+            yPos: lastTimemarkPos?.y
           })
         });
         const data = await res.json();
@@ -1892,11 +1959,14 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                             onDragOver={e => {
                               e.preventDefault();
                               e.stopPropagation();
-                              setDragOverRel(targetKey);
+                              if (dragOverRel !== targetKey) {
+                                setDragOverRel(targetKey);
+                              }
                             }}
                             onDragLeave={e => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (e.currentTarget.contains(e.relatedTarget)) return;
                               setDragOverRel(null);
                             }}
                             onDrop={e => {
@@ -2026,9 +2096,9 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
                             {/* Drag Over Overlay */}
                             {isDragOver && (
-                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(245, 158, 11, 0.9)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ffffff', zIndex: 10, borderRadius: '6px' }}>
-                                <span style={{ fontSize: '1.5rem' }}>📥</span>
-                                <strong style={{ fontSize: '0.75rem' }}>Lepaskan untuk Ganti / Tukar Posisi</strong>
+                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(245, 158, 11, 0.9)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ffffff', zIndex: 10, borderRadius: '6px', pointerEvents: 'none' }}>
+                                <span style={{ fontSize: '1.5rem', pointerEvents: 'none' }}>📥</span>
+                                <strong style={{ fontSize: '0.75rem', pointerEvents: 'none' }}>Lepaskan untuk Ganti / Tukar Posisi</strong>
                               </div>
                             )}
 
@@ -2046,11 +2116,14 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                             onDragOver={e => {
                               e.preventDefault();
                               e.stopPropagation();
-                              setDragOverRel(targetKey);
+                              if (dragOverRel !== targetKey) {
+                                setDragOverRel(targetKey);
+                              }
                             }}
                             onDragLeave={e => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (e.currentTarget.contains(e.relatedTarget)) return;
                               setDragOverRel(null);
                             }}
                             onDrop={e => {
@@ -2131,6 +2204,8 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                                     photoName={photoName}
                                     exportDir={exportDir}
                                     activeDetector={activeDetector}
+                                    lastTimemarkPos={lastTimemarkPos}
+                                    onPosChange={updateLastTimemarkPos}
                                     onSaved={fetchPhotos}
                                     onOpenModal={() => setEditingModal({ asset, photo: photoObj })}
                                   />
@@ -2169,9 +2244,9 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
                             {/* Drag Over Overlay */}
                             {isDragOver && (
-                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(245, 158, 11, 0.9)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ffffff', zIndex: 10, borderRadius: '6px' }}>
-                                <span style={{ fontSize: '1.5rem' }}>📥</span>
-                                <strong style={{ fontSize: '0.75rem' }}>Lepaskan untuk Ganti / Tukar Posisi</strong>
+                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(245, 158, 11, 0.9)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ffffff', zIndex: 10, borderRadius: '6px', pointerEvents: 'none' }}>
+                                <span style={{ fontSize: '1.5rem', pointerEvents: 'none' }}>📥</span>
+                                <strong style={{ fontSize: '0.75rem', pointerEvents: 'none' }}>Lepaskan untuk Ganti / Tukar Posisi</strong>
                               </div>
                             )}
 
@@ -2191,11 +2266,14 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                           onDragOver={e => {
                             e.preventDefault();
                             e.stopPropagation();
-                            setDragOverRel(targetKey);
+                            if (dragOverRel !== targetKey) {
+                              setDragOverRel(targetKey);
+                            }
                           }}
                           onDragLeave={e => {
                             e.preventDefault();
                             e.stopPropagation();
+                            if (e.currentTarget.contains(e.relatedTarget)) return;
                             setDragOverRel(null);
                           }}
                           onDrop={e => {
@@ -2285,6 +2363,8 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                                   photoName={photoName}
                                   exportDir={exportDir}
                                   activeDetector={activeDetector}
+                                  lastTimemarkPos={lastTimemarkPos}
+                                  onPosChange={updateLastTimemarkPos}
                                   onSaved={fetchPhotos}
                                   onOpenModal={() => setEditingModal({ asset, photo: photoObj })}
                                 />
@@ -2379,9 +2459,9 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
                           {/* Drag Over Overlay */}
                           {isDragOver && (
-                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(245, 158, 11, 0.9)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ffffff', zIndex: 10 }}>
-                              <span style={{ fontSize: '2rem' }}>📥</span>
-                              <strong style={{ fontSize: '0.9rem' }}>Lepaskan untuk ganti foto</strong>
+                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(245, 158, 11, 0.9)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ffffff', zIndex: 10, pointerEvents: 'none' }}>
+                              <span style={{ fontSize: '2rem', pointerEvents: 'none' }}>📥</span>
+                              <strong style={{ fontSize: '0.9rem', pointerEvents: 'none' }}>Lepaskan untuk ganti foto</strong>
                             </div>
                           )}
 
@@ -2621,6 +2701,8 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
           photo={editingModal.photo}
           exportDir={exportDir}
           defaultDetector={activeDetector}
+          lastTimemarkPos={lastTimemarkPos}
+          onPosChange={updateLastTimemarkPos}
           onSaved={() => {
             fetchPhotos();
           }}

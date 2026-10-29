@@ -324,6 +324,8 @@ def parse_args() -> argparse.Namespace:
                         help="Resolusi render (default: 220, atau 300 saat --render-crop aktif).")
     parser.add_argument("--sap-mapping", default=SAP_MAPPING_PATH,
                         help=f"Path ke file mapping SAP. Default: {SAP_MAPPING_PATH}")
+    parser.add_argument("--split-multi-asset", action="store_true",
+                        help="Mode mapping multi asset per lokasi.")
     parser.add_argument("--render-crop", action="store_true",
                         help="Mode crop render halaman PDF (300 DPI) agar teks/watermark yang melayang di atas foto ikut terbawa.")
     return parser.parse_args()
@@ -336,8 +338,9 @@ def ensure_dir(path: Path) -> None:
 def list_pdf_files(folder: Path) -> list[Path]:
     if not folder.exists():
         return []
+    EXCLUDE = {"backups", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
     return sorted(
-        [p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf"]
+        [p for p in folder.rglob("*.pdf") if not any(x in p.parts for x in EXCLUDE) and p.is_file()]
     )
 
 
@@ -614,7 +617,7 @@ def normalize_jpl_identifier(ident: str) -> str:
     return f"{prefix} {'-'.join(normalized)}"
 
 
-def extract_identifier(funcloc_text: str, category: str) -> str | None:
+def extract_identifier(funcloc_text: str, category: str, split_multi_asset: bool = False) -> str | None:
     """Extract folder identifier from Funcloc/asset description line."""
 
     # ── Auto-detect category from funcloc prefix if UNKNOWN ──
@@ -863,6 +866,64 @@ def determine_btp(text: str, fallback_text: str = None) -> str:
 
 # ── Multi-Row Export (WESEL / SINYAL / AXC) ─────────────────────
 
+
+ASSET_LOCATION_LOCK = threading.Lock()
+ASSET_LOCATION_MAP_CACHE = {
+    "by_location": {},
+    "asset_to_location": {},
+    "pdf_to_location": {},
+    "pdf_to_assets": {}
+}
+
+def record_asset_location_mapping(output_root: Path, log_dir: Path, btp: str, category: str, location_ident: str, pdf_name: str, all_funclocs: list[str]) -> None:
+    """Record mapping of multi-asset checklist rows to their single location photo folder."""
+    if not all_funclocs or not location_ident:
+        return
+    with ASSET_LOCATION_LOCK:
+        loc_key = f"{category}/{location_ident}"
+        parsed_assets = []
+        for fl in all_funclocs:
+            fl_clean = fl.strip()
+            parts = fl_clean.split(":", 1)
+            fcode = parts[0].strip() if len(parts) > 1 else ""
+            fname = parts[1].strip() if len(parts) > 1 else fl_clean
+            fname = re.sub(r'\s+', ' ', fname)
+            parsed_assets.append({
+                "funcloc": fcode,
+                "name": fname,
+                "raw": fl_clean
+            })
+            ASSET_LOCATION_MAP_CACHE["asset_to_location"][fname] = location_ident
+            ASSET_LOCATION_MAP_CACHE["asset_to_location"][fl_clean] = location_ident
+            if fcode:
+                ASSET_LOCATION_MAP_CACHE["asset_to_location"][fcode] = location_ident
+
+        ASSET_LOCATION_MAP_CACHE["by_location"][loc_key] = {
+            "location": location_ident,
+            "category": category,
+            "btp": btp,
+            "folder": f"{btp}/{category}/{location_ident}",
+            "pdf_file": pdf_name,
+            "assets": parsed_assets
+        }
+        ASSET_LOCATION_MAP_CACHE["pdf_to_location"][pdf_name] = location_ident
+        ASSET_LOCATION_MAP_CACHE["pdf_to_assets"][pdf_name] = [a["name"] for a in parsed_assets]
+
+        # In-memory update for blazing fast concurrency; persisted via save_asset_location_mapping
+        pass
+
+def save_asset_location_mapping(output_root: Path, log_dir: Path) -> None:
+    """Flush the accumulated in-memory mapping to disk once."""
+    with ASSET_LOCATION_LOCK:
+        for target_dir in [output_root, log_dir]:
+            if target_dir:
+                try:
+                    ensure_dir(Path(target_dir))
+                    map_file = Path(target_dir) / "asset_location_mapping.json"
+                    map_file.write_text(json.dumps(ASSET_LOCATION_MAP_CACHE, indent=2, ensure_ascii=False), encoding="utf-8")
+                except Exception:
+                    pass
+
 def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                      all_funclocs: list[str], output_root: Path,
                      log_path: Path, log_exists: bool,
@@ -914,16 +975,10 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
 
     # Map each image row to nearest funcloc above it
     exported = 0
-    with CSV_LOCK, log_path.open("a", newline="", encoding="utf-8") as log_file:
-        writer = csv.DictWriter(log_file,
-            fieldnames=["pdf", "page", "asset_code", "asset_name", "label",
-                        "image_name", "output_file", "status"])
-        if not log_exists:
-            writer.writeheader()
+    log_rows = []
+    originals = {} if render_crop else original_images_by_name(reader, photo_page_idx)
 
-        originals = {} if render_crop else original_images_by_name(reader, photo_page_idx)
-
-        for row_imgs in rows:
+    for row_imgs in rows:
             row_top = float(row_imgs[0]['top'])
 
             # Find nearest funcloc ABOVE this row
@@ -942,7 +997,7 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                 if fc_idx < len(all_funclocs):
                     best_fc = all_funclocs[fc_idx]
                 else:
-                    writer.writerow({
+                    log_rows.append({
                         "pdf": pdf_name, "page": page.page_number,
                         "asset_code": "", "asset_name": "",
                         "label": "", "image_name": "",
@@ -955,7 +1010,7 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
             if not identifier and len(rows) == 1:
                 identifier = extract_identifier(pdf_name, category)
             if not identifier:
-                writer.writerow({
+                log_rows.append({
                     "pdf": pdf_name, "page": page.page_number,
                     "asset_code": best_fc, "asset_name": "",
                     "label": "", "image_name": "",
@@ -979,7 +1034,7 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
             # Export 3 photos sorted by x0
             sorted_imgs = sorted(row_imgs, key=lambda i: float(i['x0']))[:3]
             if len(sorted_imgs) < 3:
-                writer.writerow({
+                log_rows.append({
                     "pdf": pdf_name, "page": page.page_number,
                     "asset_code": best_fc, "asset_name": identifier,
                     "label": "", "image_name": "",
@@ -995,7 +1050,7 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                         data = _render_page_and_crop(page, placement, resolution=resolution, page_img=page_img)
                         suffix = '.jpg'
                     except Exception:
-                        writer.writerow({
+                        log_rows.append({
                             "pdf": pdf_name, "page": page.page_number,
                             "asset_code": best_fc, "asset_name": identifier,
                             "label": stem, "image_name": img_name,
@@ -1010,7 +1065,7 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                             data = _render_page_and_crop(page, placement, resolution=resolution)
                             suffix = '.jpg'
                         except Exception:
-                            writer.writerow({
+                            log_rows.append({
                                 "pdf": pdf_name, "page": page.page_number,
                                 "asset_code": best_fc, "asset_name": identifier,
                                 "label": stem, "image_name": img_name,
@@ -1028,14 +1083,14 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                     out_file.write_bytes(data)
                     exported += 1
                 except OSError as exc:
-                    writer.writerow({
+                    log_rows.append({
                         "pdf": pdf_name, "page": page.page_number,
                         "asset_code": best_fc, "asset_name": identifier,
                         "label": stem, "image_name": img_name,
                         "output_file": str(out_file), "status": f"failed: {exc}",
                     })
                     continue
-                writer.writerow({
+                log_rows.append({
                     "pdf": pdf_name, "page": page.page_number,
                     "asset_code": best_fc, "asset_name": identifier,
                     "label": stem, "image_name": img_name,
@@ -1043,6 +1098,15 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                 })
 
             print(f"  │   ├── [{category}] {best_fc or 'ASET'} -> {identifier} (3 foto)", flush=True)
+
+    if log_rows:
+        with CSV_LOCK, log_path.open("a", newline="", encoding="utf-8") as log_file:
+            writer = csv.DictWriter(log_file,
+                fieldnames=["pdf", "page", "asset_code", "asset_name", "label",
+                            "image_name", "output_file", "status"])
+            if not log_exists:
+                writer.writeheader()
+            writer.writerows(log_rows)
 
     return exported
 
@@ -1094,7 +1158,9 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
             pass
 
     # Multiple funclocs → force per-row export (each asset row gets own folder)
-    force_per_row = len(all_funclocs) > 1
+    # Shared photo checklists export to strictly ONE folder per location.
+    # Rows are mapped to this location folder via asset_location_mapping.json.
+    force_per_row = False
 
     # ── Fallback: detect category from funcloc prefix if filename detection failed ──
     CATEGORY_FROM_FUNCLOC = {"WSL": "WESEL", "SIN": "SINYAL", "AXL": "AXC"}
@@ -1147,36 +1213,43 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
         if date_suffix:
             identifier = f"{identifier}{date_suffix}"
 
-    # ── Build primary output directory ──
-    out_dir = identifier_output_dir(output_root, btp, category, identifier)
-    ensure_dir(out_dir)
+    # ── Build primary output directory (only for single-row / shared photo categories) ──
+    out_dir = None
+    if category not in MULTI_ROW_CATEGORIES:
+        out_dir = identifier_output_dir(output_root, btp, category, identifier)
+        ensure_dir(out_dir)
+        if all_funclocs:
+            record_asset_location_mapping(output_root, log_dir, btp, category, identifier, pdf_path.name, all_funclocs)
 
-    # ── Find photo pages (Detect actual image placements via pdfplumber) ──
+    # ── Find photo pages (Blazing fast via PyMuPDF fitz, fallback to pdfplumber) ──
     photo_pages: list[int] = []
     try:
-        with pdfplumber.open(str(pdf_path)) as _detect_pdf:
-            for i in range(start_page - 1, len(_detect_pdf.pages)):
-                if len(_detect_pdf.pages[i].images) >= 3:
+        import pymupdf as fitz
+        with fitz.open(str(pdf_path)) as _doc:
+            for i in range(start_page - 1, len(_doc)):
+                if len(_doc[i].get_images()) >= 3:
                     photo_pages.append(i)
-            # Fallback 1: check earlier pages (in case start_page > actual photo page)
             if not photo_pages:
-                for i in range(len(_detect_pdf.pages)):
-                    if len(_detect_pdf.pages[i].images) >= 3:
+                for i in range(len(_doc)):
+                    if len(_doc[i].get_images()) >= 3:
                         photo_pages.append(i)
-            # Fallback 2: text-based detection
-            if not photo_pages:
+    except Exception:
+        pass
+
+    if not photo_pages:
+        try:
+            with pdfplumber.open(str(pdf_path)) as _detect_pdf:
                 for i in range(len(_detect_pdf.pages)):
                     txt = (_detect_pdf.pages[i].extract_text() or "").upper()
                     if "FOTO DOKUMENTASI" in txt or "FOTO 0%" in txt:
                         photo_pages.append(i)
-    except Exception:
-        # Fallback to pypdf only if pdfplumber raised an exception
-        try:
-            for i in range(start_page - 1, len(reader.pages)):
-                if len(reader.pages[i].images) >= 3:
-                    photo_pages.append(i)
         except Exception:
-            pass
+            try:
+                for i in range(start_page - 1, len(reader.pages)):
+                    if len(reader.pages[i].images) >= 3:
+                        photo_pages.append(i)
+            except Exception:
+                pass
 
     # ── Print Tree Information ──
     print(f"  ├── Kategori : {category} | Wilayah: {btp}", flush=True)
@@ -1207,14 +1280,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                 funcloc_offset += len(_multi_pdf.pages[page_idx].images) // 3
         return total
 
-    with CSV_LOCK, pdfplumber.open(str(pdf_path)) as pdf, \
-         log_path.open("a", newline="", encoding="utf-8") as log_file:
-
-        writer = csv.DictWriter(log_file,
-            fieldnames=["pdf", "page", "asset_code", "asset_name", "label",
-                        "image_name", "output_file", "status"])
-        if not log_exists:
-            writer.writeheader()
+    log_rows = []
+    with pdfplumber.open(str(pdf_path)) as pdf:
 
         # Select first page in photo_pages that actually has >= 3 placements
         photo_page_idx = None
@@ -1246,7 +1313,7 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                             data = _render_page_and_crop(page, placement, resolution=_resolution, page_img=page_img)
                             suffix = '.jpg'
                         except Exception:
-                            writer.writerow({
+                            log_rows.append({
                                 "pdf": pdf_path.name, "page": page.page_number,
                                 "asset_code": "", "asset_name": "",
                                 "label": stem, "image_name": img_name,
@@ -1260,7 +1327,7 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                                 data = _render_page_and_crop(page, placement, resolution=_resolution)
                                 suffix = '.jpg'
                             except Exception:
-                                writer.writerow({
+                                log_rows.append({
                                     "pdf": pdf_path.name, "page": page.page_number,
                                     "asset_code": "", "asset_name": "",
                                     "label": stem, "image_name": img_name,
@@ -1277,14 +1344,14 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                         out_file.write_bytes(data)
                         exported += 1
                     except OSError as exc:
-                        writer.writerow({
+                        log_rows.append({
                             "pdf": pdf_path.name, "page": page.page_number,
                             "asset_code": "", "asset_name": "",
                             "label": stem, "image_name": img_name,
                             "output_file": str(out_file), "status": f"failed: {exc}",
                         })
                         continue
-                    writer.writerow({
+                    log_rows.append({
                         "pdf": pdf_path.name, "page": page.page_number,
                         "asset_code": "", "asset_name": "",
                         "label": stem, "image_name": img_name,
@@ -1322,7 +1389,7 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                     photo_data.append((stem, suffix, data))
 
                 if not photo_data:
-                    writer.writerow({
+                    log_rows.append({
                         "pdf": pdf_path.name, "page": page.page_number,
                         "asset_code": "", "asset_name": "",
                         "label": "", "image_name": "",
@@ -1346,14 +1413,14 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                                 out_file.write_bytes(data)
                                 exported += 1
                             except OSError as exc:
-                                writer.writerow({
+                                log_rows.append({
                                     "pdf": pdf_path.name, "page": page.page_number,
                                     "asset_code": funcloc_line, "asset_name": "",
                                     "label": stem, "image_name": "",
                                     "output_file": str(out_file), "status": f"failed: {exc}",
                                 })
                                 continue
-                            writer.writerow({
+                            log_rows.append({
                                 "pdf": pdf_path.name, "page": page.page_number,
                                 "asset_code": funcloc_line, "asset_name": "",
                                 "label": stem, "image_name": "",
@@ -1413,7 +1480,7 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                     )
 
                     if len(placements) < 3:
-                        writer.writerow({
+                        log_rows.append({
                             "pdf": pdf_path.name, "page": page.page_number,
                             "asset_code": row.code, "asset_name": row.title,
                             "label": "", "image_name": "",
@@ -1428,7 +1495,7 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                                 data = _render_page_and_crop(page, placement, resolution=_resolution, page_img=page_img)
                                 suffix = '.jpg'
                             except Exception:
-                                writer.writerow({
+                                log_rows.append({
                                     "pdf": pdf_path.name, "page": page.page_number,
                                     "asset_code": row.code, "asset_name": row.title,
                                     "label": stem, "image_name": img_name,
@@ -1442,7 +1509,7 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                                     data = _render_page_and_crop(page, placement, resolution=_resolution)
                                     suffix = '.jpg'
                                 except Exception:
-                                    writer.writerow({
+                                    log_rows.append({
                                         "pdf": pdf_path.name, "page": page.page_number,
                                         "asset_code": row.code, "asset_name": row.title,
                                         "label": stem, "image_name": img_name,
@@ -1459,19 +1526,28 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                             out_file.write_bytes(data)
                             exported += 1
                         except OSError as exc:
-                            writer.writerow({
+                            log_rows.append({
                                 "pdf": pdf_path.name, "page": page.page_number,
                                 "asset_code": row.code, "asset_name": row.title,
                                 "label": stem, "image_name": img_name,
                                 "output_file": str(out_file), "status": f"failed: {exc}",
                             })
                             continue
-                        writer.writerow({
+                        log_rows.append({
                             "pdf": pdf_path.name, "page": page.page_number,
                             "asset_code": row.code, "asset_name": row.title,
                             "label": stem, "image_name": img_name,
                             "output_file": str(out_file), "status": "ok",
                         })
+
+    if log_rows:
+        with CSV_LOCK, log_path.open("a", newline="", encoding="utf-8") as log_file:
+            writer = csv.DictWriter(log_file,
+                fieldnames=["pdf", "page", "asset_code", "asset_name", "label",
+                            "image_name", "output_file", "status"])
+            if not log_exists:
+                writer.writeheader()
+            writer.writerows(log_rows)
 
     return exported
 
@@ -1544,7 +1620,7 @@ def main() -> int:
 
     import concurrent.futures
 
-    max_workers = min(6, os.cpu_count() or 4)
+    max_workers = min(12, max(4, (os.cpu_count() or 4)))
     tasks = [
         (p, output_root, log_dir, args.start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup)
         for p in pdf_paths
@@ -1615,9 +1691,12 @@ def main() -> int:
         except Exception as log_err:
             print(f"[WARN] Gagal menyimpan log error ke JSON: {log_err}", flush=True)
 
+        save_asset_location_mapping(output_root, log_dir)
         print("\n❌ Pipeline dihentikan karena terdapat file yang gagal diproses.", flush=True)
         return 1
 
+    # Persist asset location mapping once at end of pipeline
+    save_asset_location_mapping(output_root, log_dir)
     print("\n✅ SELURUH FILE PDF BERHASIL DIPROSES TANPA ERROR!\n", flush=True)
     return 0
 

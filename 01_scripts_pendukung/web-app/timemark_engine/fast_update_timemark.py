@@ -88,7 +88,8 @@ def fast_update(
     temp_dir: Path,
     edited_dir: Path,
     force: bool = False,
-    asset_filter: str | None = None
+    asset_filter: str | None = None,
+    include_time: bool = True
 ) -> int:
     start_time = time.time()
     print("=" * 60, flush=True)
@@ -187,7 +188,9 @@ def fast_update(
                 print(f"[PROGRESS] {cur_idx}/{total_to_process} foto diproses...", flush=True)
 
             try:
-                target_text = iso_to_timemark(iso_ts)
+                target_text = iso_to_timemark(iso_ts, include_time=include_time)
+                if not include_time:
+                    target_text = re.sub(r'\s+\d{2}:\d{2}$', '', target_text.strip())
             except Exception:
                 continue
 
@@ -325,9 +328,10 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("04_photos_edited"), help="Path to 04_photos_edited")
     parser.add_argument("--force", action="store_true", help="Force re-rendering even if date matches")
     parser.add_argument("--filter", type=str, default=None, help="Filter specific asset name")
+    parser.add_argument("--no-time", dest="include_time", action="store_false", default=True, help="Jangan sertakan jam (HH:MM)")
     args = parser.parse_args()
 
-    return fast_update(args.schedule, args.input, args.temp, args.output, args.force, args.filter)
+    return fast_update(args.schedule, args.input, args.temp, args.output, args.force, args.filter, include_time=args.include_time)
 
 
 if __name__ == "__main__":

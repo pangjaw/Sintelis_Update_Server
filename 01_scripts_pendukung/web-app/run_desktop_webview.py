@@ -3486,6 +3486,28 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             with open(target_photo, "wb") as pf:
                 pf.write(raw_bytes)
 
+            # Jika x_pos atau y_pos tidak dikirim dari UI, periksa meta.json yang sudah ada
+            existing_meta = {}
+            for cand_meta in [
+                os.path.join(photos_edited, "Tim_1", asset_rel, "meta.json"),
+                os.path.join(photos_edited, asset_rel, "meta.json")
+            ]:
+                if os.path.isfile(cand_meta):
+                    try:
+                        with open(cand_meta, "r", encoding="utf-8") as mf:
+                            existing_meta = json.load(mf)
+                            break
+                    except Exception:
+                        pass
+
+            p_meta = existing_meta.get(photo_name) or existing_meta.get("0.jpg") or {}
+            x_pos = data.get("xPos")
+            y_pos = data.get("yPos")
+            if x_pos is None or str(x_pos) == "":
+                x_pos = p_meta.get("xPos")
+            if y_pos is None or str(y_pos) == "":
+                y_pos = p_meta.get("yPos")
+
             out_target = os.path.join(photos_edited, "Tim_1", asset_rel, photo_name)
             os.makedirs(os.path.dirname(out_target), exist_ok=True)
 
@@ -3502,15 +3524,66 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             cmd = make_script_cmd("edit_timemark_ide1.py", [
                 "--input", target_photo,
                 "--single-out", out_target,
-                "--detector", "guide"
+                "--detector", "guide",
+                "--ignore-manual"
             ])
             if date_text:
                 cmd.extend(["--date", date_text])
+            if x_pos is not None and str(x_pos) != "":
+                cmd.extend(["--x-override", str(x_pos)])
+            if y_pos is not None and str(y_pos) != "":
+                cmd.extend(["--y-override", str(y_pos)])
 
             subprocess.run(
                 cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
             )
+
+            # Sinkronkan ke path alternatif (tanpa Tim_1 jika ada)
+            alt_outs = [
+                os.path.join(photos_edited, asset_rel, photo_name),
+                os.path.join(photos_edited, "Tim_1", asset_rel, photo_name),
+                os.path.join(photos_edited, "Tim_2", asset_rel, photo_name)
+            ]
+            for ao in alt_outs:
+                if ao != out_target:
+                    os.makedirs(os.path.dirname(ao), exist_ok=True)
+                    try:
+                        shutil.copy2(out_target, ao)
+                    except Exception:
+                        pass
+
+            # Update meta.json agar koordinat dan info persist
+            final_x = int(x_pos) if (x_pos is not None and str(x_pos) != "") else 14
+            final_y = int(y_pos) if (y_pos is not None and str(y_pos) != "") else 220
+            meta_dirs = {os.path.dirname(out_target)}
+            for ao in alt_outs:
+                if os.path.isfile(ao):
+                    meta_dirs.add(os.path.dirname(ao))
+
+            for m_dir in meta_dirs:
+                m_file = os.path.join(m_dir, "meta.json")
+                m_data = {}
+                if os.path.isfile(m_file):
+                    try:
+                        with open(m_file, "r", encoding="utf-8") as f:
+                            m_data = json.load(f)
+                    except Exception:
+                        m_data = {}
+                m_data[photo_name] = {
+                    "dateText": date_text,
+                    "xPos": final_x,
+                    "yPos": final_y,
+                    "manualEdit": True,
+                    "detector": "guide",
+                    "timestamp": time.time()
+                }
+                try:
+                    with open(m_file, "w", encoding="utf-8") as f:
+                        json.dump(m_data, f, indent=2, ensure_ascii=False)
+                except Exception as me:
+                    _log(f"Failed to update meta.json in {m_file}: {me}")
+
             self._json({"ok": True, "message": "Foto berhasil diganti dan di-watermark ulang."})
         except Exception as e:
             _log(f"Replace photo error: {e}")

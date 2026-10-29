@@ -25,7 +25,9 @@ from export_pdf_foto import (
     extract_all_funclocs, 
     extract_identifier, 
     normalize_jpl_identifier, 
-    STATION_TO_BTP
+    STATION_TO_BTP,
+    detect_category_from_filename,
+    extract_station_from_filename
 )
 
 DEFAULT_PDF_DIR = "./02_pdf_target"
@@ -360,18 +362,42 @@ def normalize_identifier(ident: str) -> str:
 
 
 def _alternate_ids(identifier: str) -> list[str]:
-    """Generate alternate identifiers from compound station suffixes.
+    """Generate alternate identifiers from compound station suffixes and radio prefixes.
     
     E.g. 'UB101 BJD-CLT' -> ['UB101 BJD', 'UB101 CLT']
          'JPL 07 BOO-BOP' -> ['JPL 07 BOO', 'JPL 07 BOP']
+         'RADIO_COS' <-> 'COS'
     """
     alts = []
+    if identifier.startswith("RADIO_"):
+        alts.append(identifier[len("RADIO_"):])
+    elif identifier in ("BOO", "CLT", "BJD", "BOP", "BTT", "CGB", "COS", "MSG", "CCR"):
+        alts.append(f"RADIO_{identifier}")
     parts = identifier.rsplit(" ", 1)
     if len(parts) == 2:
         base, station = parts
         if "-" in station:
             for p in station.split("-"):
                 alts.append(f"{base} {p}")
+    codes = re.findall(r'\b(BOO|CLT|BJD|BOP|BTT|CGB|CS|COS|MSG|CCR)\b', identifier, re.I)
+    if not codes:
+        fn_upper = identifier.upper()
+        for full_st, st_code in [
+            ("BOGOR PALEDANG", "BOP"), ("BATU TULIS", "BTT"), ("BATUTULIS", "BTT"),
+            ("BOJONGGEDE", "BJD"), ("BOJONG GEDE", "BJD"), ("CIGOMBONG", "CGB"),
+            ("CICURUG", "CCR"), ("CILEBUT", "CLT"), ("CIOMAS", "COS"),
+            ("MASENG", "MSG"), ("BOGOR", "BOO"),
+        ]:
+            if full_st in fn_upper:
+                codes = [st_code]
+                break
+    if codes:
+        st = 'COS' if codes[0].upper() == 'CS' else codes[0].upper()
+        if st not in alts and st != identifier:
+            alts.append(st)
+        st_rad = f'RADIO_{st}'
+        if st_rad not in alts and st_rad != identifier:
+            alts.append(st_rad)
     return alts
 
 
@@ -396,137 +422,11 @@ def save_folder_mapping(path: Path, mapping: dict) -> None:
 
 
 def prepare_multi_date_folders(output_root: Path, pdf_files: list[Path], logs_dir: Path = Path("logs")) -> dict:
-    """Pre-scan target PDFs (2025), identify assets with multiple dates, and manage suffixed folders.
-    - If base folder exists (e.g. B104 CLT-BOO):
-        1. Renames base folder to B104 CLT-BOO_{first_date}
-        2. Copies to B104 CLT-BOO_{subsequent_dates}
-    - If base folder already renamed in earlier run:
-        Ensures all subsequent dates have folders copied.
-    - Saves mapping to logs/asset_folder_mapping.json.
+    """Streamlined Step 2: Since Step 1 (Early Binding) creates suffixed folders directly,
+    physical folder duplication and renaming in Step 2 is bypassed to avoid redundant I/O
+    and prevent recursive naming (_DD-MM_DD-MM).
     """
-    mapping = load_folder_mapping(logs_dir / "asset_folder_mapping.json")
-
-    # 1. Pre-scan PDF targets to find dates per asset
-    print("[*] Pre-scanning target PDFs untuk mendeteksi aset tanggal ganda...", flush=True)
-    asset_dates = defaultdict(lambda: defaultdict(dict))
-
-    for pdf_path in pdf_files:
-        fname = pdf_path.name
-        parsed = parse_target_filename(fname)
-        base_category = None
-        base_identifier = None
-        dt = None
-
-        if parsed:
-            base_category, base_identifier, date_str = parsed
-            dt = parse_date_from_filename(date_str)
-        if not dt:
-            dt = extract_date_from_pdf(pdf_path)
-        if not dt:
-            continue
-
-        date_suf = dt.strftime("%d-%m")
-        date_fmt = format_date_target(dt)
-
-        all_funclocs = []
-        if not parsed or base_category in {"AXC", "WESEL", "SINYAL"}:
-            try:
-                import warnings; warnings.filterwarnings("ignore", category=FutureWarning)
-                try:
-                    import pymupdf as fitz
-                except ImportError:
-                    import fitz
-                with fitz.open(str(pdf_path)) as doc:
-                    if len(doc) > 0:
-                        text = doc[0].get_text() or ""
-                        all_funclocs = extract_all_funclocs(text)
-            except Exception:
-                pass
-
-        idents = []
-        if all_funclocs and base_category:
-            for fl in all_funclocs:
-                ident = extract_identifier(fl, base_category)
-                if ident:
-                    for old, new in IDENTIFIER_EXCEPTIONS.items():
-                        tokens = ident.split()
-                        old_tokens = old.split()
-                        if len(tokens) >= len(old_tokens) and tokens[:len(old_tokens)] == old_tokens:
-                            rest = ' '.join(tokens[len(old_tokens):])
-                            ident = f"{new} {rest}".strip() if rest else new
-                    norm = normalize_identifier(ident)
-                    idents.append((base_category, norm, ident))
-        if not idents and base_category and base_identifier:
-            norm = normalize_identifier(base_identifier)
-            idents.append((base_category, norm, base_identifier))
-
-        seen_in_file = set()
-        for cat, norm_id, orig_id in idents:
-            if orig_id in seen_in_file:
-                continue
-            seen_in_file.add(orig_id)
-            if cat == "PINTU_PERLINTASAN":
-                cat = "JPL"
-            asset_dates[(cat, orig_id)][date_suf] = {"date": date_fmt, "pdf": fname, "norm": norm_id}
-
-    # 2. Filter multi-date assets
-    multi_date_assets = {k: v for k, v in asset_dates.items() if len(v) > 1}
-    print(f"[*] Terdeteksi {len(multi_date_assets)} aset memiliki tanggal ganda pada target PDF.", flush=True)
-
-    # 3. For each multi-date asset, check and manage folders in output_root
-    btp_dirs = [d for d in output_root.iterdir() if d.is_dir() and d.name.startswith("BTP")]
-    if not btp_dirs:
-        btp_dirs = [output_root]
-
-    for (cat, orig_id), date_map in multi_date_assets.items():
-        sorted_sufs = sorted(date_map.keys())
-        first_suf = sorted_sufs[0]
-
-        for btp_dir in btp_dirs:
-            cat_dir = btp_dir / cat if btp_dir != output_root else output_root / cat
-            if not cat_dir.is_dir():
-                continue
-
-            base_folder = cat_dir / orig_id
-            norm_id = list(date_map.values())[0].get("norm", orig_id)
-            if not base_folder.is_dir() and (cat_dir / norm_id).is_dir():
-                base_folder = cat_dir / norm_id
-
-            first_suffixed = cat_dir / f"{orig_id}_{first_suf}"
-            if not first_suffixed.is_dir() and (cat_dir / f"{norm_id}_{first_suf}").is_dir():
-                first_suffixed = cat_dir / f"{norm_id}_{first_suf}"
-
-            # If base folder exists (from fresh Step 1 export):
-            if base_folder.is_dir():
-                if first_suffixed.exists() and first_suffixed != base_folder:
-                    try:
-                        shutil.rmtree(first_suffixed)
-                    except Exception:
-                        pass
-                base_folder.rename(first_suffixed)
-                print(f"  [STEP 2] Rename folder dasar: {base_folder.name} -> {first_suffixed.name}", flush=True)
-
-            # Now, if first_suffixed exists, ensure all subsequent dates have copies
-            if first_suffixed.is_dir():
-                for next_suf in sorted_sufs[1:]:
-                    next_suffixed = cat_dir / f"{orig_id}_{next_suf}"
-                    if not next_suffixed.exists():
-                        shutil.copytree(first_suffixed, next_suffixed)
-                        print(f"  [STEP 2] Salin foto tanggal ganda: {first_suffixed.name} -> {next_suffixed.name}", flush=True)
-
-                # Update mapping
-                map_key = f"{btp_dir.name}/{cat}/{orig_id}"
-                mapping[map_key] = {
-                    "btp": btp_dir.name,
-                    "category": cat,
-                    "base_identifier": orig_id,
-                    "dates": sorted_sufs,
-                    "folders": {suf: f"{orig_id}_{suf}" for suf in sorted_sufs}
-                }
-                break
-
-    save_folder_mapping(logs_dir / "asset_folder_mapping.json", mapping)
-    return mapping
+    return {}
 
 
 def main() -> int:
@@ -535,18 +435,22 @@ def main() -> int:
     )
     parser.add_argument("--pdf-dir", default=DEFAULT_PDF_DIR,
                         help=f"Folder PDF target. Default: {DEFAULT_PDF_DIR}")
+    parser.add_argument("--split-multi-asset", action="store_true",
+                        help="Dukung pencocokan tanggal untuk folder aset yang dipecah per baris.")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_ROOT,
                         help=f"Folder root foto export. Default: {DEFAULT_OUTPUT_ROOT}")
     args = parser.parse_args()
 
     pdf_dir = Path(args.pdf_dir).resolve()
     output_root = Path(args.output_dir).resolve()
+    split_multi_asset = bool(getattr(args, "split_multi_asset", False))
 
     if not pdf_dir.is_dir():
         print(f"[ERROR] Folder PDF '{pdf_dir}' tidak ditemukan.")
         return 1
 
-    pdf_files = sorted(pdf_dir.rglob("*.pdf"))
+    EXCLUDE_DIRS = {"backups", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
+    pdf_files = sorted([p for p in pdf_dir.rglob("*.pdf") if not any(x in p.parts for x in EXCLUDE_DIRS) and p.is_file()])
     if not pdf_files:
         print(f"Tidak ada PDF di '{pdf_dir}'.")
         return 0
@@ -584,6 +488,11 @@ def main() -> int:
             base_category, base_identifier, date_str = parsed
             dt = parse_date_from_filename(date_str)
         
+        if not base_category:
+            base_category = detect_category_from_filename(fname)
+        if not base_identifier:
+            base_identifier = extract_station_from_filename(fname)
+        
         if not dt:
             dt = extract_date_from_pdf(pdf_path)
             fallback_used += 1
@@ -596,7 +505,7 @@ def main() -> int:
 
         # Kategori multi-aset perlu semua funcloc; kategori biasa cukup dari filename.
         all_funclocs = []
-        if not parsed or base_category in {"AXC", "WESEL", "SINYAL"}:
+        if not parsed or split_multi_asset or base_category in {"AXC", "WESEL", "SINYAL"}:
             try:
                 import warnings; warnings.filterwarnings("ignore", category=FutureWarning)
                 try:
@@ -620,7 +529,7 @@ def main() -> int:
         identifiers_to_process = []
         if all_funclocs and base_category:
             for fl in all_funclocs:
-                ident = extract_identifier(fl, base_category)
+                ident = extract_identifier(fl, base_category, split_multi_asset=split_multi_asset)
                 if ident:
                     # Apply exceptions
                     for old, new in IDENTIFIER_EXCEPTIONS.items():
@@ -630,15 +539,16 @@ def main() -> int:
                             rest = ' '.join(tokens[len(old_tokens):])
                             ident = f"{new} {rest}".strip() if rest else new
                     
-                    if base_category == "CATUDAYA":
-                        for prefix in ["ER SINYAL ", "ER RADIO "]:
-                            if ident.startswith(prefix):
-                                code = ident[len(prefix):].strip()
-                                ident = f"RADIO_{code}" if prefix == "ER RADIO " else code
-                                break
-                    if base_category in ("PTLS", "PDSE", "PTDS"):
-                        # Strip RADIO_ prefix: "RADIO_BOO" → "BOO"
-                        ident = re.sub(r'^RADIO_', '', ident)
+                    if not split_multi_asset:
+                        if base_category == "CATUDAYA":
+                            for prefix in ["ER SINYAL ", "ER RADIO "]:
+                                if ident.startswith(prefix):
+                                    code = ident[len(prefix):].strip()
+                                    ident = f"RADIO_{code}" if prefix == "ER RADIO " else code
+                                    break
+                        if base_category in ("PTLS", "PDSE", "PTDS"):
+                            # Strip RADIO_ prefix: "RADIO_BOO" → "BOO"
+                            ident = re.sub(r'^RADIO_', '', ident)
                     if base_category == "PINTU_PERLINTASAN":
                         ident = re.sub(r'\s*ELEKTRIK\s*', ' ', ident).strip()
                         ident = ident.replace(' - ', '-')

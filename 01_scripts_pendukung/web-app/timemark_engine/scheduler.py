@@ -13,6 +13,7 @@ import re
 import sys
 from pathlib import Path
 from datetime import datetime, date, timedelta
+from collections import defaultdict, Counter
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -144,11 +145,49 @@ def get_waktu(category: str, mapping: dict, acuan: dict) -> int:
     return CATEGORY_DEFAULT_WAKTU.get(category, 45)
 
 
+def _alternate_ids(identifier: str) -> list[str]:
+    alts = []
+    if identifier.startswith("RADIO_"):
+        alts.append(identifier[len("RADIO_"):])
+    elif identifier in ("BOO", "CLT", "BJD", "BOP", "BTT", "CGB", "COS", "MSG", "CCR"):
+        alts.append(f"RADIO_{identifier}")
+    parts = identifier.rsplit(" ", 1)
+    if len(parts) == 2:
+        base, station = parts
+        if "-" in station:
+            for p in station.split("-"):
+                alts.append(f"{base} {p}")
+    codes = re.findall(r'\b(BOO|CLT|BJD|BOP|BTT|CGB|CS|COS|MSG|CCR)\b', identifier, re.I)
+    if not codes:
+        fn_upper = identifier.upper()
+        for full_st, st_code in [
+            ("BOGOR PALEDANG", "BOP"), ("BATU TULIS", "BTT"), ("BATUTULIS", "BTT"),
+            ("BOJONGGEDE", "BJD"), ("BOJONG GEDE", "BJD"), ("CIGOMBONG", "CGB"),
+            ("CICURUG", "CCR"), ("CILEBUT", "CLT"), ("CIOMAS", "COS"),
+            ("MASENG", "MSG"), ("BOGOR", "BOO"),
+        ]:
+            if full_st in fn_upper:
+                codes = [st_code]
+                break
+    if codes:
+        st = 'COS' if codes[0].upper() == 'CS' else codes[0].upper()
+        if st not in alts and st != identifier:
+            alts.append(st)
+        st_rad = f'RADIO_{st}'
+        if st_rad not in alts and st_rad != identifier:
+            alts.append(st_rad)
+    return alts
+
+
 def read_date_from_photos(photos_dir: Path, btp: str, category: str, identifier: str) -> str | None:
-    """Read date.txt from flat output structure."""
+    """Read date.txt from flat output structure with alternate identifier fallback."""
     fp = photos_dir / sanitize_segment(btp) / category / sanitize_segment(identifier) / "date.txt"
     if fp.exists():
         return fp.read_text(encoding="utf-8").strip()
+    for alt in _alternate_ids(identifier):
+        alt_fp = photos_dir / sanitize_segment(btp) / category / sanitize_segment(alt) / "date.txt"
+        if alt_fp.exists():
+            return alt_fp.read_text(encoding="utf-8").strip()
     return None
 
 
@@ -189,7 +228,7 @@ def _determine_btp(identifier: str, pdf_path: Path = None) -> str:
 MULTI_ROW_CATEGORIES = {"SINYAL", "WESEL", "AXC"}
 
 
-def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, p_map: dict, photos_dir: Path | None = None, multi_date_lookup: dict | None = None):
+def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, p_map: dict, photos_dir: Path | None = None, multi_date_lookup: dict | None = None, split_multi_asset: bool = False):
     from extract_pdf_dates import parse_target_filename, parse_date_from_filename, parse_date_indonesian
     import warnings; warnings.filterwarnings("ignore", category=FutureWarning)
     try:
@@ -269,10 +308,16 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
                 btp = _determine_btp(ident, pdf_path)
                 
                 target_ident = ident
-                if photos_dir and date_suffix:
-                    suffixed_candidate = f"{ident}{date_suffix}"
-                    if (photos_dir / btp / category / suffixed_candidate).is_dir():
-                        target_ident = suffixed_candidate
+                should_suffix = (
+                    category == "WESEL" or
+                    (photos_dir and date_suffix and (photos_dir / btp / category / f"{ident}{date_suffix}").is_dir()) or
+                    (multi_date_lookup and (
+                        multi_date_lookup.get((category, ident), 0) > 1 or
+                        multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
+                    ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
+                )
+                if should_suffix and date_suffix:
+                    target_ident = f"{ident}{date_suffix}" 
 
                 asset_items.append({
                     "identifier": target_ident,
@@ -284,40 +329,77 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
 
     if not asset_items:
         # Single-row or fallback
-        fl_ident = extract_identifier(all_funclocs[0], category) if all_funclocs else None
-        if fl_ident:
-            if not identifier or fl_ident.startswith("RADIO_"):
-                identifier = fl_ident
-            elif photos_dir:
-                btp_id = _determine_btp(identifier, pdf_path)
-                btp_fl = _determine_btp(fl_ident, pdf_path)
-                if not (photos_dir / btp_id / category / identifier).is_dir() and (photos_dir / btp_fl / category / fl_ident).is_dir():
+        # Jika split_multi_asset aktif dan ada lebih dari 1 funcloc pada PDF non-multi-row:
+        if split_multi_asset and len(all_funclocs) > 1:
+            total_w = get_waktu(category, mapping, acuan)
+            per_asset_w = max(15, round(total_w / len(all_funclocs)))
+            loc_ident = extract_identifier(all_funclocs[0], category) if all_funclocs else None
+            if not loc_ident:
+                st = extract_station_from_filename(pdf_path.name)
+                loc_ident = st if st else sanitize_segment(pdf_path.stem)
+            btp_cur = _determine_btp(loc_ident, pdf_path)
+
+            seen_fl = set()
+            for fl in all_funclocs:
+                fl_clean = fl.strip()
+                parts = fl_clean.split(":", 1)
+                asset_name = parts[1].strip() if len(parts) > 1 else fl_clean
+                asset_name = re.sub(r'\s+', ' ', asset_name)
+                if not asset_name or asset_name in seen_fl:
+                    continue
+                seen_fl.add(asset_name)
+
+                asset_items.append({
+                    "identifier": asset_name,
+                    "location_identifier": loc_ident,
+                    "folder": loc_ident,
+                    "base_identifier": loc_ident,
+                    "btp": btp_cur,
+                    "waktu_menit": per_asset_w,
+                    "funcloc": fl_clean
+                })
+
+        if not asset_items:
+            fl_ident = extract_identifier(all_funclocs[0], category) if all_funclocs else None
+            if fl_ident:
+                if not identifier or fl_ident.startswith("RADIO_"):
                     identifier = fl_ident
-        if not identifier:
-            station = extract_station_from_filename(pdf_path.name)
-            identifier = station if station else sanitize_segment(pdf_path.stem)
+                elif photos_dir:
+                    btp_id = _determine_btp(identifier, pdf_path)
+                    btp_fl = _determine_btp(fl_ident, pdf_path)
+                    if not (photos_dir / btp_id / category / identifier).is_dir() and (photos_dir / btp_fl / category / fl_ident).is_dir():
+                        identifier = fl_ident
+            if not identifier:
+                station = extract_station_from_filename(pdf_path.name)
+                identifier = station if station else sanitize_segment(pdf_path.stem)
 
-        # Core count check for SERAT OPTIK
-        w = get_waktu(category, mapping, acuan)
-        if is_serat_optik_pdf(pdf_path):
-            m = re.search(r'Jumlah Core[^\d]*(\d+)', page1_text, re.IGNORECASE)
-            if m:
-                w = int(m.group(1)) * 6
+            # Core count check for SERAT OPTIK
+            w = get_waktu(category, mapping, acuan)
+            if is_serat_optik_pdf(pdf_path):
+                m = re.search(r'Jumlah Core[^\d]*(\d+)', page1_text, re.IGNORECASE)
+                if m:
+                    w = int(m.group(1)) * 6
 
-        btp = _determine_btp(identifier, pdf_path)
-        target_ident = identifier
-        if photos_dir and date_suffix:
-            suffixed_candidate = f"{identifier}{date_suffix}"
-            if (photos_dir / btp / category / suffixed_candidate).is_dir():
-                target_ident = suffixed_candidate
+            btp = _determine_btp(identifier, pdf_path)
+            target_ident = identifier
+            should_suffix = (
+                category == "WESEL" or
+                (photos_dir and date_suffix and (photos_dir / btp / category / f"{identifier}{date_suffix}").is_dir()) or
+                (multi_date_lookup and (
+                    multi_date_lookup.get((category, identifier), 0) > 1 or
+                    multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
+                ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
+            )
+            if should_suffix and date_suffix:
+                target_ident = f"{identifier}{date_suffix}"
 
-        asset_items.append({
-            "identifier": target_ident,
-            "base_identifier": identifier,
-            "btp": btp,
-            "waktu_menit": w,
-            "funcloc": all_funclocs[0].strip() if all_funclocs else ""
-        })
+            asset_items.append({
+                "identifier": target_ident,
+                "base_identifier": identifier,
+                "btp": btp,
+                "waktu_menit": w,
+                "funcloc": all_funclocs[0].strip() if all_funclocs else ""
+            })
 
     total_pdf_waktu = sum(a["waktu_menit"] for a in asset_items)
 
@@ -338,9 +420,11 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
 
 def build_schedule(pdf_dir: Path, photos_dir: Path,
                    mapping: dict, acuan: dict,
-                   jam_mulai: int, jam_selesai: int, tim_max: int) -> dict:
-    files = sorted(p for p in pdf_dir.rglob("*")
-                   if p.is_file() and p.suffix.lower() == ".pdf")
+                   jam_mulai: int, jam_selesai: int, tim_max: int,
+                   split_multi_asset: bool = False) -> dict:
+    EXCLUDE_DIRS = {"backups", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
+    files = sorted(p for p in pdf_dir.rglob("*.pdf")
+                   if not any(x in p.parts for x in EXCLUDE_DIRS) and p.is_file())
     if not files:
         return {"version": 1, "schedules": []}
 
@@ -356,7 +440,14 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
     except Exception:
         pass
 
-    multi_date_lookup = {}
+    # Pre-scan PDF files to detect multi-inspection assets (e.g. WESEL, PDSE, PTDS, PTLS, SINYAL, AXC)
+    from collections import Counter
+    multi_date_lookup = Counter()
+    for p in files:
+        cat = detect_category_from_filename(p.name)
+        st = extract_station_from_filename(p.name)
+        if st and cat:
+            multi_date_lookup[(cat, st)] += 1
 
     import concurrent.futures
 
@@ -365,7 +456,7 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
     max_w = min(8, os.cpu_count() or 4)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as executor:
-        results = list(executor.map(lambda p: _process_pdf_pass1(p, mapping, acuan, k_map, p_map, photos_dir, multi_date_lookup), files))
+        results = list(executor.map(lambda p: _process_pdf_pass1(p, mapping, acuan, k_map, p_map, photos_dir, multi_date_lookup, split_multi_asset), files))
 
     for idx, pdf_entry in enumerate(results, 1):
         if not pdf_entry:
@@ -392,6 +483,8 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
         clock = jam_mulai
         scheduled_assets_on_date = {}  # (category, identifier) -> slot_info
 
+        # Jika split_multi_asset aktif, pembagian jam sudah dihitung per PDF dokumen pada Pass 1
+
         for pdf_info in pdf_list:
             for a in pdf_info["asset_items"]:
                 asset_key = (pdf_info["category"], a["identifier"])
@@ -406,6 +499,8 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
                         "category": pdf_info["category"],
                         "pdf_stem": pdf_info["pdf_stem"],
                         "identifier": a["identifier"],
+                        "location_identifier": a.get("location_identifier", a["identifier"]),
+                        "folder": a.get("location_identifier", a["identifier"]),
                         "funcloc": a["funcloc"],
                         "date": pdf_info["date_str"],
                         "iso_date": cur_date.isoformat(),
@@ -450,6 +545,8 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
                         "category": pdf_info["category"],
                         "pdf_stem": pdf_info["pdf_stem"],
                         "identifier": a["identifier"],
+                        "location_identifier": a.get("location_identifier", a["identifier"]),
+                        "folder": a.get("location_identifier", a["identifier"]),
                         "funcloc": a["funcloc"],
                         "date": pdf_info["date_str"],
                         "iso_date": cur_date.isoformat(),
@@ -474,6 +571,7 @@ def main() -> int:
     p.add_argument("--jam-mulai", type=int, default=7, help="jam mulai (0-23)")
     p.add_argument("--jam-selesai", type=int, default=18, help="jam selesai (0-23)")
     p.add_argument("--tim-max", type=int, default=2)
+    p.add_argument("--split-multi-asset", action="store_true", help="Bagi foto dan jam sesuai jumlah baris aset")
     p.add_argument("--output", default="schedule.json")
     args = p.parse_args()
 
@@ -509,7 +607,7 @@ def main() -> int:
     jm = max(0, min(23 * 60, args.jam_mulai * 60))
     js = max(0, min(24 * 60, args.jam_selesai * 60))
 
-    sched = build_schedule(pdf_dir, photos_dir, mapping, acuan, jm, js, max(1, args.tim_max))
+    sched = build_schedule(pdf_dir, photos_dir, mapping, acuan, jm, js, max(1, args.tim_max), args.split_multi_asset)
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)

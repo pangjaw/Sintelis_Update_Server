@@ -107,7 +107,9 @@ def parse_date_text(text: str) -> datetime:
     return None
 
 
-def format_timemark(dt: datetime) -> str:
+def format_timemark(dt: datetime, include_time: bool = True) -> str:
+    if not include_time:
+        return f"{DAYS_ID[dt.weekday()]}, {MONTHS_ABBR[dt.month]} {dt.day:02d} {dt.year}"
     return f"{DAYS_ID[dt.weekday()]}, {MONTHS_ABBR[dt.month]} {dt.day:02d} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
 
 # Station → BTP mapping (must match export_pdf_foto.py)
@@ -925,11 +927,13 @@ def load_schedule(path: Path):
         return json.load(f)
 
 
-def iso_to_timemark(iso_str: str) -> str:
+def iso_to_timemark(iso_str: str, include_time: bool = True) -> str:
     """2026-07-11T09:30:00 -> Rabu, Jul 11 2026 09:30"""
     dt = datetime.fromisoformat(iso_str)
     days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
     months = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+    if not include_time:
+        return f"{days[dt.weekday()]}, {months[dt.month]} {dt.day:02d} {dt.year}"
     return f"{days[dt.weekday()]}, {months[dt.month]} {dt.day:02d} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
 
 
@@ -942,7 +946,7 @@ def _strip_date_suffix(ident: str) -> str:
     return re.sub(r'_\d{2}-\d{2}(?:_part\d+)?$', '', ident.strip())
 
 
-def build_schedule_lookup(schedule_data: dict, tim_filter: int | None = None):
+def build_schedule_lookup(schedule_data: dict, tim_filter: int | None = None, include_time: bool = True):
     """Build {(btp, category, identifier, photo): (timemark_text, tim_n)}.
     Also indexes base_identifier (without _DD-MM suffix) so 2026 photo folders (e.g. MJ20 CLT_22-05)
     match 2025 schedule entries (e.g. MJ20 CLT_13-05).
@@ -957,7 +961,7 @@ def build_schedule_lookup(schedule_data: dict, tim_filter: int | None = None):
         identifier = normalize_schedule_identifier(sched.get("identifier") or sched.get("pdf_stem", ""))
         base_id = _strip_date_suffix(identifier)
         for pname, iso_ts in sched.get("photos", {}).items():
-            new_val = (iso_to_timemark(iso_ts), tim_n)
+            new_val = (iso_to_timemark(iso_ts, include_time=include_time), tim_n)
             key = (btp, category, identifier, pname)
             existing = lookup.get(key)
             if existing is None or tim_n > existing[1]:
@@ -1301,7 +1305,7 @@ CURRENT_DETECTOR = "google_vision"
 
 
 # ─── Process Single Image ───
-def process_image(image_path: Path, output_path: Path, timemark_text: str, y_override: int | None = None, x_override: int | None = None, schedule_lookup=None, asset_key=None, consensus_gy1: int | None = None, is_collage: bool = False, mask_mode: str | None = None, detector: str = "google_vision") -> str:
+def process_image(image_path: Path, output_path: Path, timemark_text: str, y_override: int | None = None, x_override: int | None = None, schedule_lookup=None, asset_key=None, consensus_gy1: int | None = None, is_collage: bool = False, mask_mode: str | None = None, detector: str = "google_vision", ignore_manual: bool = False) -> str:
     global CURRENT_DETECTOR
     actual_input_path = image_path
     if "03_photos_export" in str(image_path) or "03_export_foto" in str(image_path):
@@ -1511,10 +1515,12 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
         folder_meta[pname]["xPos"] = norm_x
         folder_meta[pname]["yPos"] = norm_y
 
-        is_manual = folder_meta[pname].get("manualEdit", False) or (y_override is not None)
-        if y_override is not None:
+        is_manual = False if ignore_manual else (folder_meta[pname].get("manualEdit", False) or (y_override is not None))
+        if y_override is not None and not ignore_manual:
             folder_meta[pname]["manualEdit"] = True
             is_manual = True
+        elif ignore_manual:
+            folder_meta[pname]["manualEdit"] = False
 
         is_need_corr = False
         if not is_manual:
@@ -1576,6 +1582,8 @@ def main():
     parser.add_argument("--cyan-mask", action="store_true", help="Run with Cyan Mask HSV priority")
     parser.add_argument("--custom-mask", action="store_true", help="Run with Custom Mask HSV priority")
     parser.add_argument("--detector", choices=["guide", "google_vision"], default="google_vision", help="Detection method: google_vision (default) or guide")
+    parser.add_argument("--no-time", action="store_true", help="Format watermark tanggal saja tanpa jam (HH:MM)")
+    parser.add_argument("--ignore-manual", action="store_true", help="Abaikan koreksi manual sebelumnya dan deteksi ulang posisi via detektor")
     args = parser.parse_args()
 
     global CURRENT_DETECTOR
@@ -1590,7 +1598,7 @@ def main():
     schedule_lookup = None
     if args.schedule and args.schedule.exists():
         schedule_data = load_schedule(args.schedule)
-        schedule_lookup = build_schedule_lookup(schedule_data, args.tim_filter)
+        schedule_lookup = build_schedule_lookup(schedule_data, args.tim_filter, include_time=getattr(args, 'include_time', True))
 
     date_text = args.date or ""  # empty if not provided; schedule_lookup handles dates
 
@@ -1726,9 +1734,12 @@ def main():
             else:
                 timemark_text = date_text or format_timemark(datetime.now())
                 dst_dir = output_dir / f"Tim_{tim_n}" / asset_output_dir(Path(""), btp, category, identifier)
+        if args.no_time and timemark_text:
+            timemark_text = re.sub(r"\s+\d{2}:\d{2}$", "", timemark_text.strip())
         tim_mapping[str(rel)] = tim_n
         dst = args.single_out if args.single_out else (dst_dir / src.name)
-        manual_meta = _read_manual_meta(dst_dir, photo_name)
+        meta_lookup_dir = dst.parent if args.single_out else dst_dir
+        manual_meta = {} if args.ignore_manual else _read_manual_meta(meta_lookup_dir, photo_name)
         photo_y_override = args.y_override
         photo_x_override = args.x_override
         if manual_meta:
@@ -1750,7 +1761,7 @@ def main():
         is_coll = str(rel).replace('\\', '/').lower() in cropped_collages_set
         try:
             mask_mode = "red" if args.red_mask else "cyan" if args.cyan_mask else "custom" if args.custom_mask else None
-            stage = process_image(src, dst, timemark_text, photo_y_override, photo_x_override, schedule_lookup, asset_key, consensus_gy1, is_collage=is_coll, mask_mode=mask_mode, detector=CURRENT_DETECTOR)
+            stage = process_image(src, dst, timemark_text, photo_y_override, photo_x_override, schedule_lookup, asset_key, consensus_gy1, is_collage=is_coll, mask_mode=mask_mode, detector=CURRENT_DETECTOR, ignore_manual=getattr(args, 'ignore_manual', False))
             ok += 1
             if stage in stage_counts:
                 stage_counts[stage] += 1

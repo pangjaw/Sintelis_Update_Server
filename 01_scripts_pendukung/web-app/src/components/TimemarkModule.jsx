@@ -20,6 +20,8 @@ export default function TimemarkModule() {
 
   const [selectedSteps, setSelectedSteps] = useState(['1', '1.5', '2', '3', '4', '5']);
   const [detector, setDetector] = useState('google_vision'); // 'google_vision' | 'guide'
+  const [splitMultiAssetRows, setSplitMultiAssetRows] = useState(false);
+  const [includeTime, setIncludeTime] = useState(true);
   const [pipelineState, setPipelineState] = useState({
     running: false,
     cancelled: false,
@@ -146,7 +148,9 @@ export default function TimemarkModule() {
           mergedDir: mergedDir || undefined,
           overwriteOriginal: isSingle && overwriteOriginal,
           steps: selectedSteps,
-          detector: detector
+          detector: detector,
+          splitMultiAssetRows: splitMultiAssetRows,
+          includeTime: includeTime
         })
       });
       const data = await res.json();
@@ -182,7 +186,9 @@ export default function TimemarkModule() {
           mergedDir: mergedDir || undefined,
           overwriteOriginal: isSingle && overwriteOriginal,
           steps: ['4_fast'],
-          detector: 'fast_meta'
+          detector: 'fast_meta',
+          splitMultiAssetRows: splitMultiAssetRows,
+          includeTime: includeTime
         })
       });
       const data = await res.json();
@@ -580,6 +586,65 @@ export default function TimemarkModule() {
                 </div>
               </div>
             )}
+
+            {/* Opsi Bagi Foto & Jam Multi-Baris Aset */}
+            <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-color)' }}>
+              <div style={{
+                background: splitMultiAssetRows ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
+                border: splitMultiAssetRows ? '1px solid #3b82f6' : '1px solid var(--border-color)',
+                borderRadius: '8px',
+                padding: '0.75rem 0.85rem',
+                transition: 'all 0.2s'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: pipelineState.running ? 'not-allowed' : 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    disabled={pipelineState.running}
+                    checked={splitMultiAssetRows}
+                    onChange={e => setSplitMultiAssetRows(e.target.checked)}
+                    style={{ marginTop: '0.2rem', cursor: pipelineState.running ? 'not-allowed' : 'pointer', accentColor: '#3b82f6' }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '0.825rem', fontWeight: 700, color: splitMultiAssetRows ? '#60a5fa' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>📑</span> Bagi Foto & Jam Sesuai Jumlah Baris Aset
+                    </div>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.35 }}>
+                      Jika dokumen memiliki beberapa baris aset (misal PDSE), total durasi (420 menit) dibagi rata ke seluruh aset dan foto diduplikasi per baris pada lembar PDF.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Opsi Jam Watermark (ON / OFF) */}
+              <div style={{
+                marginTop: '0.55rem',
+                background: includeTime ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.08)',
+                border: includeTime ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.25)',
+                borderRadius: '8px',
+                padding: '0.75rem 0.85rem',
+                transition: 'all 0.2s'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: pipelineState.running ? 'not-allowed' : 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    disabled={pipelineState.running}
+                    checked={includeTime}
+                    onChange={e => setIncludeTime(e.target.checked)}
+                    style={{ marginTop: '0.2rem', cursor: pipelineState.running ? 'not-allowed' : 'pointer', accentColor: '#10b981' }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '0.825rem', fontWeight: 700, color: includeTime ? '#34d399' : '#f87171', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>⏰</span> Sertakan Jam pada Watermark ({includeTime ? 'ON / Ada Jam' : 'OFF / Tanggal Saja'})
+                    </div>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.35 }}>
+                      {includeTime
+                        ? 'Watermark foto menyertakan tanggal dan jam dinas (contoh: Sabtu, 11 Januari 2025 08:30).'
+                        : 'Watermark foto hanya mencantumkan hari dan tanggal tanpa jam (contoh: Sabtu, 11 Januari 2025).'}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Action Buttons */}

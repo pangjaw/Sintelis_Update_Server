@@ -464,9 +464,42 @@ def format_date_from_filename(filename: str) -> str | None:
     return f"{d_num:02d} {months_id.get(m_num, '')} {y_num}"
 
 
+ASSET_LOCATION_MAP = {}
+
+def load_asset_location_mapping(photos_dir: Path = None, logs_dir: Path = Path("logs")) -> dict:
+    global ASSET_LOCATION_MAP
+    if ASSET_LOCATION_MAP:
+        return ASSET_LOCATION_MAP
+    candidates = []
+    if photos_dir:
+        candidates.extend([
+            photos_dir / "asset_location_mapping.json",
+            photos_dir.parent / "asset_location_mapping.json",
+            photos_dir.parent / "logs" / "asset_location_mapping.json",
+        ])
+    candidates.extend([
+        logs_dir / "asset_location_mapping.json",
+        Path("logs/asset_location_mapping.json"),
+        Path("02_server_update/logs/asset_location_mapping.json"),
+    ])
+    for c in candidates:
+        if c.is_file():
+            try:
+                ASSET_LOCATION_MAP = json.loads(c.read_text(encoding="utf-8"))
+                return ASSET_LOCATION_MAP
+            except Exception:
+                pass
+    return ASSET_LOCATION_MAP
+
 def get_identifier_candidates(identifier: str) -> list[str]:
     """Expand identifier to account for compound stations, aliases, spacing variants, and known exceptions."""
     cands = [identifier]
+    # Check asset_location_mapping
+    a_map = ASSET_LOCATION_MAP.get("asset_to_location", {})
+    if identifier in a_map:
+        mapped_loc = a_map[identifier]
+        if mapped_loc not in cands:
+            cands.append(mapped_loc)
 
     # Spacing variants between letters and numbers (e.g. "UB 206 BOO-CLT" <-> "UB206 BOO-CLT")
     m_space = re.search(r'([A-Za-z]+)\s+(\d+)', identifier)
@@ -527,6 +560,13 @@ def get_identifier_candidates(identifier: str) -> list[str]:
         rev = '-'.join(reversed(sts))
         cands.append(f"{pfx} {rev}")
 
+        # Fallback to station code if identifier contains station code
+    codes = re.findall(r'\b(BOO|CLT|BJD|BOP|BTT|CGB|CS|COS|MSG|CCR)\b', identifier, re.I)
+    if codes:
+        st_code = "COS" if codes[0].upper() == "CS" else codes[0].upper()
+        if st_code not in cands:
+            cands.append(st_code)
+
     return list(dict.fromkeys(cands))
 
 
@@ -580,7 +620,8 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
                  tim2_roster_cache: dict | None = None,
                  tim1_personnel_by_date: dict | None = None,
                  pegawai_config: dict | None = None,
-                 log_fn: callable | None = None) -> str:
+                 log_fn=None,
+                 split_multi_asset: bool = False) -> str:
     """Merge edited photos into PDF.
     
     Flat structure. Photo lookup via Funcloc identifier from page 1.
@@ -623,27 +664,50 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
     # Scan ALL funclocs on page 1
     all_funclocs = extract_all_funclocs(page1_text)
     _log(f"  ├── Funclocs : {len(all_funclocs)} aset pada dokumen")
-    # Build list of (identifier, btp) pairs
-    # Also auto-detect category from funcloc prefix if filename detection failed
+    load_asset_location_mapping(photos_dir)
+
+    MULTI_ROW_CATEGORIES = {"SINYAL", "WESEL", "AXC"}
+    is_multi_row_cat = category in MULTI_ROW_CATEGORIES
+
     asset_entries = []
     seen = set()
-    for funcloc_line in all_funclocs:
-        identifier = extract_identifier(funcloc_line, category)
-        if identifier and identifier not in seen:
-            seen.add(identifier)
-            identifier_to_line[identifier] = funcloc_line.strip()
-            btp = determine_btp_from_identifier(identifier, pdf_path.name)
+
+    if split_multi_asset and not is_multi_row_cat and len(all_funclocs) > 1:
+        # Bagi Foto & Jam Sesuai Jumlah Baris Aset:
+        # Buat entri terpisah untuk SETIAP baris funcloc, mengacu pada folder foto lokasi
+        for idx, funcloc_line in enumerate(all_funclocs):
+            fl_clean = funcloc_line.strip()
+            parts = fl_clean.split(":", 1)
+            asset_title = parts[1].strip() if len(parts) > 1 else fl_clean
+            asset_title = re.sub(r'\s+', ' ', asset_title)
+
+            entry_id = f"{asset_title}#{idx}" if asset_title in seen else asset_title
+            seen.add(entry_id)
+            identifier_to_line[entry_id] = fl_clean
+
+            loc_id = extract_identifier(funcloc_line, category) or extract_station_from_filename(pdf_path.name)
+            btp = determine_btp_from_identifier(loc_id or asset_title, pdf_path.name)
             if btp == "UNKNOWN":
                 btp = "BTP JAK"
-            # Auto-detect category from funcloc prefix for photo lookup
-            photo_category = category
-            if category == "UNKNOWN":
-                txt = funcloc_line.strip().upper()
-                if txt.startswith("WSL"): photo_category = "WESEL"
-                elif txt.startswith("SIN"): photo_category = "SINYAL"
-                elif txt.startswith("AXL"): photo_category = "AXC"
-            asset_entries.append((identifier, btp, photo_category))
-            _log(f"  │   ├── [{photo_category}] {identifier} (Wilayah: {btp})")
+            asset_entries.append((entry_id, btp, category, loc_id))
+            _log(f"  │   ├── [{category}] Baris #{idx+1}: {asset_title} -> Lokasi Foto: {loc_id} (Wilayah: {btp})")
+    else:
+        for funcloc_line in all_funclocs:
+            identifier = extract_identifier(funcloc_line, category)
+            if identifier and identifier not in seen:
+                seen.add(identifier)
+                identifier_to_line[identifier] = funcloc_line.strip()
+                btp = determine_btp_from_identifier(identifier, pdf_path.name)
+                if btp == "UNKNOWN":
+                    btp = "BTP JAK"
+                photo_category = category
+                if category == "UNKNOWN":
+                    txt = funcloc_line.strip().upper()
+                    if txt.startswith("WSL"): photo_category = "WESEL"
+                    elif txt.startswith("SIN"): photo_category = "SINYAL"
+                    elif txt.startswith("AXL"): photo_category = "AXC"
+                asset_entries.append((identifier, btp, photo_category, identifier))
+                _log(f"  │   ├── [{photo_category}] {identifier} (Wilayah: {btp})")
     
     if not asset_entries:
         # Fallback 1: check schedule_map for this PDF
@@ -653,7 +717,7 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
             s_cat = s_entry.get("category") or category
             s_btp = s_entry.get("btp") or determine_btp_from_identifier(s_id, pdf_path.name)
             if s_id:
-                asset_entries.append((s_id, s_btp, s_cat))
+                asset_entries.append((s_id, s_btp, s_cat, s_id))
                 identifier_to_line[s_id] = s_id
                 _log(f"  [MERGE] Fallback identifier from schedule.json: '{s_id}' [{s_cat}] (Wilayah: {s_btp})")
 
@@ -665,7 +729,7 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
                 if target_info:
                     t_cat, t_id, _ = target_info
                     t_btp = determine_btp_from_identifier(t_id, pdf_path.name)
-                    asset_entries.append((t_id, t_btp, t_cat or category))
+                    asset_entries.append((t_id, t_btp, t_cat or category, t_id))
                     identifier_to_line[t_id] = t_id
                     _log(f"  [MERGE] Fallback identifier from parsed filename: '{t_id}' [{t_cat}] (Wilayah: {t_btp})")
             except Exception:
@@ -677,7 +741,7 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
             btp = determine_btp_from_identifier(identifier, pdf_path.name)
             if btp == "UNKNOWN":
                 btp = "BTP JAK"
-            asset_entries.append((identifier, btp, category))
+            asset_entries.append((identifier, btp, category, identifier))
             identifier_to_line[identifier] = pdf_path.stem
             _log(f"  [MERGE] Fallback identifier from stem: '{identifier}' (Wilayah: {btp})")
     
@@ -710,16 +774,20 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
             expected_suffix = f"{expected_suffix}_part{part_m.group(1)}"
 
     MULTI_ROW_CATEGORIES = {"SINYAL", "WESEL", "AXC"}
-    is_multi_row = (category in MULTI_ROW_CATEGORIES) or any(cat in MULTI_ROW_CATEGORIES for _, _, cat in asset_entries)
+    is_multi_row = (category in MULTI_ROW_CATEGORIES) or any(item[2] in MULTI_ROW_CATEGORIES for item in asset_entries)
 
-    for identifier, btp, photo_category in asset_entries:
-        if not is_multi_row and photo_paths:
+    for item in asset_entries:
+        identifier, btp, photo_category, loc_id = item[0], item[1], item[2], item[3] if len(item) > 3 else None
+
+        if not is_multi_row and not split_multi_asset and photo_paths:
             # Opsi A: Untuk kategori non-multi-row (PTLS, CATUDAYA, PDSE, dll.),
             # jika sudah menemukan foto untuk 1 aset (1 baris), batasi agar hanya merender 1 baris foto per PDF.
             break
 
         found = False
         candidates = get_identifier_candidates(identifier)
+        if loc_id and loc_id not in candidates:
+            candidates.insert(0, loc_id)
 
         def _check_folder_photos(folder: Path):
             f0, f50, f100 = folder / "0.jpg", folder / "50.jpg", folder / "100.jpg"
@@ -827,6 +895,17 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
 
         if not found:
             missing.append(f"{identifier} ({btp}/{photo_category})")
+
+    # Jika split_multi_asset aktif dan ada aset yang belum punya foto, duplikat foto dari aset pertama yang berhasil ditemukan
+    if split_multi_asset and photo_paths:
+        first_found_photos = list(photo_paths.values())[0]
+        first_found_tim = list(photo_tims.values())[0]
+        for item in asset_entries:
+            identifier = item[0]
+            if identifier not in photo_paths:
+                photo_paths[identifier] = first_found_photos
+                photo_tims[identifier] = first_found_tim
+                _log(f"  │   ├── 📷 Foto duplikasi [{identifier}]: diduplikasi dari baris pertama")
     
     if not photo_paths:
         return f"failed: no matching edited photos found in {photos_dir.name}; output Tim cannot be determined"
@@ -1236,17 +1315,19 @@ def parse_args():
     p.add_argument("--photos", default=DEFAULT_PHOTOS_DIR)
     p.add_argument("--output", default=DEFAULT_OUTPUT_DIR)
     p.add_argument("--schedule", default=None, help="Path ke schedule.json")
+    p.add_argument("--split-multi-asset", action="store_true", help="Bagi foto dan jam sesuai jumlah baris aset")
     p.add_argument("--file", default=None, help="Nama atau path berkas PDF spesifik untuk diproses saja")
     return p.parse_args()
 
 
 def _merge_worker_wrapper(args_tuple):
-    pdf_path, photos_dir, output_dir, input_dir, sap_mapping, schedule_map, tim2_roster_cache, tim1_personnel_by_date, pegawai_config = args_tuple
+    pdf_path, photos_dir, output_dir, input_dir, sap_mapping, schedule_map, tim2_roster_cache, tim1_personnel_by_date, pegawai_config, split_multi_asset = args_tuple
     captured_lines = []
     try:
         status = process_pdf(pdf_path, photos_dir, output_dir, input_dir, sap_mapping, schedule_map,
                              tim2_roster_cache, tim1_personnel_by_date, pegawai_config,
-                             log_fn=captured_lines.append)
+                             log_fn=captured_lines.append,
+                             split_multi_asset=split_multi_asset)
     except Exception as exc:
         status = f"failed: exception {exc}"
     return pdf_path, status, captured_lines
@@ -1295,8 +1376,9 @@ def main():
 
     ensure_dir(output_dir)
 
-    pdf_files = sorted([p for p in input_dir.rglob("*")
-                        if p.is_file() and p.suffix.lower() == ".pdf"])
+    EXCLUDE_DIRS = {"backups", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
+    pdf_files = sorted([p for p in input_dir.rglob("*.pdf")
+                        if not any(x in p.parts for x in EXCLUDE_DIRS) and p.is_file()])
     if not pdf_files:
         print(f"Tidak ada berkas PDF di: {input_dir}")
         return 0
@@ -1373,9 +1455,10 @@ def main():
     import concurrent.futures
 
     max_workers = min(len(pdf_files), 4 if args.file else min(12, max(4, (os.cpu_count() or 4) * 2)))
+    split_multi_asset = bool(getattr(args, "split_multi_asset", False))
     tasks = [
         (p, photos_dir, output_dir, input_dir, sap_mapping, schedule_map,
-         tim2_roster_cache, tim1_personnel_by_date, pegawai_config)
+         tim2_roster_cache, tim1_personnel_by_date, pegawai_config, split_multi_asset)
         for p in pdf_files
     ]
 

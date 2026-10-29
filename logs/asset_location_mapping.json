@@ -1,0 +1,232 @@
+{
+  "by_location": {
+    "CATUDAYA/BTT": {
+      "location": "BTT",
+      "category": "CATUDAYA",
+      "btp": "BTP BD",
+      "folder": "BTP BD/CATUDAYA/BTT",
+      "pdf_file": "24-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Batutulis.pdf",
+      "assets": [
+        {
+          "funcloc": "CDA10147",
+          "name": "GENSET ER SINYAL BTT",
+          "raw": "CDA10147\t:\tGENSET\tER\tSINYAL\tBTT"
+        },
+        {
+          "funcloc": "CDA10253",
+          "name": "UPS ER SINYAL BTT",
+          "raw": "CDA10253\t:\tUPS\tER\tSINYAL\tBTT"
+        },
+        {
+          "funcloc": "CDA10392",
+          "name": "BATTERE ER SINYAL BTT",
+          "raw": "CDA10392\t:\tBATTERE\tER\tSINYAL\tBTT"
+        }
+      ]
+    },
+    "CATUDAYA/BOP": {
+      "location": "BOP",
+      "category": "CATUDAYA",
+      "btp": "BTP BD",
+      "folder": "BTP BD/CATUDAYA/BOP",
+      "pdf_file": "29-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Bogorpaledang.pdf",
+      "assets": [
+        {
+          "funcloc": "CDA10146",
+          "name": "GENSET ER SINYAL BOP",
+          "raw": "CDA10146\t:\tGENSET\tER\tSINYAL\tBOP"
+        },
+        {
+          "funcloc": "CDA10252",
+          "name": "UPS ER SINYAL BOP",
+          "raw": "CDA10252\t:\tUPS\tER\tSINYAL\tBOP"
+        },
+        {
+          "funcloc": "CDA10337",
+          "name": "BATTERE BANK ER SINYAL BOP",
+          "raw": "CDA10337\t:\tBATTERE\tBANK\tER\tSINYAL\tBOP"
+        }
+      ]
+    },
+    "CATUDAYA/RADIO_COS": {
+      "location": "RADIO_COS",
+      "category": "CATUDAYA",
+      "btp": "BTP BD",
+      "folder": "BTP BD/CATUDAYA/RADIO_COS",
+      "pdf_file": "22-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Ciomas.pdf",
+      "assets": [
+        {
+          "funcloc": "CDA10137",
+          "name": "GENSET ER RADIO CS",
+          "raw": "CDA10137\t:\tGENSET\tER\tRADIO\tCS"
+        },
+        {
+          "funcloc": "CDA10247",
+          "name": "UPS ER RADIO CS",
+          "raw": "CDA10247\t:\tUPS\tER\tRADIO\tCS"
+        },
+        {
+          "funcloc": "CDA10333",
+          "name": "BATTERE BANK ER RADIO CS",
+          "raw": "CDA10333\t:\tBATTERE\tBANK\tER\tRADIO\tCS"
+        },
+        {
+          "funcloc": "CDA10150",
+          "name": "GENSET ER SINYAL CS",
+          "raw": "CDA10150\t:\tGENSET\tER\tSINYAL\tCS"
+        },
+        {
+          "funcloc": "CDA10256",
+          "name": "UPS ER SINYAL CS",
+          "raw": "CDA10256\t:\tUPS\tER\tSINYAL\tCS"
+        },
+        {
+          "funcloc": "CDA10394",
+          "name": "BATTERE ER SINYAL CS",
+          "raw": "CDA10394\t:\tBATTERE\tER\tSINYAL\tCS"
+        }
+      ]
+    },
+    "CATUDAYA/CGB": {
+      "location": "CGB",
+      "category": "CATUDAYA",
+      "btp": "BTP BD",
+      "folder": "BTP BD/CATUDAYA/CGB",
+      "pdf_file": "26-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Cigombong.pdf",
+      "assets": [
+        {
+          "funcloc": "CDA10148",
+          "name": "GENSET ER SINYAL CGB",
+          "raw": "CDA10148\t:\tGENSET\tER\tSINYAL\tCGB"
+        },
+        {
+          "funcloc": "CDA10254",
+          "name": "UPS ER SINYAL CGB",
+          "raw": "CDA10254\t:\tUPS\tER\tSINYAL\tCGB"
+        },
+        {
+          "funcloc": "CDA10393",
+          "name": "BATTERE ER SINYAL CGB",
+          "raw": "CDA10393\t:\tBATTERE\tER\tSINYAL\tCGB"
+        }
+      ]
+    },
+    "CATUDAYA/MSG": {
+      "location": "MSG",
+      "category": "CATUDAYA",
+      "btp": "BTP BD",
+      "folder": "BTP BD/CATUDAYA/MSG",
+      "pdf_file": "05-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Maseng.pdf",
+      "assets": [
+        {
+          "funcloc": "CDA10154",
+          "name": "GENSET ER SINYAL MSG",
+          "raw": "CDA10154\t:\tGENSET\tER\tSINYAL\tMSG"
+        },
+        {
+          "funcloc": "CDA10260",
+          "name": "UPS ER SINYAL MSG",
+          "raw": "CDA10260\t:\tUPS\tER\tSINYAL\tMSG"
+        },
+        {
+          "funcloc": "CDA10396",
+          "name": "BATTERE ER SINYAL MSG",
+          "raw": "CDA10396\t:\tBATTERE\tER\tSINYAL\tMSG"
+        }
+      ]
+    }
+  },
+  "asset_to_location": {
+    "GENSET ER SINYAL BTT": "BTT",
+    "CDA10147\t:\tGENSET\tER\tSINYAL\tBTT": "BTT",
+    "CDA10147": "BTT",
+    "UPS ER SINYAL BTT": "BTT",
+    "CDA10253\t:\tUPS\tER\tSINYAL\tBTT": "BTT",
+    "CDA10253": "BTT",
+    "BATTERE ER SINYAL BTT": "BTT",
+    "CDA10392\t:\tBATTERE\tER\tSINYAL\tBTT": "BTT",
+    "CDA10392": "BTT",
+    "GENSET ER SINYAL BOP": "BOP",
+    "CDA10146\t:\tGENSET\tER\tSINYAL\tBOP": "BOP",
+    "CDA10146": "BOP",
+    "UPS ER SINYAL BOP": "BOP",
+    "CDA10252\t:\tUPS\tER\tSINYAL\tBOP": "BOP",
+    "CDA10252": "BOP",
+    "BATTERE BANK ER SINYAL BOP": "BOP",
+    "CDA10337\t:\tBATTERE\tBANK\tER\tSINYAL\tBOP": "BOP",
+    "CDA10337": "BOP",
+    "GENSET ER RADIO CS": "RADIO_COS",
+    "CDA10137\t:\tGENSET\tER\tRADIO\tCS": "RADIO_COS",
+    "CDA10137": "RADIO_COS",
+    "UPS ER RADIO CS": "RADIO_COS",
+    "CDA10247\t:\tUPS\tER\tRADIO\tCS": "RADIO_COS",
+    "CDA10247": "RADIO_COS",
+    "BATTERE BANK ER RADIO CS": "RADIO_COS",
+    "CDA10333\t:\tBATTERE\tBANK\tER\tRADIO\tCS": "RADIO_COS",
+    "CDA10333": "RADIO_COS",
+    "GENSET ER SINYAL CS": "RADIO_COS",
+    "CDA10150\t:\tGENSET\tER\tSINYAL\tCS": "RADIO_COS",
+    "CDA10150": "RADIO_COS",
+    "UPS ER SINYAL CS": "RADIO_COS",
+    "CDA10256\t:\tUPS\tER\tSINYAL\tCS": "RADIO_COS",
+    "CDA10256": "RADIO_COS",
+    "BATTERE ER SINYAL CS": "RADIO_COS",
+    "CDA10394\t:\tBATTERE\tER\tSINYAL\tCS": "RADIO_COS",
+    "CDA10394": "RADIO_COS",
+    "GENSET ER SINYAL CGB": "CGB",
+    "CDA10148\t:\tGENSET\tER\tSINYAL\tCGB": "CGB",
+    "CDA10148": "CGB",
+    "UPS ER SINYAL CGB": "CGB",
+    "CDA10254\t:\tUPS\tER\tSINYAL\tCGB": "CGB",
+    "CDA10254": "CGB",
+    "BATTERE ER SINYAL CGB": "CGB",
+    "CDA10393\t:\tBATTERE\tER\tSINYAL\tCGB": "CGB",
+    "CDA10393": "CGB",
+    "GENSET ER SINYAL MSG": "MSG",
+    "CDA10154\t:\tGENSET\tER\tSINYAL\tMSG": "MSG",
+    "CDA10154": "MSG",
+    "UPS ER SINYAL MSG": "MSG",
+    "CDA10260\t:\tUPS\tER\tSINYAL\tMSG": "MSG",
+    "CDA10260": "MSG",
+    "BATTERE ER SINYAL MSG": "MSG",
+    "CDA10396\t:\tBATTERE\tER\tSINYAL\tMSG": "MSG",
+    "CDA10396": "MSG"
+  },
+  "pdf_to_location": {
+    "24-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Batutulis.pdf": "BTT",
+    "29-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Bogorpaledang.pdf": "BOP",
+    "22-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Ciomas.pdf": "RADIO_COS",
+    "26-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Cigombong.pdf": "CGB",
+    "05-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Maseng.pdf": "MSG"
+  },
+  "pdf_to_assets": {
+    "24-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Batutulis.pdf": [
+      "GENSET ER SINYAL BTT",
+      "UPS ER SINYAL BTT",
+      "BATTERE ER SINYAL BTT"
+    ],
+    "29-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Bogorpaledang.pdf": [
+      "GENSET ER SINYAL BOP",
+      "UPS ER SINYAL BOP",
+      "BATTERE BANK ER SINYAL BOP"
+    ],
+    "22-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Ciomas.pdf": [
+      "GENSET ER RADIO CS",
+      "UPS ER RADIO CS",
+      "BATTERE BANK ER RADIO CS",
+      "GENSET ER SINYAL CS",
+      "UPS ER SINYAL CS",
+      "BATTERE ER SINYAL CS"
+    ],
+    "26-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Cigombong.pdf": [
+      "GENSET ER SINYAL CGB",
+      "UPS ER SINYAL CGB",
+      "BATTERE ER SINYAL CGB"
+    ],
+    "05-04-2025_PERAWATAN CATU DAYA 1 BULANAN_Maseng.pdf": [
+      "GENSET ER SINYAL MSG",
+      "UPS ER SINYAL MSG",
+      "BATTERE ER SINYAL MSG"
+    ]
+  }
+}

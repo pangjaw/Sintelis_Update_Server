@@ -1,22 +1,92 @@
 [
   {
     "btp": "BTP BD",
-    "category": "AXC",
-    "identifier": "ZP 28C BTT-BOP",
-    "photo": "50.jpg",
-    "source": "D:\\Dika\\IMO\\MEI\\FOTO\\03_export_foto\\BTP BD\\AXC\\ZP 28C BTT-BOP\\50.jpg",
-    "output": "D:\\Dika\\IMO\\MEI\\FOTO\\04_photos_edited\\Tim_1\\BTP BD\\AXC\\ZP 28C BTT-BOP\\50.jpg",
+    "category": "CATUDAYA",
+    "identifier": "BATTERE ER SINYAL CGB",
+    "photo": "0.jpg",
+    "source": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\03_export_foto\\BTP BD\\CATUDAYA\\BATTERE ER SINYAL CGB\\0.jpg",
+    "output": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\04_photos_edited\\Tim_1\\BTP BD\\CATUDAYA\\BATTERE ER SINYAL CGB\\0.jpg",
     "stage": "stage_fallback_skipped",
-    "timestamp": "2026-10-25 01:47:48"
+    "timestamp": "2026-10-28 22:34:56"
   },
   {
     "btp": "BTP BD",
-    "category": "AXC",
-    "identifier": "ZP 47D BOP",
-    "photo": "0.jpg",
-    "source": "D:\\Dika\\IMO\\MEI\\FOTO\\03_export_foto\\BTP BD\\AXC\\ZP 47D BOP\\0.jpg",
-    "output": "D:\\Dika\\IMO\\MEI\\FOTO\\04_photos_edited\\Tim_2\\BTP BD\\AXC\\ZP 47D BOP\\0.jpg",
+    "category": "CATUDAYA",
+    "identifier": "BATTERE ER SINYAL CGB",
+    "photo": "100.jpg",
+    "source": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\03_export_foto\\BTP BD\\CATUDAYA\\BATTERE ER SINYAL CGB\\100.jpg",
+    "output": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\04_photos_edited\\Tim_1\\BTP BD\\CATUDAYA\\BATTERE ER SINYAL CGB\\100.jpg",
     "stage": "stage_fallback_skipped",
-    "timestamp": "2026-10-25 01:47:50"
+    "timestamp": "2026-10-28 22:34:56"
+  },
+  {
+    "btp": "BTP BD",
+    "category": "CATUDAYA",
+    "identifier": "BATTERE ER SINYAL CGB",
+    "photo": "50.jpg",
+    "source": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\03_export_foto\\BTP BD\\CATUDAYA\\BATTERE ER SINYAL CGB\\50.jpg",
+    "output": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\04_photos_edited\\Tim_1\\BTP BD\\CATUDAYA\\BATTERE ER SINYAL CGB\\50.jpg",
+    "stage": "stage_fallback_skipped",
+    "timestamp": "2026-10-28 22:34:57"
+  },
+  {
+    "btp": "BTP BD",
+    "category": "CATUDAYA",
+    "identifier": "GENSET ER SINYAL CGB",
+    "photo": "0.jpg",
+    "source": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\03_export_foto\\BTP BD\\CATUDAYA\\GENSET ER SINYAL CGB\\0.jpg",
+    "output": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\04_photos_edited\\Tim_1\\BTP BD\\CATUDAYA\\GENSET ER SINYAL CGB\\0.jpg",
+    "stage": "stage_fallback_skipped",
+    "timestamp": "2026-10-28 22:34:58"
+  },
+  {
+    "btp": "BTP BD",
+    "category": "CATUDAYA",
+    "identifier": "GENSET ER SINYAL CGB",
+    "photo": "100.jpg",
+    "source": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\03_export_foto\\BTP BD\\CATUDAYA\\GENSET ER SINYAL CGB\\100.jpg",
+    "output": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\04_photos_edited\\Tim_1\\BTP BD\\CATUDAYA\\GENSET ER SINYAL CGB\\100.jpg",
+    "stage": "stage_fallback_skipped",
+    "timestamp": "2026-10-28 22:34:58"
+  },
+  {
+    "btp": "BTP BD",
+    "category": "CATUDAYA",
+    "identifier": "GENSET ER SINYAL CGB",
+    "photo": "50.jpg",
+    "source": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\03_export_foto\\BTP BD\\CATUDAYA\\GENSET ER SINYAL CGB\\50.jpg",
+    "output": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\04_photos_edited\\Tim_1\\BTP BD\\CATUDAYA\\GENSET ER SINYAL CGB\\50.jpg",
+    "stage": "stage_fallback_skipped",
+    "timestamp": "2026-10-28 22:34:59"
+  },
+  {
+    "btp": "BTP BD",
+    "category": "CATUDAYA",
+    "identifier": "UPS ER SINYAL CGB",
+    "photo": "0.jpg",
+    "source": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\03_export_foto\\BTP BD\\CATUDAYA\\UPS ER SINYAL CGB\\0.jpg",
+    "output": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\04_photos_edited\\Tim_1\\BTP BD\\CATUDAYA\\UPS ER SINYAL CGB\\0.jpg",
+    "stage": "stage_fallback_skipped",
+    "timestamp": "2026-10-28 22:35:00"
+  },
+  {
+    "btp": "BTP BD",
+    "category": "CATUDAYA",
+    "identifier": "UPS ER SINYAL CGB",
+    "photo": "100.jpg",
+    "source": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\03_export_foto\\BTP BD\\CATUDAYA\\UPS ER SINYAL CGB\\100.jpg",
+    "output": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\04_photos_edited\\Tim_1\\BTP BD\\CATUDAYA\\UPS ER SINYAL CGB\\100.jpg",
+    "stage": "stage_fallback_skipped",
+    "timestamp": "2026-10-28 22:35:00"
+  },
+  {
+    "btp": "BTP BD",
+    "category": "CATUDAYA",
+    "identifier": "UPS ER SINYAL CGB",
+    "photo": "50.jpg",
+    "source": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\03_export_foto\\BTP BD\\CATUDAYA\\UPS ER SINYAL CGB\\50.jpg",
+    "output": "D:\\Dika\\IMO\\DAOP 1\\4. APRIL\\RESOR STL 1.21 BOGOR\\2. BPBYE Perawatan Berkala Persinyalan Elektrik\\14. BPBYE14 Perawatan Catu Daya 1 (satu) Bulanan\\04_photos_edited\\Tim_1\\BTP BD\\CATUDAYA\\UPS ER SINYAL CGB\\50.jpg",
+    "stage": "stage_fallback_skipped",
+    "timestamp": "2026-10-28 22:35:01"
   }
 ]
