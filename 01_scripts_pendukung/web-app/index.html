@@ -12,6 +12,14 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      window.addEventListener('keydown', function(e) {
+        if (((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R')) || e.key === 'F5') {
+          e.preventDefault();
+          window.location.reload();
+        }
+      });
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

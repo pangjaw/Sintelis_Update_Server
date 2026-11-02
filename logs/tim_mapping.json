@@ -1,10 +1,8 @@
 {
   "version": 1,
-  "generated_at": "2026-10-25T03:31:05.874716",
+  "generated_at": "2026-11-02T09:08:09.436749",
   "mapping": {
-    "BTP BD\\PDSE\\BOP\\0.jpg": 1,
-    "BTP BD\\PDSE\\BOP\\100.jpg": 1,
-    "BTP BD\\PDSE\\BOP\\50.jpg": 1
+    "0.jpg": 1
   },
   "tims_used": [
     1

@@ -37,8 +37,12 @@ function InlineTimemarkBox({
   onOpenModal
 }) {
   const boxRef = useRef(null);
-  const initialX = photo?.meta?.xPos ?? lastTimemarkPos?.x ?? 14;
-  const initialY = photo?.meta?.yPos ?? lastTimemarkPos?.y ?? 220;
+  const isReasonablePos = (p) => p && typeof p.x === 'number' && typeof p.y === 'number' && p.x <= 50 && p.y >= 160;
+  const validMetaX = (photo?.meta?.xPos !== undefined && photo?.meta?.xPos !== null) ? Number(photo.meta.xPos) : null;
+  const validMetaY = (photo?.meta?.yPos !== undefined && photo?.meta?.yPos !== null) ? Number(photo.meta.yPos) : null;
+
+  const initialX = validMetaX ?? (isReasonablePos(lastTimemarkPos) ? lastTimemarkPos.x : 14);
+  const initialY = validMetaY ?? (isReasonablePos(lastTimemarkPos) ? lastTimemarkPos.y : 220);
   const [pos, setPos] = useState({
     x: initialX,
     y: initialY
@@ -48,8 +52,10 @@ function InlineTimemarkBox({
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
-    const nx = photo?.meta?.xPos ?? lastTimemarkPos?.x ?? 14;
-    const ny = photo?.meta?.yPos ?? lastTimemarkPos?.y ?? 220;
+    const curX = (photo?.meta?.xPos !== undefined && photo?.meta?.xPos !== null) ? Number(photo.meta.xPos) : null;
+    const curY = (photo?.meta?.yPos !== undefined && photo?.meta?.yPos !== null) ? Number(photo.meta.yPos) : null;
+    const nx = curX ?? (isReasonablePos(lastTimemarkPos) ? lastTimemarkPos.x : 14);
+    const ny = curY ?? (isReasonablePos(lastTimemarkPos) ? lastTimemarkPos.y : 220);
     setPos({
       x: nx,
       y: ny
@@ -946,7 +952,13 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   const [lastTimemarkPos, setLastTimemarkPos] = useState(() => {
     try {
       const raw = localStorage.getItem('sintelis_last_timemark_pos');
-      return raw ? JSON.parse(raw) : { x: 14, y: 220 };
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number' && parsed.x <= 50 && parsed.y >= 160) {
+          return parsed;
+        }
+      }
+      return { x: 14, y: 220 };
     } catch (_) {
       return { x: 14, y: 220 };
     }
@@ -956,7 +968,9 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
     if (!newPos || typeof newPos.x !== 'number' || typeof newPos.y !== 'number') return;
     setLastTimemarkPos(newPos);
     try {
-      localStorage.setItem('sintelis_last_timemark_pos', JSON.stringify(newPos));
+      if (newPos.x <= 50 && newPos.y >= 160) {
+        localStorage.setItem('sintelis_last_timemark_pos', JSON.stringify(newPos));
+      }
     } catch (_) {}
   };
 

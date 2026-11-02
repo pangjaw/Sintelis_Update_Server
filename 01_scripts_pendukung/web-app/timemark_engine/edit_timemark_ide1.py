@@ -81,16 +81,18 @@ def normalize_manual_date_text(text: str) -> str:
 
 
 def _read_manual_meta(asset_dir: Path, photo_name: str) -> dict:
-    """Read manual UI correction for one photo from the destination asset folder."""
+    """Read manual UI correction or existing coordinates for one photo from the asset folder."""
     meta_path = asset_dir / "meta.json"
     if not meta_path.exists():
         return {}
     try:
         data = json.loads(meta_path.read_text(encoding="utf-8"))
         item = data.get(photo_name, {})
-        if not item.get("manualEdit"):
+        if not item:
             return {}
-        return item
+        if item.get("manualEdit") or ("xPos" in item and "yPos" in item):
+            return item
+        return {}
     except (OSError, json.JSONDecodeError):
         return {}
 
@@ -763,11 +765,14 @@ def get_font(size: int):
     if size in _FONT_CACHE:
         return _FONT_CACHE[size]
     candidates = [
+        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arialbd.ttf",   # Arial Bold (Standar Baku Timemark GPS)
+        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "segoeuib.ttf",  # Segoe UI Bold
+        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "calibrib.ttf",  # Calibri Bold
+        "DejaVuSans-Bold.ttf",
         Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arial.ttf",
         Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "segoeui.ttf",
         Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "calibri.ttf",
         "DejaVuSans.ttf",
-        "DejaVuSans-Bold.ttf",
     ]
     for fp in candidates:
         if isinstance(fp, str):
@@ -782,9 +787,6 @@ def get_font(size: int):
             _FONT_CACHE[size] = font
             return font
     return ImageFont.load_default()
-
-
-# ─── Draw Textbox ───
 def draw_textbox(img: Image.Image, box: tuple[int,int,int,int], text: str) -> Image.Image:
     x1, y1, x2, y2 = box
     w, h = img.size
@@ -797,8 +799,8 @@ def draw_textbox(img: Image.Image, box: tuple[int,int,int,int], text: str) -> Im
     bbox = dummy.textbbox((0,0), text, font=font, stroke_width=fit_stroke)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
-    pad_x = max(4, int(w * 0.010))
-    pad_y = max(1, int(h * 0.004))
+    pad_x = max(6, int(w * 0.012))
+    pad_y = max(2, int(h * 0.005))
     fit_w = tw + (2 * pad_x)
 
     sx1 = max(0, x1)
@@ -812,19 +814,29 @@ def draw_textbox(img: Image.Image, box: tuple[int,int,int,int], text: str) -> Im
     ty = sy1 + ((box_h - th) // 2) - bbox[1]
 
     out = img.copy()
-    draw = ImageDraw.Draw(out)
 
-    radius = max(2, int(box_h * 0.25))
-    overlay = Image.new("RGBA", out.size, (0,0,0,0))
-    odraw = ImageDraw.Draw(overlay)
-    odraw.rounded_rectangle(shape_box, radius=radius, fill=(0,0,0,140))
-    out = Image.alpha_composite(out.convert("RGBA"), overlay).convert("RGB")
-    draw = ImageDraw.Draw(out)
+    # Efek Buram / Frosted Glass Gaussian Blur di belakang box (Sesuai Spek Baku Timemark GPS)
+    bw = sx2 - sx1
+    bh = sy2 - sy1
+    if bw > 0 and bh > 0:
+        radius = max(2, int(box_h * 0.25))
+        blur_radius = max(3, int(box_h * 0.16))
+        crop_box = out.crop(shape_box)
+        blurred_box = crop_box.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        mask = Image.new("L", (bw, bh), 0)
+        mdraw = ImageDraw.Draw(mask)
+        mdraw.rounded_rectangle((0, 0, bw, bh), radius=radius, fill=255)
+        out.paste(blurred_box, (sx1, sy1), mask)
 
-    so = max(1, int(font_size * 0.02))
+        overlay = Image.new("RGBA", out.size, (0, 0, 0, 0))
+        odraw = ImageDraw.Draw(overlay)
+        odraw.rounded_rectangle(shape_box, radius=radius, fill=(0, 0, 0, 140))
+        out = Image.alpha_composite(out.convert("RGBA"), overlay).convert("RGB")
+
+    draw = ImageDraw.Draw(out)
+    so = max(1, int(font_size * 0.025))
     draw.text((tx+so, ty+so), text, font=font, fill=(35,35,35), stroke_width=fit_stroke, stroke_fill=(35,35,35))
     draw.text((tx, ty), text, font=font, fill=(248,248,248))
-
     return out
 
 
@@ -1331,21 +1343,23 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
 
     # Prioritas 1: Override manual (dari UI / parameter CLI) -> Bypass semua deteksi
     if y_override is not None:
-        box_w = int(w * BOX_WIDTH_RATIO)
-        box_h = int(h * BOX_HEIGHT_RATIO)
-        if y_override <= 300 and h > 300:
+        box_w = max(20, int(w * BOX_WIDTH_RATIO))
+        box_h = max(10, int(h * BOX_HEIGHT_RATIO))
+        if y_override <= 300:
             y1 = int((y_override / 300.0) * h)
         else:
             y1 = y_override
 
         if x_override is not None:
-            if x_override <= 300 and w > 300:
+            if x_override <= 300:
                 x1 = int((x_override / 300.0) * w)
             else:
                 x1 = x_override
         else:
             x1 = int(w * 0.047)
 
+        y1 = max(0, min(h - box_h, y1))
+        x1 = max(0, min(w - box_w, x1))
         x2 = min(w, x1 + box_w)
         y2 = min(h, y1 + box_h)
         box = (x1, y1, x2, y2)
@@ -1469,15 +1483,29 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
     x2 = min(w, x1 + box_w)
     box = (x1, y1, x2, y2)
 
-    # Blur: fill box area with diffuse inpainting (full rectangle, matches textbox)
-    crop = arr_orig[y1:y2, x1:x2]
-    box_h_px = y2 - y1
-    radius = max(2, int(box_h_px * 0.25))
-
-    mask_img = Image.new("L", (x2 - x1, y2 - y1), 255)  # full mask = entire box blurred
-
+    # Blur: inpainting difusi untuk membersihkan teks lama & menyiapkan area textbox baru
     arr_work = arr_orig.copy()
-    arr_work[y1:y2, x1:x2] = diffuse_fill(crop, np.array(mask_img) > 0, steps=60)
+
+    # Jika y_override ditentukan dan posisinya berbeda dari posisi timemark standar (y=220), bersihkan area lama di bawah
+    if y_override is not None:
+        std_y1 = int((220 / 300.0) * h)
+        if abs(y1 - std_y1) > max(10, int(h * 0.02)):
+            std_x1 = int(w * 0.047)
+            std_box_w = int(w * BOX_WIDTH_RATIO)
+            std_box_h = int(h * BOX_HEIGHT_RATIO)
+            std_x2 = min(w, std_x1 + std_box_w)
+            std_y2 = min(h, std_y1 + std_box_h)
+            if std_y2 > std_y1 and std_x2 > std_x1:
+                old_crop = arr_work[std_y1:std_y2, std_x1:std_x2]
+                if old_crop.size > 0:
+                    old_mask = np.ones((std_y2 - std_y1, std_x2 - std_x1), dtype=bool)
+                    arr_work[std_y1:std_y2, std_x1:std_x2] = diffuse_fill(old_crop, old_mask, steps=60)
+
+    if y2 > y1 and x2 > x1:
+        crop = arr_work[y1:y2, x1:x2]
+        box_h_px = y2 - y1
+        mask_img = np.ones((y2 - y1, x2 - x1), dtype=bool)
+        arr_work[y1:y2, x1:x2] = diffuse_fill(crop, mask_img, steps=60)
 
     img_erased = Image.fromarray(arr_work)
 
@@ -1660,20 +1688,29 @@ def main():
         # Flat structure: [BTP/]category/identifier/photo.jpg
         btp_shift = 1 if parts and parts[0].startswith("BTP") else 0
         if len(parts) < 3 + btp_shift:
-            failed_files.append({
-                "file": str(rel),
-                "asset_type": "",
-                "detail": "",
-                "photo": "",
-                "reason": "invalid_asset_path; expected BTP/category/identifier/photo.jpg",
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            })
-            continue
-        btp = parts[0] if btp_shift else "BTP JAK"
-        category = parts[0 + btp_shift]
-        identifier = normalize_schedule_identifier(parts[1 + btp_shift])
-        photo_name = parts[2 + btp_shift]
-        asset_key = (btp, category, identifier, photo_name)
+            if args.single_out:
+                # Fallback for single-out with manual date or custom path
+                btp = "BTP BD" if "BTP BD" in str(src_resolved).upper() else "BTP JAK"
+                category = "ASET"
+                identifier = src_resolved.parent.name
+                photo_name = src_resolved.name
+                asset_key = (btp, category, identifier, photo_name)
+            else:
+                failed_files.append({
+                    "file": str(rel),
+                    "asset_type": "",
+                    "detail": "",
+                    "photo": "",
+                    "reason": "invalid_asset_path; expected BTP/category/identifier/photo.jpg",
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                })
+                continue
+        else:
+            btp = parts[0] if btp_shift else "BTP JAK"
+            category = parts[0 + btp_shift]
+            identifier = normalize_schedule_identifier(parts[1 + btp_shift])
+            photo_name = parts[2 + btp_shift]
+            asset_key = (btp, category, identifier, photo_name)
         if args.tim_filter is not None and (not schedule_lookup or asset_key not in schedule_lookup):
             continue
 
@@ -1740,11 +1777,22 @@ def main():
         dst = args.single_out if args.single_out else (dst_dir / src.name)
         meta_lookup_dir = dst.parent if args.single_out else dst_dir
         manual_meta = {} if args.ignore_manual else _read_manual_meta(meta_lookup_dir, photo_name)
-        photo_y_override = args.y_override
-        photo_x_override = args.x_override
-        if manual_meta:
-            photo_y_override = manual_meta.get("yPos", photo_y_override)
-            photo_x_override = manual_meta.get("xPos", photo_x_override)
+        if not manual_meta and not args.ignore_manual and src.parent != meta_lookup_dir:
+            manual_meta = _read_manual_meta(src.parent, photo_name)
+        # Prioritaskan argumen CLI eksplisit (--y-override / --x-override) dari aksi user
+        if args.y_override is not None:
+            photo_y_override = args.y_override
+        elif manual_meta and "yPos" in manual_meta:
+            photo_y_override = manual_meta["yPos"]
+        else:
+            photo_y_override = None
+
+        if args.x_override is not None:
+            photo_x_override = args.x_override
+        elif manual_meta and "xPos" in manual_meta:
+            photo_x_override = manual_meta["xPos"]
+        else:
+            photo_x_override = None
 
         fkey = _folder_key_from_path(rel, input_dir)
         consensus_gy1 = folder_consensus.get(fkey) if fkey else None

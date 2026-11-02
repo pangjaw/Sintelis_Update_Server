@@ -397,7 +397,39 @@ Seluruh checklist perawatan P3STE dibuat menggunakan pustaka TCPDF dengan format
 
 ---
 
-## 🚫 11. ATURAN KERJA AI: DILARANG AUTO-BUILD (MANUAL BUILD OLEH USER)
+## 🗂️ 11. ATURAN SINGLE LOCATION FOLDER & MAPPING JSON (MULTI-ASSET CHECKLIST)
+
+Untuk checklist dokumen yang memuat banyak baris aset dalam 1 lokasi stasiun yang sama (contohnya **Catu Daya, PDSE, Serat Optik, PTDS, PTLS, JPL, PTPP**):
+
+1. **Folder Foto Tunggal per Lokasi:**
+   - Folder ekspor foto mentah (`03_photos_export`) dan foto hasil edit (`04_photos_edited`) **TIDAK DIBAGI PER BARIS ASET**, melainkan hanya 1 folder per lokasi/stasiun (misal: `BTP BD/CATUDAYA/CGB/`). Hal ini dirancang agar pengguna tidak perlu mengedit foto yang sama berulang kali di folder berbeda.
+2. **Kamus Pemetaan Berkas (`asset_location_mapping.json`):**
+   - Disimpan di root folder ekspor foto dan folder logs.
+   - Menyimpan pemetaan multi-indeks: `by_location`, `asset_to_location`, `pdf_to_location`, dan `pdf_to_assets`.
+3. **Penanganan Penggabungan Dokumen (`merge_pdf_foto.py`):**
+   - Saat menyisipkan foto ke dokumen PDF yang memuat lebih dari 1 baris funcloc, sistem mengambil foto dari folder lokasi yang terdaftar pada `asset_location_mapping.json`.
+   - Jika suatu baris aset tidak memiliki foto khusus, foto diduplikasi secara otomatis dari baris pertama dokumen tersebut (`photo_paths[identifier] = first_found_photos`).
+4. **Isolasi Penuh Kategori Multi-Row Murni:**
+   - Kategori yang memang memiliki unit foto fisik berbeda per baris aset (**`WESEL`**, **`SINYAL`**, **`AXC`**) dikecualikan secara ketat (`MULTI_ROW_CATEGORIES`) dan tetap menggunakan alur foto per nomor aset (misal: `W11`, `11A`, `ZP 41`).
+
+---
+
+## 🖱️ 12. STANDAR INTERAKSI DRAG-AND-DROP & PERSISTENSI TIMEMARK BOX
+
+1. **Anti-Flicker Drag Over (CSS `pointer-events: none`):**
+   - Seluruh overlay visual penanda drag (seperti `isDragOver` dengan warna amber pada kartu galeri) **wajib** memiliki properti CSS `pointerEvents: 'none'`. Hal ini mencegah pointer mouse melakukan hit-testing pada overlay yang memicu loop tak berujung `dragleave` ↔ `dragenter`.
+   - Event `onDragLeave` wajib memiliki penjaga boundary kontainer:
+     `if (e.currentTarget.contains(e.relatedTarget)) return;`.
+2. **Sticky Timemark Coordinates (`lastTimemarkPos`):**
+   - Posisi koordinat penanda timemark (`xPos`, `yPos`) yang disesuaikan pengguna pada salah satu foto wajib dipertahankan ke dalam sesi aktif dan `localStorage` (`sintelis_last_timemark_pos`).
+   - Saat pengguna melakukan penggantian foto via drag-and-drop:
+     - Frontend mengirim koordinat terakhir `lastTimemarkPos` ke endpoint `/api/timemark/replace-photo`.
+     - Backend memprioritaskan koordinat tersebut dan mengoper parameter `--x-override` dan `--y-override` ke engine `edit_timemark_ide1.py` dengan flag `--ignore-manual`.
+     - Metadata `meta.json` diperbarui secara serentak di folder output primer dan alternatif.
+
+---
+
+## 🚫 13. ATURAN KERJA AI: DILARANG AUTO-BUILD (MANUAL BUILD OLEH USER)
 
 > [!CAUTION]
 > **Wajib Ditaati oleh Seluruh Sesi Chat & AI Agent (Antigravity):**
@@ -405,3 +437,23 @@ Seluruh checklist perawatan P3STE dibuat menggunakan pustaka TCPDF dengan format
 > 1. **Dilarang mengeksekusi otomatis:** `build_and_deploy.bat`, `python build_release.py`, atau PyInstaller.
 > 2. **AI hanya boleh memverifikasi frontend:** menjalankan `npm run build` untuk memeriksa tidak ada galat sintaks/JSX.
 > 3. **Eksekusi build diserahkan kepada User:** Biarkan user yang mengeksekusi `build_and_deploy.bat` secara manual guna mencegah bentrok (*file lock / race condition*) antar sesi chat yang berjalan simultan.
+
+
+---
+
+## 🗓️ 14. FITUR GANTI TANGGAL FOTO ARSIP (BATCH DATE EDITOR PER FOLDER ASET)
+
+Fitur ini dirancang bagi pengguna yang telah menyimpan hasil ekstraksi foto inspeksi dari beberapa bulan lalu dan hanya ingin memperbarui tanggal watermark tanpa perlu menjalankan pipeline lengkap dari awal:
+
+1. **Pemilihan Folder Bebas (Input & Output):**
+   - **Folder Sumber Foto**: Pengguna dapat memilih direktori arsip foto mana pun. Sistem secara otomatis mendeteksi struktur folder aset (`BTP / KATEGORI / IDENTIFIER`) dan file foto di dalamnya (`0.jpg`, `50.jpg`, `100.jpg`).
+   - **Folder Tujuan Simpan**: Pengguna dapat menentukan lokasi direktori penyimpanan hasil editan baru.
+2. **Sistem Centang Berbasis Folder Aset (Folder-Level Selection):**
+   - Checkbox centang diletakkan pada header bar folder aset (misal: `[☑️] BTP BD / PDSE / BTT (3 Foto)`).
+   - Seluruh foto di dalam folder tersebut otomatis terpilih dan diproses bersamaan, menghemat waktu pemilihan pengguna.
+3. **Panel Kanan (Sticky Right Sidebar):**
+   - Memuat box input tanggal kalender (*DatePicker*) yang otomatis diformat ke standar bahasa Indonesia (misal: `Jumat, Nov 06 2026`).
+   - **Tanpa Jam**: Tanggal dicetak murni pada foto menggunakan flag `--no-time` di `edit_timemark_ide1.py` tanpa membuat *schedule*.
+   - Daftar folder tercentang dapat ditinjau dan dibatalkan per folder dengan tombol `[❌]`.
+4. **Backend Endpoint:**
+   - Melayani endpoint `/api/timemark/batch-update-date` yang memproses watermarking secara sekuensial dengan inpainting Google Cloud Vision / HSV fallback.

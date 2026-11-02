@@ -4,6 +4,7 @@ import EmployeeManagerPanel from './timemark/EmployeeManagerPanel';
 import CorrectionPanel from './timemark/CorrectionPanel';
 import ExcelExportPanel from './timemark/ExcelExportPanel';
 import ScheduleSheetPanel from './timemark/ScheduleSheetPanel';
+import BatchDateEditorPanel from './timemark/BatchDateEditorPanel';
 
 export default function TimemarkModule() {
   const [activeSubTab, setActiveSubTab] = useState('pipeline'); // 'pipeline' | 'gallery' | 'employee' | 'correction' | 'export'
@@ -233,6 +234,7 @@ export default function TimemarkModule() {
           { id: 'pipeline', label: '🚀 Pipeline Proses' },
           { id: 'schedule', label: '📅 Schedule Sheet' },
           { id: 'gallery', label: '🖼️ Galeri & Edit Foto' },
+          { id: 'batch-date', label: '🗓️ Ganti Tanggal Foto' },
           { id: 'employee', label: '👥 Profil Pegawai' },
           { id: 'correction', label: '📑 Koreksi Dokumen' },
           { id: 'export', label: '📊 Ekspor Dokumen Excel' }
@@ -824,6 +826,11 @@ export default function TimemarkModule() {
       {/* SUB-TAB 2: GALERI & EDIT FOTO */}
       <div style={{ display: activeSubTab === 'gallery' ? 'flex' : 'none', flexDirection: 'column', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
         <GalleryPanel exportDir={currentActiveExport} onPickFolder={() => handlePickFolder(setExportDir, 'export')} />
+      </div>
+
+      {/* SUB-TAB: GANTI TANGGAL FOTO */}
+      <div style={{ display: activeSubTab === 'batch-date' ? 'flex' : 'none', flexDirection: 'column', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
+        <BatchDateEditorPanel defaultSourceDir={currentActiveExport} />
       </div>
 
       {/* SUB-TAB 3: PROFIL PEGAWAI */}

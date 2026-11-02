@@ -7,6 +7,7 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 import base64
+import concurrent.futures
 import http.server
 import io
 import json
@@ -1716,6 +1717,8 @@ def _resolve_photo_directories(folder_path: str) -> tuple[str, str, str]:
     if not dir_raw:
         if base_name in ("03_export_foto", "03_photos_export") and os.path.isdir(norm):
             dir_raw = norm
+        elif os.path.isdir(norm) and any(os.path.isdir(os.path.join(norm, d)) for d in os.listdir(norm) if not d.startswith(".")):
+            dir_raw = norm
         else:
             dir_raw = os.path.join(export_root, "03_export_foto")
 
@@ -1732,6 +1735,369 @@ def _resolve_photo_directories(folder_path: str) -> tuple[str, str, str]:
 
     return export_root, dir_raw, dir_edited
 
+
+def resolve_fuzzy_path(raw_path: str) -> str:
+    """
+    Menoleransi kesalahan ketik spasi/huruf besar-kecil pada jalur folder
+    (misal: 'Z:\7. IMO\5. IMO 2025' -> 'Z:\7.IMO\5. IMO 2025').
+    """
+    if not raw_path or not isinstance(raw_path, str):
+        return raw_path
+    clean_p = raw_path.strip().strip('"').strip("'")
+    norm = os.path.normpath(clean_p)
+    if os.path.exists(norm):
+        return norm
+
+    drive, rest = os.path.splitdrive(norm)
+    if not drive:
+        if norm.startswith("\\\\"):
+            parts = [p for p in norm.split(os.sep) if p]
+            if len(parts) >= 2:
+                curr = "\\\\" + parts[0] + "\\" + parts[1]
+                rem = parts[2:]
+            else:
+                return clean_p
+        else:
+            return clean_p
+    else:
+        curr = drive + os.sep
+        rem = [p for p in rest.split(os.sep) if p]
+
+    for p in rem:
+        cand = os.path.join(curr, p)
+        if os.path.exists(cand):
+            curr = cand
+            continue
+        try:
+            subdirs = os.listdir(curr)
+            p_clean = p.replace(" ", "").lower()
+            matched = None
+            for sd in subdirs:
+                if sd.replace(" ", "").lower() == p_clean:
+                    matched = sd
+                    break
+            if matched:
+                curr = os.path.join(curr, matched)
+            else:
+                return clean_p
+        except Exception:
+            return clean_p
+
+    return curr if os.path.exists(curr) else clean_p
+
+
+def scan_deep_photo_subfolders(folder_path: str, target_dir: str = ""):
+    """
+    Pemindai subfolder berkinerja tinggi (multi-threaded, memory-cached)
+    untuk struktur folder 03 (ekspor mentah), folder 04 (foto editan per Tim),
+    maupun folder arsip foto lainnya termasuk drive jaringan VPN.
+    Mendeteksi setiap subfolder daun yang memuat file citra (.jpg, .jpeg, .png).
+    Jika target_dir disediakan, mendeteksi juga file hasil ekspor pada folder tujuan.
+    """
+    resolved_folder = resolve_fuzzy_path(folder_path)
+    norm_folder = os.path.normpath(resolved_folder)
+    if not os.path.isdir(norm_folder):
+        return [], resolved_folder
+
+    norm_target = ""
+    if target_dir:
+        res_target = resolve_fuzzy_path(target_dir)
+        if os.path.isdir(res_target):
+            norm_target = os.path.normpath(res_target)
+
+    ignored_dirs = {".git", "node_modules", "__pycache__", "backups", "_temp_merged", ".obsidian"}
+
+    def _scan_single_branch(branch_root):
+        local_assets = []
+        for root, dirs, files in os.walk(branch_root):
+            dirs[:] = [d for d in dirs if d.lower() not in ignored_dirs]
+            img_files = [
+                f for f in files
+                if f.lower().endswith((".jpg", ".jpeg", ".png"))
+                and not f.lower().endswith((".original_backup.jpg", ".orig.jpg", ".unedited"))
+            ]
+            if not img_files:
+                continue
+
+            files_lower = {f.lower() for f in files}
+            has_meta = "meta.json" in files_lower
+
+            rel_path = os.path.relpath(root, norm_folder).replace("\\", "/")
+            parts = [p for p in rel_path.split("/") if p and p != "."]
+
+            tim = ""
+            source_type = "export"
+            clean_parts = []
+            for p in parts:
+                if re.match(r"^tim[_\s]\d+$", p, re.IGNORECASE):
+                    tim = p.replace("_", " ").title()
+                    source_type = "timemark"
+                elif p.lower() in ("04_photos_edited", "04_foto_edited", "04_time", "04_koordinat"):
+                    source_type = "timemark"
+                elif p.lower() in ("03_export_foto", "03_photos_export", "03_photos_cropped_temp"):
+                    source_type = "export"
+                else:
+                    clean_parts.append(p)
+
+            if not tim:
+                m_tim = re.search(r"[\\/](Tim[_\s]\d+)[\\/]", root, re.IGNORECASE)
+                if m_tim:
+                    tim = m_tim.group(1).replace("_", " ").title()
+                    source_type = "timemark"
+
+            if len(clean_parts) >= 3:
+                station = clean_parts[0]
+                category = clean_parts[1]
+                detail = "/".join(clean_parts[2:])
+            elif len(clean_parts) == 2:
+                station = "BTP BD" if "BTP BD" in root.upper() else ("BTP JAK" if "BTP JAK" in root.upper() else "STN")
+                category = clean_parts[0]
+                detail = clean_parts[1]
+            elif len(clean_parts) == 1:
+                station = "BTP BD" if "BTP BD" in root.upper() else ("BTP JAK" if "BTP JAK" in root.upper() else "STN")
+                category = "ASET"
+                detail = clean_parts[0]
+            else:
+                station = "BTP BD" if "BTP BD" in root.upper() else ("BTP JAK" if "BTP JAK" in root.upper() else "STN")
+                category = "ASET"
+                detail = os.path.basename(root)
+
+            clean_rel = f"{station}/{category}/{detail}".strip("/")
+
+            # Deteksi file hasil di folder tujuan jika norm_target tersedia
+            dst_folder = None
+            dst_files_map = {}
+            dst_meta = {}
+            dst_date = ""
+            if norm_target:
+                parts_f3 = [
+                    p for p in clean_rel.split("/")
+                    if p and not re.match(r"^tim[_\s]\d+$", p, re.IGNORECASE)
+                    and p.lower() not in ("04_photos_edited", "04_foto_edited", "03_export_foto", "03_photos_export", "04_time", "04_koordinat")
+                ]
+                f3_rel = "/".join(parts_f3) if parts_f3 else clean_rel
+                cand_dst1 = os.path.normpath(os.path.join(norm_target, f3_rel))
+                cand_dst2 = os.path.normpath(os.path.join(norm_target, clean_rel))
+                cand_dst3 = os.path.normpath(os.path.join(norm_target, rel_path))
+
+                if os.path.isdir(cand_dst1):
+                    dst_folder = cand_dst1
+                elif os.path.isdir(cand_dst2):
+                    dst_folder = cand_dst2
+                elif os.path.isdir(cand_dst3):
+                    dst_folder = cand_dst3
+
+                if dst_folder and os.path.isdir(dst_folder):
+                    try:
+                        for dfn in os.listdir(dst_folder):
+                            dfn_l = dfn.lower()
+                            if dfn_l.endswith((".jpg", ".jpeg", ".png")) and not dfn_l.endswith((".original_backup.jpg", ".orig.jpg", ".unedited")):
+                                dst_files_map[dfn_l] = dfn
+
+                        m_file = os.path.join(dst_folder, "meta.json")
+                        if os.path.isfile(m_file):
+                            try:
+                                with open(m_file, "r", encoding="utf-8") as mf:
+                                    dst_meta = json.load(mf)
+                            except Exception:
+                                pass
+
+                        d_file = os.path.join(dst_folder, "date.txt")
+                        if os.path.isfile(d_file):
+                            try:
+                                with open(d_file, "r", encoding="utf-8") as df:
+                                    dst_date = df.read().strip()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+            def _photo_sort_key(fn):
+                fn_l = fn.lower()
+                if fn_l.startswith("0."): return (0, fn_l)
+                if fn_l.startswith("50."): return (1, fn_l)
+                if fn_l.startswith("100."): return (2, fn_l)
+                return (3, fn_l)
+
+            sorted_img_files = sorted(img_files, key=_photo_sort_key)
+
+            photos = []
+            is_edited_folder = source_type == "timemark" or "04_photos_edited" in root.lower() or "04_foto_edited" in root.lower()
+            for p_name in sorted_img_files:
+                p_abs = os.path.abspath(os.path.join(root, p_name))
+                try:
+                    p_mtime = int(os.path.getmtime(p_abs))
+                except Exception:
+                    p_mtime = 1
+                p_url = f"/api/timemark/photo-file?path={urllib.parse.quote(p_abs)}&t={p_mtime}"
+
+                p_l = p_name.lower()
+                has_out = False
+                out_url = None
+                out_abs = None
+                out_meta = {}
+                if p_l in dst_files_map:
+                    out_fn = dst_files_map[p_l]
+                    out_abs = os.path.abspath(os.path.join(dst_folder, out_fn))
+                    try:
+                        out_mtime = int(os.path.getmtime(out_abs))
+                    except Exception:
+                        out_mtime = 1
+                    out_url = f"/api/timemark/photo-file?path={urllib.parse.quote(out_abs)}&t={out_mtime}"
+                    has_out = True
+                    out_meta = dict(dst_meta.get(out_fn) or dst_meta.get(p_name) or {})
+
+                    # Pastikan koordinat xPos / yPos selalu akurat mengikuti meta.json, YOLO label (.txt), atau standar pipeline (14, 220)
+                    stem = os.path.splitext(p_name)[0]
+                    txt_candidates = [
+                        os.path.join(dst_folder, stem + ".txt") if dst_folder else None,
+                        os.path.join(root, stem + ".txt")
+                    ]
+                    found_coords = None
+                    for tc in txt_candidates:
+                        if tc and os.path.isfile(tc):
+                            try:
+                                with open(tc, "r", encoding="utf-8") as tf:
+                                    tline = tf.readline().strip()
+                                    tparts = tline.split()
+                                    if len(tparts) >= 5:
+                                        xc = float(tparts[1])
+                                        yc = float(tparts[2])
+                                        wb = float(tparts[3])
+                                        hb = float(tparts[4])
+                                        # Hanya perlakukan sebagai textbox penuh jika lebar box >= 8% (bukan guide bar vertikal sempit)
+                                        if wb >= 0.08:
+                                            xmin = xc - wb / 2.0
+                                            ymin = yc - hb / 2.0
+                                            found_coords = (max(0, int(round(xmin * 300))), max(0, int(round(ymin * 300))))
+                                        else:
+                                            # Label guide bar vertikal: posisi awal textbox standar adalah (14, 220)
+                                            found_coords = (14, 220)
+                                        break
+                            except Exception:
+                                pass
+
+                    if "xPos" not in out_meta:
+                        out_meta["xPos"] = found_coords[0] if found_coords else 14
+                    if "yPos" not in out_meta:
+                        out_meta["yPos"] = found_coords[1] if found_coords else 220
+
+                photos.append({
+                    "name": p_name,
+                    "absPath": p_abs,
+                    "url": p_url,
+                    "rawUrl": None if is_edited_folder else p_url,
+                    "editedUrl": p_url if is_edited_folder else None,
+                    "hasRaw": not is_edited_folder,
+                    "hasEdited": is_edited_folder,
+                    "outputUrl": out_url,
+                    "outputAbsPath": out_abs,
+                    "hasOutput": has_out,
+                    "outputMeta": out_meta,
+                    "meta": out_meta if has_out else {}
+                })
+
+            has_any_edited = any(p["hasEdited"] for p in photos)
+            has_any_output = any(p["hasOutput"] for p in photos)
+
+            local_assets.append({
+                "station": station,
+                "btp": station,
+                "category": category,
+                "detail": detail,
+                "identifier": detail,
+                "relDir": rel_path if rel_path and rel_path != "." else detail,
+                "cleanRel": clean_rel,
+                "absPath": os.path.abspath(root),
+                "dstFolder": dst_folder,
+                "dateText": dst_date or "",
+                "targetDateText": dst_date or "",
+                "tim": tim,
+                "sourceType": "timemark" if (has_any_edited or has_any_output) else "export",
+                "hasEdited": has_any_edited,
+                "hasOutput": has_any_output,
+                "isEdited": has_any_edited or has_any_output,
+                "hasMeta": has_meta or bool(dst_meta),
+                "photos": photos
+            })
+        return local_assets
+    top_entries = []
+    try:
+        top_entries = [
+            os.path.join(norm_folder, d) for d in os.listdir(norm_folder)
+            if os.path.isdir(os.path.join(norm_folder, d)) and d.lower() not in ignored_dirs
+        ]
+    except Exception:
+        top_entries = []
+
+    discovered_assets = []
+    if len(top_entries) > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(top_entries))) as executor:
+            for batch in executor.map(_scan_single_branch, top_entries):
+                discovered_assets.extend(batch)
+    else:
+        discovered_assets = _scan_single_branch(norm_folder)
+
+    discovered_assets.sort(key=lambda a: (a["station"], a["category"], a["detail"], a.get("tim", "")))
+    return discovered_assets, resolved_folder
+
+
+
+def get_folder_consensus_coordinates(src_folder: str, dst_folder: str, photo_names: list) -> tuple:
+    """
+    Mencari koordinat konsensus (xPos, yPos) dari sebuah folder aset berdasarkan:
+    1. meta.json di folder tujuan (dst_folder) atau folder sumber (src_folder)
+    2. File label YOLO (.txt) di folder sumber
+    3. Analisis guide HSV warna merah (find_red_guide) pada foto-foto yang ada
+    """
+    # 1. Cek meta.json di dst_folder lalu src_folder
+    for meta_path in [os.path.join(dst_folder, "meta.json"), os.path.join(src_folder, "meta.json")]:
+        if os.path.isfile(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as mf:
+                    meta_data = json.load(mf)
+                for p_n, p_val in meta_data.items():
+                    if isinstance(p_val, dict) and not p_val.get("needCorrection"):
+                        if p_val.get("yPos") is not None and p_val.get("xPos") is not None:
+                            return int(p_val["xPos"]), int(p_val["yPos"])
+            except Exception:
+                pass
+
+    # 2. Cek label YOLO (.txt) di src_folder
+    for p_name in photo_names:
+        stem = os.path.splitext(p_name)[0]
+        txt_path = os.path.join(src_folder, f"{stem}.txt")
+        if os.path.isfile(txt_path):
+            try:
+                with open(txt_path, "r", encoding="utf-8") as tf:
+                    raw = tf.read().strip()
+                if raw:
+                    parts = raw.splitlines()[0].split()
+                    if len(parts) >= 5:
+                        yc = float(parts[2])
+                        y_val = int(round(yc * 300))
+                        return 14, y_val
+            except Exception:
+                pass
+
+    # 3. Cek find_red_guide dari foto-foto di src_folder
+    try:
+        from timemark_engine.edit_timemark_ide1 import find_red_guide
+        import numpy as np
+        for p_name in photo_names:
+            p_path = os.path.join(src_folder, p_name)
+            if os.path.isfile(p_path):
+                img = Image.open(p_path).convert('RGB')
+                guide = find_red_guide(np.array(img))
+                if guide:
+                    gx1, gy1, gx2, gy2 = guide
+                    w, h = img.size
+                    y_calc = int(round((gy1 / h) * 300))
+                    return 14, y_calc
+    except Exception:
+        pass
+
+    return None, None
 
 class ApiHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP handler: serve static files + /api/* endpoints"""
@@ -1886,6 +2252,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_timemark_swap_photo()
         elif parsed.path == "/api/timemark/crop-collage-single":
             self._handle_timemark_crop_collage_single()
+        elif parsed.path == "/api/timemark/batch-update-date":
+            self._handle_timemark_batch_update_date()
         elif parsed.path == "/api/timemark/pegawai":
             self._handle_timemark_pegawai_post()
         elif parsed.path == "/api/timemark/set-active-preset":
@@ -1945,10 +2313,37 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             _log(f"Timemark start error: {e}")
             self._json({"error": str(e)}, 500)
 
+
     def _handle_timemark_photos(self, parsed):
         try:
             qs = urllib.parse.parse_qs(parsed.query)
             folder = qs.get("folder", [""])[0]
+            deep_mode = qs.get("deep", ["0"])[0] in ("1", "true")
+            folder_res = resolve_fuzzy_path(folder)
+            if not folder or not os.path.isdir(folder_res):
+                self._json({
+                    "ok": True,
+                    "assets": [],
+                    "resolvedPath": folder_res,
+                    "message": f"Folder tidak ditemukan pada sistem: {folder}"
+                })
+                return
+
+            if deep_mode:
+                target_folder = qs.get("targetFolder", [""])[0]
+                deep_assets, resolved_path = scan_deep_photo_subfolders(folder, target_dir=target_folder)
+                self._json({
+                    "ok": True,
+                    "assets": deep_assets,
+                    "resolvedPath": resolved_path,
+                    "targetFiles": [],
+                    "sourceFiles": [],
+                    "editedCount": sum(1 for a in deep_assets if a.get("hasEdited")),
+                    "exportCount": sum(1 for a in deep_assets if not a.get("hasEdited")),
+                    "total": len(deep_assets),
+                    "message": f"Ditemukan {len(deep_assets)} folder aset foto." if deep_assets else f"Folder ditemukan tetapi tidak memuat foto (.jpg/.png): {resolved_path}"
+                })
+                return
             if not folder or not os.path.isdir(folder):
                 self._json({"ok": True, "assets": []})
                 return
@@ -2277,7 +2672,9 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 })
 
             # Sortir: Aset dengan hasEdited tampil lebih dulu, lalu yang memiliki foto mentah, lalu yang kosong
-            assets.sort(key=lambda a: (0 if a["hasEdited"] else (1 if a["photos"] else 2), a["station"], a["category"], a["detail"]))
+            if not assets and os.path.isdir(folder):
+                assets = scan_deep_photo_subfolders(folder)
+            assets.sort(key=lambda a: (0 if a.get("hasEdited") else (1 if a.get("photos") else 2), a.get("station", ""), a.get("category", ""), a.get("detail", "")))
 
             self._json({
                 "ok": True,
@@ -2679,6 +3076,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             _log(f"Single timemark error: {e}")
             self._json({"ok": False, "error": str(e)}, 500)
 
+
     def _handle_timemark_manual_edit(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -2686,7 +3084,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(body) if body else {}
 
             base_dir = data.get("baseExportDir") or data.get("folder") or ""
+            source_dir = data.get("sourceDir") or ""
+            target_dir = data.get("targetDir") or ""
             raw_rel = data.get("rawRelPath") or data.get("assetRelPath") or ""
+            clean_rel = data.get("cleanRel") or ""
             date_text = data.get("dateText", "").strip()
             y_pos = data.get("yPos")
             x_pos = data.get("xPos")
@@ -2709,6 +3110,125 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             else:
                 asset_rel = norm_rel
                 target_fnames = ["0.jpg", "50.jpg", "100.jpg"]
+
+            # Modus Khusus: Batch Date Editor dengan sourceDir & targetDir (Folder 3 murni tanpa folder Tim_N)
+            if source_dir and target_dir:
+                norm_clean = (clean_rel or asset_rel).replace("\\", "/").strip("/")
+                parts_f3 = [
+                    p for p in norm_clean.split("/")
+                    if p and not re.match(r"^tim[_\s]\d+$", p, re.IGNORECASE)
+                    and p.lower() not in ("04_photos_edited", "04_foto_edited", "03_export_foto", "03_photos_export", "04_time", "04_koordinat")
+                ]
+                dst_rel = "/".join(parts_f3) if parts_f3 else norm_clean
+                dst_folder = os.path.normpath(os.path.join(target_dir, dst_rel))
+                os.makedirs(dst_folder, exist_ok=True)
+
+                src_folder = None
+                for cand_s in [
+                    os.path.normpath(os.path.join(source_dir, asset_rel)),
+                    os.path.normpath(os.path.join(source_dir, dst_rel)),
+                    os.path.normpath(os.path.join(source_dir, norm_clean))
+                ]:
+                    if os.path.isdir(cand_s):
+                        src_folder = cand_s
+                        break
+                if not src_folder:
+                    src_folder = os.path.normpath(os.path.join(source_dir, dst_rel))
+
+                if not date_text:
+                    for cand_df in [os.path.join(dst_folder, "date.txt"), os.path.join(src_folder, "date.txt")]:
+                        if os.path.isfile(cand_df):
+                            try:
+                                with open(cand_df, "r", encoding="utf-8") as df:
+                                    date_text = df.read().strip()
+                                if date_text:
+                                    break
+                            except Exception:
+                                pass
+
+                dst_meta_path = os.path.join(dst_folder, "meta.json")
+                dst_meta = {}
+                if os.path.isfile(dst_meta_path):
+                    try:
+                        with open(dst_meta_path, "r", encoding="utf-8") as dmf:
+                            dst_meta = json.load(dmf)
+                    except Exception:
+                        pass
+
+                sub_env = os.environ.copy()
+                sub_env["PYTHONUNBUFFERED"] = "1"
+                sub_env["PYTHONIOENCODING"] = "utf-8"
+
+                processed_count = 0
+                for fname in target_fnames:
+                    in_cand = os.path.join(src_folder, fname)
+                    out_target = os.path.join(dst_folder, fname)
+
+                    if not os.path.isfile(in_cand):
+                        if os.path.isfile(out_target):
+                            in_cand = out_target
+                        else:
+                            continue
+
+                    cmd = make_script_cmd("edit_timemark_ide1.py", [
+                        "--input", in_cand,
+                        "--single-out", out_target,
+                        "--detector", detector,
+                        "--no-time"
+                    ])
+                    if date_text:
+                        cmd.extend(["--date", date_text])
+                    if y_pos is not None and str(y_pos) != "":
+                        cmd.extend(["--y-override", str(y_pos)])
+                    if x_pos is not None and str(x_pos) != "":
+                        cmd.extend(["--x-override", str(x_pos)])
+
+                    res = subprocess.run(
+                        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                    )
+                    if res.returncode != 0:
+                        err_out = res.stderr.strip() or res.stdout.strip() or "Proses override timemark gagal"
+                        _log(f"Manual edit error on {in_cand}: {err_out}")
+                        self._json({"ok": False, "error": err_out}, 500)
+                        return
+
+                    unedit_f = out_target + ".unedited"
+                    if os.path.isfile(unedit_f):
+                        try:
+                            os.remove(unedit_f)
+                        except Exception:
+                            pass
+
+                    if os.path.isfile(out_target):
+                        processed_count += 1
+                        dst_meta[fname] = {
+                            "stage": "stage_manual_override",
+                            "detector": detector,
+                            "dateText": date_text,
+                            "updatedAt": datetime.now().isoformat(),
+                            "xPos": int(x_pos) if x_pos is not None else 14,
+                            "yPos": int(y_pos) if y_pos is not None else 220,
+                            "needCorrection": False
+                        }
+
+                try:
+                    with open(dst_meta_path, "w", encoding="utf-8") as dmf:
+                        json.dump(dst_meta, dmf, indent=2, ensure_ascii=False)
+                    if date_text:
+                        with open(os.path.join(dst_folder, "date.txt"), "w", encoding="utf-8") as df:
+                            df.write(date_text)
+                except Exception as e_meta_save:
+                    _log(f"Notice saving manual edit meta: {e_meta_save}")
+
+                self._json({
+                    "ok": True,
+                    "message": f"Timemark berhasil disimpan dan diterapkan pada {processed_count} foto di folder tujuan!",
+                    "xPos": x_pos,
+                    "yPos": y_pos,
+                    "meta": dst_meta
+                })
+                return
 
             export_root, photos_export, photos_edited = _resolve_photo_directories(base_dir)
             os.makedirs(photos_edited, exist_ok=True)
@@ -3251,6 +3771,209 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             _log(f"Crop collage single error: {e}")
             self._json({"ok": False, "error": str(e)}, 500)
+
+    def _handle_timemark_batch_update_date(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            data = json.loads(body) if body else {}
+
+            source_dir = data.get("sourceDir") or ""
+            target_dir = data.get("targetDir") or ""
+            date_text = (data.get("dateText") or "").strip()
+            detector = data.get("detector") or "google_vision"
+            folders = data.get("folders") or []
+
+            if not source_dir or not os.path.isdir(source_dir):
+                self._json({"ok": False, "error": f"Folder sumber tidak valid atau tidak ditemukan: {source_dir}"}, 400)
+                return
+
+            if not target_dir:
+                self._json({"ok": False, "error": "Folder tujuan penyimpanan hasil wajib dipilih."}, 400)
+                return
+
+            if not date_text:
+                self._json({"ok": False, "error": "Tanggal watermark baru wajib diisi."}, 400)
+                return
+
+            if not folders:
+                self._json({"ok": False, "error": "Tidak ada folder aset yang dicentang."}, 400)
+                return
+
+            os.makedirs(target_dir, exist_ok=True)
+
+            sub_env = os.environ.copy()
+            sub_env["PYTHONUNBUFFERED"] = "1"
+            sub_env["PYTHONIOENCODING"] = "utf-8"
+
+            src_root, src_raw, _ = _resolve_photo_directories(source_dir)
+            if not os.path.isdir(src_raw) and os.path.isdir(source_dir):
+                src_raw = source_dir
+
+            processed_folders = 0
+            processed_photos = 0
+            errors = []
+
+            for f_item in folders:
+                rel_dir = f_item.get("relDir") or f_item.get("relPath") or ""
+                clean_rel = f_item.get("cleanRel") or rel_dir
+                abs_path = f_item.get("absPath") or ""
+
+                src_folder = None
+                if abs_path and os.path.isdir(abs_path):
+                    src_folder = abs_path
+                else:
+                    norm_rel = rel_dir.replace("\\", "/").strip("/")
+                    cand1 = os.path.normpath(os.path.join(source_dir, norm_rel))
+                    cand2 = os.path.normpath(os.path.join(src_raw, norm_rel))
+                    if os.path.isdir(cand1):
+                        src_folder = cand1
+                    elif os.path.isdir(cand2):
+                        src_folder = cand2
+
+                if not src_folder or not os.path.isdir(src_folder):
+                    errors.append(f"Folder sumber tidak ditemukan: {rel_dir}")
+                    continue
+
+                norm_clean = clean_rel.replace("\\", "/").strip("/")
+                # Pastikan output murni mengikuti struktur Folder 3 (BTP/Kategori/Identifier) tanpa folder Tim_N
+                parts_f3 = [
+                    p for p in norm_clean.split("/")
+                    if p and not re.match(r"^tim[_\s]\d+$", p, re.IGNORECASE)
+                    and p.lower() not in ("04_photos_edited", "04_foto_edited", "03_export_foto", "03_photos_export", "04_time", "04_koordinat")
+                ]
+                folder3_rel = "/".join(parts_f3) if parts_f3 else norm_clean
+                dst_folder = os.path.normpath(os.path.join(target_dir, folder3_rel))
+                os.makedirs(dst_folder, exist_ok=True)
+
+                try:
+                    with open(os.path.join(dst_folder, "date.txt"), "w", encoding="utf-8") as df:
+                        df.write(date_text)
+                except Exception as e_date:
+                    _log(f"Notice saving date.txt: {e_date}")
+
+                # Baca meta.json dari folder sumber jika tersedia untuk membaca koordinat xPos / yPos
+                src_meta_path = os.path.join(src_folder, "meta.json")
+                src_meta = {}
+                if os.path.isfile(src_meta_path):
+                    try:
+                        with open(src_meta_path, "r", encoding="utf-8") as smf:
+                            src_meta = json.load(smf)
+                    except Exception as e_meta:
+                        _log(f"Notice reading src meta.json: {e_meta}")
+
+                photo_names = f_item.get("photos") or []
+                if not photo_names:
+                    photo_names = [f for f in os.listdir(src_folder) if f.lower().endswith((".jpg", ".jpeg", ".png")) and not f.lower().endswith(".orig.jpg")]
+
+                clean_pnames = [p if isinstance(p, str) else p.get("name", "0.jpg") for p in photo_names]
+                fallback_x, fallback_y = get_folder_consensus_coordinates(src_folder, dst_folder, clean_pnames)
+
+                folder_success = False
+                for p_entry in photo_names:
+                    fname = p_entry if isinstance(p_entry, str) else p_entry.get("name", "0.jpg")
+                    in_photo = os.path.join(src_folder, fname)
+                    out_photo = os.path.join(dst_folder, fname)
+
+                    if not os.path.isfile(in_photo):
+                        continue
+
+                    cmd_args = [
+                        "--input", in_photo,
+                        "--single-out", out_photo,
+                        "--date", date_text,
+                        "--no-time",
+                        "--detector", detector
+                    ]
+
+                    photo_x = None
+                    photo_y = None
+
+                    # 1. Koordinat tersimpan di meta.json sumber jika valid dan tidak butuh koreksi
+                    if fname in src_meta and isinstance(src_meta[fname], dict) and not src_meta[fname].get("needCorrection"):
+                        p_info = src_meta[fname]
+                        if p_info.get("xPos") is not None and p_info.get("yPos") is not None:
+                            photo_x = p_info["xPos"]
+                            photo_y = p_info["yPos"]
+
+                    # 2. Jika tidak ada atau sebelumnya skipped/needCorrection, warisi konsensus folder!
+                    if photo_y is None and fallback_y is not None:
+                        photo_x = fallback_x if fallback_x is not None else 14
+                        photo_y = fallback_y
+
+                    if photo_x is not None and photo_y is not None:
+                        cmd_args.extend(["--x-override", str(photo_x), "--y-override", str(photo_y)])
+
+                    cmd = make_script_cmd("edit_timemark_ide1.py", cmd_args)
+
+                    try:
+                        res = subprocess.run(
+                            cmd,
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            errors="replace",
+                            env=sub_env,
+                            cwd=BASE_DIR,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                        )
+
+                        # Bersihkan file .unedited jika dibuat oleh fallback
+                        unedit_f = out_photo + ".unedited"
+                        if os.path.isfile(unedit_f):
+                            try:
+                                os.remove(unedit_f)
+                            except Exception:
+                                pass
+
+                        if res.returncode == 0 and os.path.isfile(out_photo):
+                            processed_photos += 1
+                            folder_success = True
+                        else:
+                            err_msg = res.stderr.strip() or res.stdout.strip() or f"Proses gagal untuk {fname}"
+                            _log(f"Batch edit error on {in_photo}: {err_msg}")
+                            errors.append(f"{norm_rel}/{fname}: {err_msg[:120]}")
+                    except Exception as e_proc:
+                        _log(f"Subprocess batch error: {e_proc}")
+                        errors.append(f"{norm_rel}/{fname}: {str(e_proc)}")
+
+                if folder_success:
+                    processed_folders += 1
+                    # Sinkronkan atau simpan meta.json ke folder target dengan tanggal baru dan koordinat terpreservasi
+                    try:
+                        dst_meta_path = os.path.join(dst_folder, "meta.json")
+                        dst_meta = {}
+                        if os.path.isfile(dst_meta_path):
+                            with open(dst_meta_path, "r", encoding="utf-8") as dmf:
+                                dst_meta = json.load(dmf)
+
+                        for fn in clean_pnames:
+                            if fn not in dst_meta:
+                                dst_meta[fn] = {}
+                            dst_meta[fn]["dateText"] = date_text
+                            dst_meta[fn]["updatedAt"] = datetime.now().isoformat()
+                            dst_meta[fn]["needCorrection"] = False
+                            if fallback_y is not None and dst_meta[fn].get("yPos") is None:
+                                dst_meta[fn]["xPos"] = fallback_x or 14
+                                dst_meta[fn]["yPos"] = fallback_y
+
+                        with open(dst_meta_path, "w", encoding="utf-8") as dmf:
+                            json.dump(dst_meta, dmf, indent=2, ensure_ascii=False)
+                    except Exception as e_dm:
+                        _log(f"Notice saving dst meta.json: {e_dm}")
+
+            _log(f"Batch update date completed: {processed_folders} folders, {processed_photos} photos")
+            self._json({
+                "ok": True,
+                "message": f"Berhasil memperbarui tanggal pada {processed_folders} folder ({processed_photos} foto)!",
+                "processedFolders": processed_folders,
+                "processedPhotos": processed_photos,
+                "errors": errors
+            })
+        except Exception as e:
+            _log(f"Batch update date fatal error: {e}")
+            self._json({"ok": False, "error": str(e)}, 500)
+
 
 
     def _handle_timemark_remerge_single(self):
@@ -3951,12 +4674,15 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
     def _handle_select_folder(self):
         global _selected_folder
         try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                self.rfile.read(length)
             folder = _pick_folder_native()
             if folder:
                 _selected_folder = folder
-                self._json({"path": _selected_folder, "name": os.path.basename(_selected_folder)})
+                self._json({"path": _selected_folder, "name": os.path.basename(_selected_folder), "folder": _selected_folder})
             else:
-                self._json({"path": None, "name": None})
+                self._json({"path": None, "name": None, "folder": None})
         except Exception as e:
             _log(f"Folder selection error: {e}")
             self._json({"error": str(e)}, 500)
