@@ -2129,6 +2129,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_timemark_photo_file(parsed)
         elif parsed.path == "/api/timemark/schedule-list":
             self._handle_timemark_schedule_list(parsed)
+        elif parsed.path == "/api/timemark/schedule-info":
+            self._handle_timemark_schedule_info(parsed)
         elif parsed.path == "/api/timemark/pegawai":
             self._handle_timemark_pegawai_get()
         elif parsed.path == "/api/version":
@@ -2280,6 +2282,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_select_files()
         elif parsed.path == "/api/timemark/export-schedule-excel":
             self._handle_timemark_export_schedule_excel()
+        elif parsed.path == "/api/timemark/export-schedule-json":
+            self._handle_timemark_export_schedule_json()
         elif parsed.path == "/api/timemark/generate-schedule":
             self._handle_timemark_generate_schedule()
         elif parsed.path == "/api/personnel-changer/scan":
@@ -2298,6 +2302,9 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
             data = json.loads(body) if body else {}
+            split_multi = data.get("splitMultiAssetRows", data.get("splitMultiAsset", False))
+            inc_time = data.get("includeTime", True)
+            custom_sched = data.get("customScheduleFile")
             res = pipeline_runner.start_pipeline(
                 data.get("sourceDir"),
                 data.get("targetDir"),
@@ -2306,7 +2313,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 data.get("steps"),
                 data.get("mode", "dual"),
                 data.get("overwriteOriginal", False),
-                data.get("detector", "google_vision")
+                data.get("detector", "google_vision"),
+                split_multi_asset=split_multi,
+                include_time=inc_time,
+                custom_schedule_file=custom_sched
             )
             self._json(res)
         except Exception as e:
@@ -2348,29 +2358,80 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 self._json({"ok": True, "assets": []})
                 return
 
-            # Indeks berkas target dan tanggal dari schedule.json
+            # Resolusi terpusat folder 03 (foto mentah) dan 04 (foto editan)
+            export_root, dir_raw, dir_edited = _resolve_photo_directories(folder)
+
+            dir_time = os.path.join(export_root, "04_Time")
+            dir_coord = os.path.join(export_root, "04_koordinat")
+
+            # Indeks berkas target, tanggal, dan jam per foto dari schedule.json
             target_files_map = {}
             target_files_list = []
             schedule_date_map = {}
+            schedule_photos_map = {}
             seen_target_files = set()
-            sched_candidates = [
+            loaded_schedule_path = None
+
+            def _format_schedule_ts(ts_str):
+                if not ts_str:
+                    return ""
+                try:
+                    if "T" in ts_str:
+                        dt = datetime.fromisoformat(ts_str)
+                        days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+                        months = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+                        return f"{days[dt.weekday()]}, {months[dt.month]} {dt.day:02d} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
+                    elif len(ts_str) == 10 and ts_str.count("-") == 2:
+                        dt = datetime.strptime(ts_str, "%Y-%m-%d")
+                        days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+                        months = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+                        return f"{days[dt.weekday()]}, {months[dt.month]} {dt.day:02d} {dt.year}"
+                except Exception:
+                    pass
+                return str(ts_str).strip()
+
+            schedule_param = qs.get("schedule", [""])[0].strip()
+            sched_candidates = []
+            if schedule_param and os.path.isfile(schedule_param):
+                sched_candidates.append(schedule_param)
+            for cand in [
                 os.path.join(folder, "schedule.json"),
+                os.path.join(export_root, "schedule.json"),
+                os.path.join(os.path.dirname(export_root), "schedule.json"),
                 os.path.join(os.path.dirname(folder), "schedule.json"),
                 os.path.join(os.path.dirname(os.path.dirname(folder)), "schedule.json"),
                 os.path.join(BASE_DIR, "schedule.json"),
                 os.path.join(os.getcwd(), "schedule.json"),
-            ]
+            ]:
+                if cand and cand not in sched_candidates and os.path.isfile(cand):
+                    sched_candidates.append(cand)
+
             for sc_path in sched_candidates:
                 if os.path.isfile(sc_path):
                     try:
                         with open(sc_path, "r", encoding="utf-8") as sf:
                             sdata = json.load(sf)
+                        loaded_schedule_path = sc_path
                         for item in sdata.get("schedules", []):
                             fn = item.get("file")
-                            d_text = item.get("dateText") or item.get("iso_date") or ""
-                            if not fn:
+                            item_photos = item.get("photos", {})
+                            item_photo_timemarks = {}
+                            if isinstance(item_photos, dict):
+                                for pk, pval in item_photos.items():
+                                    ft = _format_schedule_ts(pval)
+                                    if ft:
+                                        item_photo_timemarks[pk] = ft
+
+                            d_text = (
+                                item_photo_timemarks.get("0.jpg")
+                                or item.get("dateText")
+                                or item.get("date")
+                                or _format_schedule_ts(item.get("iso_date", ""))
+                            )
+                            if not fn and not d_text and not item_photo_timemarks:
                                 continue
-                            if fn not in seen_target_files:
+
+                            if fn and fn not in seen_target_files:
                                 seen_target_files.add(fn)
                                 target_files_list.append({
                                     "file": fn,
@@ -2378,16 +2439,34 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                                     "btp": item.get("btp", ""),
                                     "date": item.get("iso_date", "")
                                 })
-                            for k in ["identifier", "base_identifier"]:
+
+                            keys_to_index = []
+                            for k in ["identifier", "base_identifier", "folder", "location_identifier"]:
                                 ident = item.get(k)
                                 if ident:
-                                    norm_id = " ".join(re.sub(r'_\d{2}-\d{2}$', '', ident.strip().upper()).split())
-                                    if norm_id not in target_files_map:
-                                        target_files_map[norm_id] = []
-                                    if fn not in target_files_map[norm_id]:
-                                        target_files_map[norm_id].append(fn)
-                                    if d_text and norm_id not in schedule_date_map:
-                                        schedule_date_map[norm_id] = d_text
+                                    keys_to_index.append(ident)
+                                    stripped = re.sub(r'_\d{2}-\d{2}$', '', ident.strip())
+                                    if stripped != ident:
+                                        keys_to_index.append(stripped)
+                                    m_otb = re.match(r'^(OTB\s+\d+)', ident.strip(), re.IGNORECASE)
+                                    if m_otb and m_otb.group(1) not in keys_to_index:
+                                        keys_to_index.append(m_otb.group(1))
+
+                            for ident_raw in keys_to_index:
+                                norm_id = " ".join(re.sub(r'_\d{2}-\d{2}$', '', ident_raw.strip().upper()).split())
+                                raw_id = ident_raw.strip().upper()
+                                for idx_k in set([norm_id, raw_id]):
+                                    if fn:
+                                        if idx_k not in target_files_map:
+                                            target_files_map[idx_k] = []
+                                        if fn not in target_files_map[idx_k]:
+                                            target_files_map[idx_k].append(fn)
+                                    if d_text:
+                                        if idx_k not in schedule_date_map or (":" not in schedule_date_map[idx_k] and ":" in d_text):
+                                            schedule_date_map[idx_k] = d_text
+                                    if item_photo_timemarks:
+                                        if idx_k not in schedule_photos_map:
+                                            schedule_photos_map[idx_k] = item_photo_timemarks
                         break
                     except Exception as e:
                         _log(f"Error reading schedule candidate {sc_path}: {e}")
@@ -2398,6 +2477,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             seen_source_files = set()
             csv_candidates = [
                 os.path.join(folder, "logs", "pdf_photo_export_log.csv"),
+                os.path.join(export_root, "logs", "pdf_photo_export_log.csv"),
                 os.path.join(os.path.dirname(folder), "logs", "pdf_photo_export_log.csv"),
                 os.path.join(BASE_DIR, "logs", "pdf_photo_export_log.csv"),
                 os.path.join(os.getcwd(), "logs", "pdf_photo_export_log.csv"),
@@ -2421,12 +2501,6 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         break
                     except Exception as e:
                         _log(f"Error reading csv candidate {c_path}: {e}")
-
-            # Resolusi terpusat folder 03 (foto mentah) dan 04 (foto editan)
-            export_root, dir_raw, dir_edited = _resolve_photo_directories(folder)
-
-            dir_time = os.path.join(export_root, "04_Time")
-            dir_coord = os.path.join(export_root, "04_koordinat")
 
             # Kumpulkan semua folder aset unik: (btp, category, detail)
             asset_dict = {}
@@ -2558,12 +2632,24 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 tim = ainfo["tim"]
 
                 norm_detail = " ".join(re.sub(r'_\d{2}-\d{2}$', '', detail.strip().upper()).split())
-                matching_targets = target_files_map.get(norm_detail, [])
-                matching_source = source_files_map.get(norm_detail, "")
+                raw_detail = detail.strip().upper()
 
-                # Ambil tanggal: meta.json -> date.txt -> schedule_date_map
+                matching_targets = target_files_map.get(norm_detail) or target_files_map.get(raw_detail) or []
+                matching_source = source_files_map.get(norm_detail) or source_files_map.get(raw_detail) or ""
+
+                # Cari schedule photos dan date
+                sched_photo_map = {}
+                sched_asset_date = ""
+                for k_c in [norm_detail, raw_detail, f"{station.strip().upper()} {norm_detail}", f"{category.strip().upper()} {norm_detail}"]:
+                    if not sched_photo_map and k_c in schedule_photos_map:
+                        sched_photo_map = schedule_photos_map[k_c]
+                    if not sched_asset_date and k_c in schedule_date_map:
+                        sched_asset_date = schedule_date_map[k_c]
+
+                # Ambil tanggal: meta.json -> schedule (dengan jam) -> date.txt
                 date_text = ""
                 meta_data = {}
+                meta_date_text = ""
                 if edited_dir:
                     mf = os.path.join(edited_dir, "meta.json")
                     if os.path.isfile(mf):
@@ -2572,12 +2658,24 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                                 meta_data = json.load(m_file)
                             for pk in ["0.jpg", "50.jpg", "100.jpg"]:
                                 if pk in meta_data and isinstance(meta_data[pk], dict) and meta_data[pk].get("dateText"):
-                                    date_text = meta_data[pk]["dateText"]
-                                    break
+                                    cand_dt = meta_data[pk]["dateText"]
+                                    if ":" in cand_dt:
+                                        meta_date_text = cand_dt
+                                        break
+                                    elif not meta_date_text:
+                                        meta_date_text = cand_dt
                         except Exception:
                             pass
 
-                if not date_text and raw_dir:
+                if meta_date_text and ":" in meta_date_text:
+                    date_text = meta_date_text
+                elif sched_photo_map.get("0.jpg"):
+                    date_text = sched_photo_map["0.jpg"]
+                elif sched_asset_date and ":" in sched_asset_date:
+                    date_text = sched_asset_date
+                elif meta_date_text:
+                    date_text = meta_date_text
+                elif raw_dir:
                     df = os.path.join(raw_dir, "date.txt")
                     if os.path.isfile(df):
                         try:
@@ -2585,9 +2683,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                                 date_text = d_file.read().strip()
                         except Exception:
                             pass
-
-                if not date_text and norm_detail in schedule_date_map:
-                    date_text = schedule_date_map[norm_detail]
+                if not date_text and sched_asset_date:
+                    date_text = sched_asset_date
 
                 rel_dir = f"{station}/{category}/{detail}"
                 photos = []
@@ -2626,7 +2723,16 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         mtime_t = int(os.path.getmtime(temp_photo_path))
                         temp_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(temp_photo_path))}&t={mtime_t}"
 
-                    p_meta = meta_data.get(p_name, {}) if isinstance(meta_data.get(p_name), dict) else {}
+                    p_meta = dict(meta_data.get(p_name, {})) if isinstance(meta_data.get(p_name), dict) else {}
+                    existing_p_dt = p_meta.get("dateText", "")
+                    if not existing_p_dt or ":" not in existing_p_dt:
+                        if p_name in sched_photo_map:
+                            p_meta["dateText"] = sched_photo_map[p_name]
+                        elif existing_p_dt:
+                            pass
+                        elif date_text:
+                            p_meta["dateText"] = date_text
+
                     has_backup = bool(has_raw and (os.path.isfile(raw_path + ".original_backup.jpg") or os.path.isfile(raw_path + ".orig.jpg")))
 
                     photos.append({
@@ -2683,7 +2789,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 "sourceFiles": sorted(source_files_list),
                 "editedCount": sum(1 for a in assets if a.get("hasEdited")),
                 "exportCount": sum(1 for a in assets if not a.get("hasEdited")),
-                "total": len(assets)
+                "total": len(assets),
+                "loadedSchedule": loaded_schedule_path
             })
         except Exception as e:
             _log(f"Error scanning photos: {e}")
@@ -5042,6 +5149,110 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             })
         except Exception as e:
             _log(f"Export schedule excel error: {e}")
+            self._json({"ok": False, "error": str(e)}, 500)
+
+    def _handle_timemark_export_schedule_json(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            data = json.loads(body) if body else {}
+            folder = data.get("folder", "")
+            export_dir = data.get("exportDir", "")
+            custom_json = data.get("customJson")
+
+            from pathlib import Path
+            sched_file = None
+            if folder and os.path.exists(folder):
+                if os.path.isfile(folder) and folder.lower().endswith(".json"):
+                    sched_file = Path(folder)
+                elif os.path.isdir(folder):
+                    for cand_rel in ["schedule.json", "../schedule.json"]:
+                        cand_p = (Path(folder) / cand_rel).resolve()
+                        if cand_p.is_file():
+                            sched_file = cand_p
+                            break
+
+            if not sched_file and export_dir and os.path.isdir(export_dir):
+                for cand_rel in ["schedule.json", "../schedule.json"]:
+                    cand_p = (Path(export_dir) / cand_rel).resolve()
+                    if cand_p.is_file():
+                        sched_file = cand_p
+                        break
+
+            if not sched_file:
+                for cand in [Path(BASE_DIR) / "schedule.json", Path(ENGINE_DIR) / "schedule.json", Path(BASE_DIR) / "logs" / "schedule.json"]:
+                    if cand.is_file():
+                        sched_file = cand
+                        break
+
+            if not sched_file and not custom_json:
+                self._json({"ok": False, "error": "Berkas schedule.json tidak ditemukan untuk diekspor."}, 404)
+                return
+
+            default_name = f"schedule_{time.strftime('%Y%m%d_%H%M%S')}.json"
+            chosen_path = _save_file_dialog_native(default_name)
+            if not chosen_path:
+                self._json({"ok": False, "cancelled": True})
+                return
+
+            if custom_json:
+                with open(chosen_path, "w", encoding="utf-8") as f:
+                    json.dump(custom_json, f, indent=2, ensure_ascii=False)
+            elif sched_file and sched_file.is_file():
+                shutil.copy2(sched_file, chosen_path)
+
+            self._json({
+                "ok": True,
+                "message": f"Berkas schedule.json berhasil diekspor ke: {os.path.basename(chosen_path)}",
+                "path": chosen_path
+            })
+        except Exception as e:
+            _log(f"Export schedule json error: {e}")
+            self._json({"ok": False, "error": str(e)}, 500)
+
+    def _handle_timemark_schedule_info(self, parsed):
+        try:
+            qs = urllib.parse.parse_qs(parsed.query)
+            path = qs.get("path", [""])[0]
+            if not path or not os.path.isfile(path):
+                self._json({"ok": False, "error": "Berkas tidak ditemukan"}, 404)
+                return
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            count = 0
+            dates = set()
+            if isinstance(data, dict):
+                if "schedules" in data and isinstance(data["schedules"], list):
+                    for item in data["schedules"]:
+                        d = item.get("date")
+                        if d:
+                            dates.add(d)
+                        if item.get("assets") and isinstance(item["assets"], list):
+                            count += len(item["assets"])
+                        else:
+                            count += 1
+                elif "files" in data and isinstance(data["files"], list):
+                    count = len(data["files"])
+                    for item in data["files"]:
+                        d = item.get("date") or item.get("iso_date")
+                        if d:
+                            dates.add(d)
+                else:
+                    for k, v in data.items():
+                        if isinstance(v, dict):
+                            dates.add(k)
+                            count += len(v)
+            self._json({
+                "ok": True,
+                "filename": os.path.basename(path),
+                "path": path,
+                "recordCount": count,
+                "dayCount": len(dates),
+                "dates": sorted(list(dates))
+            })
+        except Exception as e:
+            _log(f"Schedule info error: {e}")
             self._json({"ok": False, "error": str(e)}, 500)
 
     def _handle_save_file(self):

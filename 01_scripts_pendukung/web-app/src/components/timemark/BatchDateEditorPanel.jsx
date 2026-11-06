@@ -33,15 +33,17 @@ function BatchTimemarkEditorModal({
 }) {
   if (!isOpen || !asset || !photo) return null;
 
-  const initialY = photo.outputMeta?.yPos ?? photo.meta?.yPos ?? 220;
-  const initialX = photo.outputMeta?.xPos ?? photo.meta?.xPos ?? 14;
+  const metaX = photo.outputMeta?.xPos ?? photo.meta?.xPos;
+  const metaY = photo.outputMeta?.yPos ?? photo.meta?.yPos;
+  const initialX = (metaX !== undefined && metaX !== null && !isNaN(Number(metaX))) ? Number(metaX) : 14;
+  const initialY = (metaY !== undefined && metaY !== null && !isNaN(Number(metaY))) ? Number(metaY) : 220;
   const initialDate = photo.outputMeta?.dateText || photo.meta?.dateText || batchDateText || asset.targetDateText || asset.dateText || '';
 
   const [xPos, setXPos] = useState(initialX);
   const [yPos, setYPos] = useState(initialY);
   const [dateText, setDateText] = useState(initialDate);
   const [detector, setDetector] = useState(photo.outputMeta?.detector || defaultDetector || 'google_vision');
-  const [applyToFolder, setApplyToFolder] = useState(true);
+  const [applyToFolder, setApplyToFolder] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -520,6 +522,8 @@ function InlineTimemarkBox({
   asset,
   photo,
   photoName,
+  targetKey,
+  localCoord,
   sourceDir,
   targetDir,
   activeDetector = 'google_vision',
@@ -530,15 +534,13 @@ function InlineTimemarkBox({
 }) {
   const boxRef = useRef(null);
   const meta = photo?.outputMeta || photo?.meta || {};
-
-  const isReasonableY = (y) => typeof y === 'number' && y >= 140 && y <= 285;
-  const isReasonableX = (x) => typeof x === 'number' && x >= 0 && x <= 60;
+  const isValidCoord = (n) => typeof n === 'number' && !isNaN(n) && n >= 0 && n <= 295;
 
   const validMetaX = (meta.xPos !== undefined && meta.xPos !== null) ? Number(meta.xPos) : null;
   const validMetaY = (meta.yPos !== undefined && meta.yPos !== null) ? Number(meta.yPos) : null;
 
-  const initialX = isReasonableX(validMetaX) ? validMetaX : 14;
-  const initialY = isReasonableY(validMetaY) ? validMetaY : 220;
+  const initialX = isValidCoord(localCoord?.x) ? localCoord.x : (isValidCoord(validMetaX) ? validMetaX : 14);
+  const initialY = isValidCoord(localCoord?.y) ? localCoord.y : (isValidCoord(validMetaY) ? validMetaY : 220);
 
   const [pos, setPos] = useState({ x: initialX, y: initialY });
   const [dragging, setDragging] = useState(false);
@@ -546,17 +548,26 @@ function InlineTimemarkBox({
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
-    const curMeta = photo?.outputMeta || photo?.meta || {};
-    const curX = (curMeta.xPos !== undefined && curMeta.xPos !== null) ? Number(curMeta.xPos) : null;
-    const curY = (curMeta.yPos !== undefined && curMeta.yPos !== null) ? Number(curMeta.yPos) : null;
-    const nx = isReasonableX(curX) ? curX : 14;
-    const ny = isReasonableY(curY) ? curY : 220;
-    setPos({ x: nx, y: ny });
-    if (boxRef.current) {
-      boxRef.current.style.left = `${(nx / 300) * 100}%`;
-      boxRef.current.style.top = `${(ny / 300) * 100}%`;
+    if (isValidCoord(localCoord?.x) && isValidCoord(localCoord?.y)) {
+      setPos({ x: localCoord.x, y: localCoord.y });
+    } else {
+      const curMeta = photo?.outputMeta || photo?.meta || {};
+      const curX = (curMeta.xPos !== undefined && curMeta.xPos !== null) ? Number(curMeta.xPos) : null;
+      const curY = (curMeta.yPos !== undefined && curMeta.yPos !== null) ? Number(curMeta.yPos) : null;
+      if (isValidCoord(curX) && isValidCoord(curY)) {
+        setPos({ x: curX, y: curY });
+      } else if (!isValidCoord(pos.x) || !isValidCoord(pos.y)) {
+        setPos({ x: 14, y: 220 });
+      }
     }
-  }, [photo?.outputMeta?.xPos, photo?.outputMeta?.yPos, photo?.meta?.xPos, photo?.meta?.yPos]);
+    if (boxRef.current) {
+      const targetPos = isValidCoord(localCoord?.x) && isValidCoord(localCoord?.y)
+        ? { x: localCoord.x, y: localCoord.y }
+        : pos;
+      boxRef.current.style.left = `${(targetPos.x / 300) * 100}%`;
+      boxRef.current.style.top = `${(targetPos.y / 300) * 100}%`;
+    }
+  }, [localCoord?.x, localCoord?.y, localCoord?.ts, photo?.outputMeta?.xPos, photo?.outputMeta?.yPos, photo?.meta?.xPos, photo?.meta?.yPos]);
 
   const handlePointerDown = (e) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -566,6 +577,10 @@ function InlineTimemarkBox({
     const boxEl = boxRef.current || e.currentTarget;
     const containerEl = boxEl.parentElement;
     if (!containerEl) return;
+
+    const imgEl = containerEl.querySelector('img');
+    const containerW = (imgEl && imgEl.clientWidth > 10) ? imgEl.clientWidth : containerEl.clientWidth;
+    const containerH = (imgEl && imgEl.clientHeight > 10) ? imgEl.clientHeight : containerEl.clientHeight;
 
     const startPointerX = e.clientX;
     const startPointerY = e.clientY;
@@ -585,16 +600,16 @@ function InlineTimemarkBox({
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
         hasMoved = true;
       }
-      const maxLeft = Math.max(0, containerEl.clientWidth - boxEl.offsetWidth);
-      const maxTop = Math.max(0, containerEl.clientHeight - boxEl.offsetHeight);
+      const maxLeft = Math.max(0, containerW - boxEl.offsetWidth);
+      const maxTop = Math.max(0, containerH - boxEl.offsetHeight);
       const newLeft = Math.max(0, Math.min(maxLeft, startLeft + dx));
       const newTop = Math.max(0, Math.min(maxTop, startTop + dy));
 
-      lastNormX = Math.min(280, Math.max(0, Math.round((newLeft / (containerEl.clientWidth || 1)) * 300)));
-      lastNormY = Math.min(280, Math.max(0, Math.round((newTop / (containerEl.clientHeight || 1)) * 300)));
+      lastNormX = Math.min(280, Math.max(0, Math.round((newLeft / (containerW || 1)) * 300)));
+      lastNormY = Math.min(280, Math.max(0, Math.round((newTop / (containerH || 1)) * 300)));
 
-      boxEl.style.left = `${(newLeft / (containerEl.clientWidth || 1)) * 100}%`;
-      boxEl.style.top = `${(newTop / (containerEl.clientHeight || 1)) * 100}%`;
+      boxEl.style.left = `${(newLeft / (containerW || 1)) * 100}%`;
+      boxEl.style.top = `${(newTop / (containerH || 1)) * 100}%`;
     };
 
     const onPointerUp = async (ev) => {
@@ -609,14 +624,18 @@ function InlineTimemarkBox({
       }
 
       setPos({ x: lastNormX, y: lastNormY });
+      if (boxRef.current) {
+        boxRef.current.style.left = `${(lastNormX / 300) * 100}%`;
+        boxRef.current.style.top = `${(lastNormY / 300) * 100}%`;
+      }
       if (onPosChange) {
-        onPosChange({ x: lastNormX, y: lastNormY });
+        onPosChange(targetKey, { x: lastNormX, y: lastNormY });
       }
 
       const dateText = meta.dateText || asset.targetDateText || '';
       setSaving(true);
       try {
-        const rawRelPath = `${asset.relDir}/${photoName}`;
+        const rawRelPath = targetKey || `${asset.relDir}/${photoName}`;
         const res = await fetch('/api/timemark/manual-edit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -636,7 +655,7 @@ function InlineTimemarkBox({
         if (res.ok && data.ok) {
           setSavedFlash(true);
           setTimeout(() => setSavedFlash(false), 1200);
-          if (onSaved) onSaved();
+          if (onSaved) onSaved({ targetKey: rawRelPath, xPos: lastNormX, yPos: lastNormY, dateText });
         }
       } catch (err) {
         console.error('Error saving inline box pos:', err);
@@ -733,13 +752,26 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
   const [previewPhoto, setPreviewPhoto] = useState(null); // { url, name, title }
   const [editingModal, setEditingModal] = useState(null); // { asset, photo }
 
+  // Peta Koordinat Lokal Per-Foto Terkunci (Mencegah Foto 0 Terpengaruh Foto 50/100)
+  const [photoCoordsMap, setPhotoCoordsMap] = useState({});
+
+  const updatePhotoLocalPos = (tKey, coords) => {
+    if (!tKey || !coords) return;
+    const norm = tKey.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    setPhotoCoordsMap(prev => ({
+      ...prev,
+      [tKey]: { ...coords, ts: Date.now() },
+      [norm]: { ...coords, ts: Date.now() }
+    }));
+  };
+
   // Sticky Preserved Coordinates across cards (Hanya simpan jika koordinat valid di pojok kiri bawah)
   const [lastTimemarkPos, setLastTimemarkPos] = useState(() => {
     try {
       const raw = localStorage.getItem('sintelis_last_timemark_pos');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number' && parsed.x <= 50 && parsed.y >= 160) {
+        if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number' && parsed.x >= 0 && parsed.x <= 295 && parsed.y >= 0 && parsed.y <= 295) {
           return parsed;
         }
       }
@@ -753,7 +785,7 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
     if (!newPos || typeof newPos.x !== 'number' || typeof newPos.y !== 'number') return;
     setLastTimemarkPos(newPos);
     try {
-      if (newPos.x <= 50 && newPos.y >= 160) {
+      if (newPos.x >= 0 && newPos.x <= 295 && newPos.y >= 0 && newPos.y <= 295) {
         localStorage.setItem('sintelis_last_timemark_pos', JSON.stringify(newPos));
       }
     } catch {}
@@ -1851,14 +1883,20 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
                                     
                                     {/* Kotak Geser Posisi Timemark Langsung pada Foto Hasil (Baris 2 / Kartu 4) */}
                                     <InlineTimemarkBox
+                                      key={`${asset.cleanRel || asset.relDir}/${p.name}`}
                                       asset={asset}
                                       photo={p}
                                       photoName={p.name}
+                                      targetKey={`${asset.cleanRel || asset.relDir}/${p.name}`}
+                                      localCoord={photoCoordsMap[`${asset.cleanRel || asset.relDir}/${p.name}`]}
                                       sourceDir={sourceDir}
                                       targetDir={targetDir}
                                       activeDetector={detector}
                                       lastTimemarkPos={lastTimemarkPos}
-                                      onPosChange={updateLastTimemarkPos}
+                                      onPosChange={(k, c) => {
+                                        updatePhotoLocalPos(k, c);
+                                        updateLastTimemarkPos(c);
+                                      }}
                                       onSaved={() => fetchPhotos(sourceDir, targetDir)}
                                       onOpenModal={() => setEditingModal({ asset, photo: p })}
                                     />

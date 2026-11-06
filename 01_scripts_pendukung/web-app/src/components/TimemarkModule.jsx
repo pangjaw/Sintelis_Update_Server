@@ -23,6 +23,41 @@ export default function TimemarkModule() {
   const [detector, setDetector] = useState('google_vision'); // 'google_vision' | 'guide'
   const [splitMultiAssetRows, setSplitMultiAssetRows] = useState(false);
   const [includeTime, setIncludeTime] = useState(true);
+  const [useCustomSchedule, setUseCustomSchedule] = useState(false);
+  const [customSchedulePath, setCustomSchedulePath] = useState('');
+  const [scheduleInfo, setScheduleInfo] = useState(null);
+
+  const fetchScheduleInfo = async (path) => {
+    if (!path || !path.trim()) {
+      setScheduleInfo(null);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/timemark/schedule-info?path=${encodeURIComponent(path.trim())}`);
+      const data = await res.json();
+      setScheduleInfo(data);
+    } catch (e) {
+      setScheduleInfo({ ok: false, error: e.message });
+    }
+  };
+
+  const handleCustomScheduleChange = (val) => {
+    setCustomSchedulePath(val);
+    fetchScheduleInfo(val);
+  };
+
+  const handlePickCustomSchedule = async () => {
+    try {
+      const res = await fetch('/api/select-file', { method: 'POST' });
+      const data = await res.json();
+      if (data && data.path) {
+        setCustomSchedulePath(data.path);
+        fetchScheduleInfo(data.path);
+      }
+    } catch (err) {
+      alert('Gagal memilih berkas: ' + err.message);
+    }
+  };
   const [pipelineState, setPipelineState] = useState({
     running: false,
     cancelled: false,
@@ -116,6 +151,10 @@ export default function TimemarkModule() {
   };
 
   const handleStartPipeline = async () => {
+    if (useCustomSchedule && !customSchedulePath) {
+      alert('Anda mengaktifkan opsi "Gunakan Jadwal Tersimpan (schedule.json)", silakan pilih berkas schedule.json terlebih dahulu!');
+      return;
+    }
     const isSingle = folderMode === 'single';
     const effectiveSource = isSingle ? singleDir : sourceDir;
     const effectiveTarget = isSingle ? singleDir : targetDir;
@@ -151,7 +190,8 @@ export default function TimemarkModule() {
           steps: selectedSteps,
           detector: detector,
           splitMultiAssetRows: splitMultiAssetRows,
-          includeTime: includeTime
+          includeTime: includeTime,
+          customScheduleFile: useCustomSchedule ? customSchedulePath : undefined
         })
       });
       const data = await res.json();
@@ -189,7 +229,8 @@ export default function TimemarkModule() {
           steps: ['4_fast'],
           detector: 'fast_meta',
           splitMultiAssetRows: splitMultiAssetRows,
-          includeTime: includeTime
+          includeTime: includeTime,
+          customScheduleFile: useCustomSchedule ? customSchedulePath : undefined
         })
       });
       const data = await res.json();
@@ -646,6 +687,95 @@ export default function TimemarkModule() {
                   </div>
                 </label>
               </div>
+
+              {/* Opsi Jadwal Tersimpan / Eksternal (schedule.json) */}
+              <div style={{
+                marginTop: '0.55rem',
+                background: useCustomSchedule ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-secondary)',
+                border: useCustomSchedule ? '1px solid #6366f1' : '1px solid var(--border-color)',
+                borderRadius: '8px',
+                padding: '0.75rem 0.85rem',
+                transition: 'all 0.2s'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: pipelineState.running ? 'not-allowed' : 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    disabled={pipelineState.running}
+                    checked={useCustomSchedule}
+                    onChange={e => setUseCustomSchedule(e.target.checked)}
+                    style={{ marginTop: '0.2rem', cursor: pipelineState.running ? 'not-allowed' : 'pointer', accentColor: '#6366f1' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.825rem', fontWeight: 700, color: useCustomSchedule ? '#818cf8' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>📅</span> Gunakan Jadwal Tersimpan / Eksternal (schedule.json)
+                    </div>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.35 }}>
+                      Sangat cocok untuk memproses sebagian file (misal 5 file). Step 3 otomatis dilewati, Step 4 & 5 langsung memakai tanggal & jam aset dari berkas jadwal ini.
+                    </div>
+                  </div>
+                </label>
+
+                {useCustomSchedule && (
+                  <div style={{ marginTop: '0.65rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', borderTop: '1px dashed var(--border-color)', paddingTop: '0.55rem' }}>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <input
+                        type="text"
+                        placeholder="Pilih berkas schedule.json yang sudah ada..."
+                        value={customSchedulePath}
+                        onChange={e => handleCustomScheduleChange(e.target.value)}
+                        disabled={pipelineState.running}
+                        style={{
+                          flex: 1,
+                          padding: '0.45rem 0.65rem',
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.8rem'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={pipelineState.running}
+                        onClick={handlePickCustomSchedule}
+                        style={{
+                          padding: '0.45rem 0.75rem',
+                          background: '#6366f1',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: pipelineState.running ? 'not-allowed' : 'pointer',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        📄 Pilih...
+                      </button>
+                    </div>
+
+                    {scheduleInfo && (
+                      <div style={{
+                        fontSize: '0.725rem',
+                        color: scheduleInfo.ok ? '#22c55e' : '#ef4444',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.3rem 0.5rem',
+                        background: scheduleInfo.ok ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                        border: `1px solid ${scheduleInfo.ok ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                        borderRadius: '6px'
+                      }}>
+                        {scheduleInfo.ok ? (
+                          <span>✓ Berkas valid: <b>{scheduleInfo.recordCount} aset</b> terdaftar dalam <b>{scheduleInfo.dayCount} hari kerja</b>.</span>
+                        ) : (
+                          <span>⚠️ {scheduleInfo.error || 'Berkas jadwal tidak valid atau tidak terbaca.'}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -825,7 +955,13 @@ export default function TimemarkModule() {
 
       {/* SUB-TAB 2: GALERI & EDIT FOTO */}
       <div style={{ display: activeSubTab === 'gallery' ? 'flex' : 'none', flexDirection: 'column', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
-        <GalleryPanel exportDir={currentActiveExport} onPickFolder={() => handlePickFolder(setExportDir, 'export')} />
+        <GalleryPanel
+          exportDir={currentActiveExport}
+          onPickFolder={() => handlePickFolder(setExportDir, 'export')}
+          schedulePath={customSchedulePath}
+          onPickSchedule={handlePickCustomSchedule}
+          onScheduleChange={handleCustomScheduleChange}
+        />
       </div>
 
       {/* SUB-TAB: GANTI TANGGAL FOTO */}

@@ -457,3 +457,153 @@ Fitur ini dirancang bagi pengguna yang telah menyimpan hasil ekstraksi foto insp
    - Daftar folder tercentang dapat ditinjau dan dibatalkan per folder dengan tombol `[❌]`.
 4. **Backend Endpoint:**
    - Melayani endpoint `/api/timemark/batch-update-date` yang memproses watermarking secara sekuensial dengan inpainting Google Cloud Vision / HSV fallback.
+
+
+---
+
+## 🧭 15. ARSITEKTUR KOTAK TIMEMARK INTERAKTIF & ISOLASI KOORDINAT PER-FOTO
+
+Fitur draggable timemark box memungkinkan penyesuaian posisi watermark langsung pada kartu galeri (*inline*) maupun modal. Untuk mencegah anomali visual dan desinkronisasi antar-foto, aturan berikut wajib ditaati:
+
+1. **Aturan Baku Larangan Pengosongan DOM Style (`boxRef.current.style.top = ''`):**
+   - **Penyebab Bug "Box Mental ke Tengah (50%)":** Sesuai spesifikasi W3C CSS Flexbox, elemen berposisi `absolute` di dalam kontainer flex (`align-items: center` & `justify-content: center`) yang nilai `top`/`left`-nya dikosongkan (`''` / `auto`) akan secara instan ditarik paksa ke titik tengah (50% X & 50% Y).
+   - **Aturan Solusi:** Dilarang mengosongkan style ke string kosong `''`. Nilai `style.top` dan `style.left` wajib selalu dipasang secara eksplisit berbasis persentase:
+     ```javascript
+     if (boxRef.current) {
+       boxRef.current.style.left = `${(normX / 300) * 100}%`;
+       boxRef.current.style.top = `${(normY / 300) * 100}%`;
+     }
+     ```
+2. **Isolasi State Koordinat Mandiri per Foto (`photoCoordsMap`):**
+   - Menghindari ketergantungan pada variabel global `lastTimemarkPos` saat merender foto yang sudah memiliki riwayat edit.
+   - Menggunakan peta koordinat per `targetKey` (`${relDir}/${photoName}`):
+     ```javascript
+     const [photoCoordsMap, setPhotoCoordsMap] = useState({});
+     ```
+   - Setiap foto (`Foto 0%`, `Foto 50%`, `Foto 100%`) mengunci koordinatnya secara independen. Mengedit Foto 50 atau Foto 100 **tidak boleh dan tidak akan pernah** mengubah posisi Foto 0 kembali ke tengah.
+3. **Penguncian Dimensi Bounding Box 1:1 (`display: inline-block`):**
+   - Pembungkus gambar (`img-wrapper`) wajib menggunakan `display: inline-block` (bukan `inline-flex`) dengan `lineHeight: 0`.
+   - Perhitungan drag (*Pointer Event*) mengukur dimensi rendered elemen `<img>` secara langsung (`imgEl.clientWidth` & `imgEl.clientHeight`) agar rasio skala `0 - 300` presisi 1:1 dengan parameter `--y-override` dan `--x-override` pada engine Python.
+4. **Isolasi Modal Editor (`applyToFolder = false`):**
+   - Opsi *"Terapkan ke seluruh foto dalam folder ini"* (`applyToFolder`) pada `TimemarkEditorModal` maupun `BatchTimemarkEditorModal` **wajib diset default `false`**.
+   - Menyimpan revisi pada 1 foto tidak boleh menimpa koordinat foto lainnya di folder yang sama kecuali jika pengguna secara sadar mencentang checkbox tersebut.
+
+---
+
+## ⚡ 16. OPTIMALISASI RUANG VISUAL GALERI (ULTRA-COMPACT HEADER & COLLAPSIBLE FILTER)
+
+Untuk memaksimalkan area kerja peninjauan foto inspeksi di layar desktop:
+
+1. **Ultra-Compact Bento Header:**
+   - Header utama aplikasi (`BentoHeader.jsx`) mendukung mode ciut (*collapsed*) dengan tinggi ramping (~38px) dibandingkan mode penuh (~125px).
+   - Menyediakan tombol *toggle* `[Detail ▼]` / `[Ciutkan Header ▲]`.
+   - Preferensi pengguna disimpan permanen di `localStorage` (`sintelis_bento_collapsed`).
+2. **Single-Row Toolbar Galeri (~44px):**
+   - Menyatukan pemilih folder sumber, path, tombol refresh, counter status kelengkapan, toggle mode tampilan (`✨ 04`, `📷 03 & ✨ 04`, `📷 03`), ukuran kartu (`Fokus` / `Standar`), dan pemilih detektor (`Google Vision AI` / `Metode Biasa`) dalam satu baris horizontal yang hemat ruang.
+3. **Collapsible Filter Bar (`[⚡ Filter]`):**
+   - Bar filter target PDF, stasiun, kategori aset, kelengkapan, dan pencarian teks disembunyikan secara default (0px *overhead* vertikal).
+   - Dibuka via tombol `[⚡ Filter]` yang menampilkan badge jumlah filter aktif dan tombol reset cepat.
+
+---
+
+## 🚀 17. FAST TARGETED REFRESH (PENANGANAN JARINGAN LAMBAT / NETWORK DRIVE)
+
+Saat foto disimpan di Network Drive (misal drive `Z:\...`), operasi pemindaian ulang seluruh folder (`fetchPhotos()`) memakan waktu lama dan menyebabkan *lag* yang signifikan.
+
+1. **Mekanisme Single Photo Refresh (`refreshSinglePhotoCard`):**
+   - Setelah operasi edit timemark tunggal selesai, frontend memanggil fungsi `refreshSinglePhotoCard(targetKey, newMeta)` alih-alih me-reload seluruh direktori.
+   - Hanya memperbarui satu objek foto di memori state React secara instan.
+   - Menginjeksi parameter timestamp cache buster `?_v=${Date.now()}` khusus pada URL foto tersebut agar browser langsung menampilkan hasil gambar terbaru dari backend tanpa mengganggu foto lainnya di layar.
+
+
+---
+
+## 🔬 18. MULTI-COLUMN & SINGLE-COLUMN ADAPTIVE OTB/JPL CORE CORRECTION
+
+Pembaruan engine koreksi nilai Jumlah Core Serat Optik & OTB (`correct_serat_optik_cores.py` & `CorrectionPanel.jsx`):
+
+### 18.1 Master Database Spek Core
+- Sumber master: `otb_core_database.json` (terintegrasi ke dalam paket build PyInstaller).
+- Aturan pencarian aset:
+  1. Dicocokkan berdasarkan Funloc / Kode TRA (misal `TRA11799` = 48, `TRA11803` = 12, `TRA11830` = 24).
+  2. Dicocokkan berdasarkan Nama Aset OTB normalisasi.
+  3. Aset di luar database:
+     - Jika teridentifikasi berkas/aset **JPL**: Default = **12**.
+     - Jika teridentifikasi berkas/aset **Stasiun** (BOP, BTT, COS, MSG, CGB, dll.): Default = **24**.
+- Format output nilai: **Hanya Angka** (misal: `"48"`, `"24"`, `"12"`), tanpa kata tambahan `"Core"`.
+
+### 18.2 Grid Matematika Kolom Tabel & Perataan Presisi (Neighbor Alignment)
+Batas outline tabel vertikal kanan terkunci di $X = 565.65\text{ pt}$ dan lebar setiap kolom $48.61\text{ pt}$.
+Engine mendeteksi jumlah kolom $N \in [1, 5]$ dan menghitung koordinat kolom ke-$k$ ($M = N - 1 - k$):
+- $X_1 = 565.65 - (M \times 48.61)$
+- $X_0 = X_1 - 48.61$
+- Posisi X Angka 2-digit: $X_{\text{origin}} = 537.14 - (M \times 48.61)$
+- **Perataan Vertikal (Baseline Y):** Engine mendeteksi garis dasar teks angka asli tetangga pada baris 1.2 ($x > 320$, misal TRA11863 & TRA11830 dengan $Y = 376.00$), lalu menggunakan $Y$ baseline tersebut sehingga seluruh angka dalam baris 1.2 rata sejajar secara horizontal sempurna tanpa bergelombang.
+
+### 18.3 True PDF Redaction Presisi Dua Tahap
+Untuk mencegah bug PyMuPDF `need font file or buffer` saat modifikasi stream:
+1. Tahap 1: Daftarkan seluruh annotasi redaksi aman dengan margin 1.5 pt dari garis batas:
+   `Rect(col_x0 + 1.5, row_y0 - 2.5, col_x1 - 1.5, row_y1 + 2.5)`.
+2. Tahap 2: Terapkan redaksi secara batch (`apply_redactions()`).
+3. Tahap 3: Sisipkan font `DejaVuSans.ttf` (7.202 pt, regular) *setelah* redaksi selesai.
+4. Tahap 4: Tulis teks angka rata tengah di $X = X_{\text{center}} - (\text{text\_w} / 2)$.
+5. Berkas PDF disimpan ke berkas sementara lalu ditimpa secara atomik ke berkas asli dengan cadangan otomatis ke folder `backups/`.
+
+
+## 📅 19. EKSPOR & IMPOR JADWAL EKSTERNAL (SCHEDULE.JSON) UNTUK SUBSET / PARSIAL FILE
+
+Fitur ini menjawab kebutuhan pengguna ketika ingin memproses sebagian kecil berkas PDF (misal hanya 5 berkas perbaikan), di mana penjadwalan satu bulan penuh (Step 3) tidak dapat/tidak perlu dihitung ulang dari awal:
+
+### 19.1 Alur Kerja (Workflow)
+1. **Ekspor Jadwal Bulanan (`schedule.json`):**
+   - Di tab **Schedule Sheet**, pengguna meninjau matriks jadwal bulanan (hasil Step 3 atau *Buat Schedule Otomatis*).
+   - Pengguna mengklik tombol **`💾 Ekspor schedule.json`** di bilah atas samping tombol Excel.
+   - Dialog *Save As* native Windows muncul dan pengguna dapat menyimpan `schedule.json` di direktori yang diinginkan (misal `D:\Jadwal\schedule_mei_2025.json`).
+2. **Impor Jadwal di Pipeline Proses:**
+   - Di tab **Pipeline Proses**, ketika memproses folder yang hanya berisi beberapa berkas PDF (misal 5 berkas):
+   - Pengguna mencentang opsi **`📅 Gunakan Jadwal Tersimpan / Eksternal (schedule.json)`**.
+   - Pengguna menekan tombol **`📄 Pilih...`** dan memilih berkas `schedule.json` yang telah diekspor sebelumnya.
+   - Panel antarmuka memvalidasi berkas secara instan via endpoint `/api/timemark/schedule-info` dan menampilkan ringkasan jumlah aset dan hari kerja.
+3. **Eksekusi Pipeline Parsial:**
+   - **Step 1:** Ekstraksi foto PDF untuk 5 berkas saja.
+   - **Step 1.5:** Auto-crop kolase berjalan normal.
+   - **Step 2:** Ekstraksi tanggal checklist berjalan normal.
+   - **Step 3 (Penjadwalan):** **Dilewati secara otomatis (*bypassed*)**, karena tanggal, jam dinas, dan tim kerja langsung diambil dari `schedule.json` eksternal.
+   - **Step 4 (Watermark Timemark):** `edit_timemark_ide1.py` langsung membaca aset-aset pada 5 berkas tersebut dari `schedule.json` eksternal dan mencetak tanggal serta jam secara akurat.
+   - **Step 5 (Penggabungan PDF):** `merge_pdf_foto.py` menggabungkan 5 berkas tersebut dengan foto hasil edit berstempel akurat.
+
+
+## 🔌 20. ATURAN JAM DINAS & FOTO MULTI-ASET (SERAT OPTIK, PDSE, CATUDAYA)
+
+Pembaruan engine alokasi jam kerja dinas dan pemisahan foto mandiri per baris aset (`scheduler.py`, `export_pdf_foto.py`, `merge_pdf_foto.py`):
+
+### 20.1 Formula Durasi Waktu Per Kategori
+1. **Serat Optik (OTB & JPL):**
+   - Rumus: $\text{Durasi} = \text{Jumlah Core} \times 6\text{ menit}$.
+   - Jumlah core dibaca dinamis per-baris aset dari master `otb_core_database.json` (berdasarkan kode TRA / Funloc atau nama OTB).
+   - Nilai default bila tidak ada di database:
+     - Berkas/aset JPL: **12 Core** ($12 \times 6 = 72\text{ menit}$).
+     - Berkas/aset Stasiun: **24 Core** ($24 \times 6 = 144\text{ menit}$).
+   - Contoh nyata (OTB 1-5 ER Bogor 28-05-2025):
+     - OTB 1 (48 Core): 288 menit (08:30 s.d 13:18) -> Tim 1
+     - OTB 4 (24 Core): 144 menit (08:30 s.d 10:54) -> Tim 2 (wrap karena Tim 1 melebihi 15:30)
+     - OTB 5 (24 Core): 144 menit (10:54 s.d 13:18) -> Tim 2
+     - OTB 2 (24 Core): 144 menit (13:18 s.d 15:42) -> Tim 2
+     - OTB 3 (48 Core): 288 menit (15:42 s.d 20:30) -> Tim 2
+2. **PDSE:**
+   - Standar harian: **420 menit** (08:30 s.d 15:30).
+   - Jika dalam satu hari terdapat $K$ baris aset PDSE, durasi dibagi rata: $\text{Durasi} = \max(15, \text{round}(420 / K))$.
+3. **Catudaya:**
+   - Standar dinas: **45 menit** per aset.
+
+### 20.2 Alokasi Multi-Tim (Tim 1 & Tim 2)
+- Jam dinas normal dimulai pukul `08:30` (menit ke-510) dan selesai pukul `15:30` (menit ke-930).
+- Jika $\text{clock} + \text{durasi} > 930$ dan tim saat ini masih di bawah `tim_max` (Tim 1):
+  - Sistem otomatis mengalihkan aset berikutnya ke **Tim 2** pada tanggal yang sama mulai pukul **08:30**.
+  - Jika sudah berada di Tim 2 (`tim == tim_max`), jam terus berlanjut tanpa membuat tim fiktif baru.
+
+### 20.3 Pemisahan Folder Foto Per-Aset (Photo Splitting)
+Ketika opsi *Bagi Foto & Jam Sesuai Jumlah Baris Aset* (`split_multi_asset`) aktif:
+1. `export_pdf_foto.py` mengekstrak foto ke folder lokasi dasar (`ER SINYAL BOO`) DAN menduplikasikannya ke folder masing-masing aset (`OTB 1 ER BOGOR`, `OTB 2 ER BOGOR`, dst.).
+2. `edit_timemark_ide1.py` mencap stempel watermark foto per folder aset dengan tanggal, jam, dan Tim yang sesuai dari `schedule.json`.
+3. `merge_pdf_foto.py` memprioritaskan folder spesifik aset terlebih dahulu saat menyematkan foto ke tabel baris lampiran PDF.

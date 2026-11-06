@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export default function BentoHeader({
   activePreset = 'Standar (Resor 1.21 Bogor)',
@@ -10,6 +10,24 @@ export default function BentoHeader({
   title = '',
   subtitle = ''
 }) {
+  // Simpan status ciutkan di localStorage agar preferensi tersimpan
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sintelis_bento_collapsed');
+      if (saved !== null) return JSON.parse(saved);
+      return mainTab === 'timemark'; // Default ciutkan di tab timemark agar galeri luas
+    } catch (_) {
+      return mainTab === 'timemark';
+    }
+  });
+
+  const handleToggleCollapse = (val) => {
+    setIsCollapsed(val);
+    try {
+      localStorage.setItem('sintelis_bento_collapsed', JSON.stringify(val));
+    } catch (_) {}
+  };
+
   const getTabMeta = () => {
     switch (mainTab) {
       case 'ocr':
@@ -49,9 +67,115 @@ export default function BentoHeader({
   const displayTitle = title || meta.title;
   const displaySubtitle = subtitle || meta.sub;
 
+  // 🌟 MODE ULTRA-COMPACT: Header ramping 1 baris (menghemat ~85px vertikal)
+  if (isCollapsed) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '0.4rem 0.85rem',
+          background: 'rgba(15, 23, 42, 0.75)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '8px',
+          marginBottom: '0.55rem',
+          backdropFilter: 'blur(8px)',
+          gap: '0.75rem',
+          flexWrap: 'wrap'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <h2 style={{ fontSize: '0.98rem', fontWeight: 800, letterSpacing: '-0.01em', color: '#FFFFFF', margin: 0 }}>
+            {displayTitle}
+          </h2>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+            • {displaySubtitle}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* Versi Mini Badge */}
+          <div
+            onClick={() => onOpenUpdateModal && onOpenUpdateModal()}
+            style={{
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              background: updateAvailable ? 'rgba(255, 115, 0, 0.18)' : 'rgba(16, 185, 129, 0.12)',
+              border: `1px solid ${updateAvailable ? '#FF7300' : 'rgba(16, 185, 129, 0.28)'}`,
+              padding: '0.2rem 0.55rem',
+              borderRadius: '6px',
+              fontSize: '0.72rem',
+              transition: 'all 0.2s'
+            }}
+            title={updateAvailable ? `Versi aktif: ${currentVersion}. Versi baru ${serverVersion || ''} tersedia! Klik untuk memperbarui.` : `Versi aktif: ${currentVersion} (Terkini). Klik untuk periksa update.`}
+          >
+            <span style={{ color: updateAvailable ? '#FF9433' : 'var(--text-secondary)', fontWeight: 600 }}>VERSI:</span>
+            <strong style={{ color: updateAvailable ? '#FF9433' : '#10B981' }}>{currentVersion}</strong>
+            {updateAvailable ? (
+              <span style={{ background: '#FF7300', color: '#ffffff', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                UPDATE
+              </span>
+            ) : (
+              <span style={{ color: '#10B981', fontSize: '0.65rem', fontWeight: 700 }}>
+                TERBARU
+              </span>
+            )}
+          </div>
+
+          {/* Preset Mini Badge */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              background: 'rgba(59, 130, 246, 0.12)',
+              border: '1px solid rgba(59, 130, 246, 0.28)',
+              padding: '0.2rem 0.55rem',
+              borderRadius: '6px',
+              fontSize: '0.72rem',
+              maxWidth: '260px'
+            }}
+            title={`Preset Aktif: ${activePreset}`}
+          >
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>PRESET:</span>
+            <strong style={{ color: '#60A5FA', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {activePreset}
+            </strong>
+          </div>
+
+          {/* Tombol Tampilkan Detail Bento */}
+          <button
+            type="button"
+            onClick={() => handleToggleCollapse(false)}
+            style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-secondary)',
+              borderRadius: '6px',
+              padding: '0.2rem 0.5rem',
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              fontWeight: 600
+            }}
+            title="Tampilkan kartu Bento lengkap"
+          >
+            <span>▼</span> Detail
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // MODE NORMAL: Kartu Bento Lengkap
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '0.85rem' }}>
-      {/* ── Title Banner ── */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.75rem' }}>
+      {/* Title Banner & Tombol Ciutkan */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#FFFFFF', margin: 0 }}>
@@ -61,9 +185,29 @@ export default function BentoHeader({
             {displaySubtitle}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => handleToggleCollapse(true)}
+          style={{
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-color)',
+            color: 'var(--text-secondary)',
+            borderRadius: '6px',
+            padding: '0.25rem 0.6rem',
+            fontSize: '0.72rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            fontWeight: 600
+          }}
+          title="Ciutkan header agar ruang kerja lebih luas"
+        >
+          <span>▲</span> Ciutkan Header
+        </button>
       </div>
 
-      {/* ── 2 Bento Cards: Versi Aplikasi (Glow Orange jika ada update) & Profil Preset ── */}
+      {/* 2 Bento Cards */}
       <div
         className="bento-header-grid"
         style={{

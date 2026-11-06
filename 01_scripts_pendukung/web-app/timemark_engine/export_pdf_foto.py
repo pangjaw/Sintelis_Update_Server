@@ -14,9 +14,16 @@ if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 import pdfplumber
+import logging
 from pypdf import PdfReader
 from openpyxl import Workbook, load_workbook
 import threading
+
+# Bungkam log peringatan internal pypdf / pdfminer (seperti CMap broken line / odd-length hex)
+# agar tidak membanjiri terminal log UI aplikasi
+logging.getLogger("pypdf").setLevel(logging.ERROR)
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+logging.getLogger("pdfplumber").setLevel(logging.ERROR)
 
 CSV_LOCK = threading.Lock()
 
@@ -1118,7 +1125,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                input_root: Path = None, sap_mapping: dict = None,
                render_crop: bool = False,
                wesel_target_lookup: dict | None = None,
-               multi_date_lookup: dict | None = None) -> int:
+               multi_date_lookup: dict | None = None,
+               split_multi_asset: bool = False) -> int:
     """Unified export: detect category from filename, find photos, output to flat identifier structure.
 
     Output: {output_root}/{btp}/{category}/{identifier}/{0,50,100}.jpg
@@ -1158,9 +1166,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
             pass
 
     # Multiple funclocs → force per-row export (each asset row gets own folder)
-    # Shared photo checklists export to strictly ONE folder per location.
-    # Rows are mapped to this location folder via asset_location_mapping.json.
-    force_per_row = False
+    # Jika split_multi_asset aktif dan ada lebih dari 1 funcloc: aktifkan force_per_row!
+    force_per_row = bool(split_multi_asset and len(all_funclocs) > 1)
 
     # ── Fallback: detect category from funcloc prefix if filename detection failed ──
     CATEGORY_FROM_FUNCLOC = {"WSL": "WESEL", "SIN": "SINYAL", "AXL": "AXC"}
@@ -1397,35 +1404,59 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                     })
                 else:
                     # Export to each funcloc's folder (deduplicate by identifier)
-                    written_identifiers: set[str] = set()
+                    written_targets: set[str] = set()
                     for funcloc_line in all_funclocs:
                         row_id = extract_identifier(funcloc_line, category)
-                        if not row_id or row_id in written_identifiers:
-                            continue
-                        written_identifiers.add(row_id)
-                        row_btp = determine_btp(row_id)
-                        row_out_dir = identifier_output_dir(output_root, row_btp, category, row_id)
-                        ensure_dir(row_out_dir)
+                        parts = funcloc_line.strip().split(":", 1)
+                        asset_name = parts[1].strip() if len(parts) > 1 else funcloc_line.strip()
+                        asset_name = re.sub(r'\s+', ' ', asset_name)
 
-                        for stem, suffix, data in photo_data:
-                            out_file = row_out_dir / f"{stem}{suffix}"
-                            try:
-                                out_file.write_bytes(data)
-                                exported += 1
-                            except OSError as exc:
+                        targets = []
+                        if row_id and row_id not in written_targets:
+                            written_targets.add(row_id)
+                            targets.append((row_id, determine_btp(row_id)))
+
+                        # Jika split_multi_asset aktif, ekspor juga folder mandiri per nama aset
+                        # (misal: OTB 1 ER BOGOR, OTB 2 ER BOGOR, dst.)
+                        if split_multi_asset and asset_name and asset_name not in written_targets:
+                            written_targets.add(asset_name)
+                            targets.append((asset_name, determine_btp(row_id or asset_name)))
+
+                        for tid, t_btp in targets:
+                            row_out_dir = identifier_output_dir(output_root, t_btp, category, tid)
+                            ensure_dir(row_out_dir)
+
+                            for stem, suffix, data in photo_data:
+                                out_file = row_out_dir / f"{stem}{suffix}"
+                                try:
+                                    out_file.write_bytes(data)
+                                    exported += 1
+                                except OSError as exc:
+                                    log_rows.append({
+                                        "pdf": pdf_path.name, "page": page.page_number,
+                                        "asset_code": funcloc_line, "asset_name": tid,
+                                        "label": stem, "image_name": "",
+                                        "output_file": str(out_file), "status": f"failed: {exc}",
+                                    })
+                                    continue
                                 log_rows.append({
                                     "pdf": pdf_path.name, "page": page.page_number,
-                                    "asset_code": funcloc_line, "asset_name": "",
+                                    "asset_code": funcloc_line, "asset_name": tid,
                                     "label": stem, "image_name": "",
-                                    "output_file": str(out_file), "status": f"failed: {exc}",
+                                    "output_file": str(out_file), "status": "ok",
                                 })
-                                continue
-                            log_rows.append({
-                                "pdf": pdf_path.name, "page": page.page_number,
-                                "asset_code": funcloc_line, "asset_name": "",
-                                "label": stem, "image_name": "",
-                                "output_file": str(out_file), "status": "ok",
-                            })
+
+                            # Date file fallback if date string available from filename
+                            d_match = re.search(r'(\d{2})[-_](\d{2})[-_](\d{4})', pdf_path.name)
+                            if d_match:
+                                d_day, d_m, d_y = int(d_match.group(1)), int(d_match.group(2)), int(d_match.group(3))
+                                months_short = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "Mei", 6: "Jun", 7: "Jul", 8: "Agt", 9: "Sep", 10: "Okt", 11: "Nov", 12: "Des"}
+                                dt_file = row_out_dir / "date.txt"
+                                if not dt_file.exists():
+                                    try:
+                                        dt_file.write_text(f"{d_day:02d} {months_short.get(d_m, 'Mei')} {d_y}", encoding="utf-8")
+                                    except Exception:
+                                        pass
         else:
             # Old-format / multi-funcloc: per-page per-asset export
             # Each asset row gets its own folder with 0.jpg, 50.jpg, 100.jpg
@@ -1561,7 +1592,7 @@ def resolve_inputs(args: argparse.Namespace) -> list[Path]:
 
 
 def _export_worker_job(args_tuple):
-    pdf_path, output_root, log_dir, start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup = args_tuple
+    pdf_path, output_root, log_dir, start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup, split_multi_asset = args_tuple
     if not pdf_path.exists():
         return pdf_path, 0, "", None, True
 
@@ -1572,7 +1603,8 @@ def _export_worker_job(args_tuple):
             exported = export_pdf(pdf_path, output_root, log_dir,
                                   start_page, resolution, input_root, sap_mapping,
                                   render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,
-                                  multi_date_lookup=multi_date_lookup)
+                                  multi_date_lookup=multi_date_lookup,
+                                  split_multi_asset=split_multi_asset)
             err_info = None
         except Exception as exc:
             exported = 0
@@ -1622,7 +1654,7 @@ def main() -> int:
 
     max_workers = min(12, max(4, (os.cpu_count() or 4)))
     tasks = [
-        (p, output_root, log_dir, args.start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup)
+        (p, output_root, log_dir, args.start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup, bool(args.split_multi_asset))
         for p in pdf_paths
     ]
 

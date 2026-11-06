@@ -463,7 +463,7 @@ export default function CorrectionPanel({ targetDir, onPickFolder }) {
                 Koreksi Nilai Core Serat Optik & OTB
               </h4>
               <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0 0' }}>
-                Aturan standar: Khusus JPL = 12 Core, Serat Optik OTB = Total Aset * 24 Core (Redaksi presisi menjaga outline tabel).
+                Aturan standar: Master Database (Cilebut/Bogor: 12/24/48, Stasiun lain default: 24, JPL: 12). Angka saja, redaksi aman multi-kolom.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -516,7 +516,7 @@ export default function CorrectionPanel({ targetDir, onPickFolder }) {
                       <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-primary)' }}>{it.filename}</td>
                       <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-secondary)' }}>{it.tipe}</td>
                       <td style={{ padding: '0.6rem 0.75rem', color: it.needs_correction ? '#ef4444' : '#10b981', fontWeight: 600 }}>{it.current_core || '-'}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--accent)', fontWeight: 600 }}>{it.target_core} Core</td>
+                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--accent)', fontWeight: 600 }}>{it.target_core}</td>
                       <td style={{ padding: '0.6rem 0.75rem' }}>
                         {it.applied ? (
                           <span style={{ padding: '0.2rem 0.5rem', background: '#14532d', color: '#86efac', borderRadius: '4px', fontSize: '0.75rem' }}>⚡ Terkoreksi</span>

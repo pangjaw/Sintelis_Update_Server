@@ -296,7 +296,9 @@
       "pelaksana": 2,
       "pelaksana_lanjutan": 0,
       "kategori": "Telekomunikasi",
-      "waktu_menit": 6
+      "waktu_menit": 6,
+      "satuan": "menit/core",
+      "catatan": "Waktu per core adalah 6 menit (Total waktu = Jumlah Core * 6 menit)"
     },
     {
       "id": 38,

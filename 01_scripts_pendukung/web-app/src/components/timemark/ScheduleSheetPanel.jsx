@@ -200,6 +200,36 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
     });
   }, [rows, timFilter, categoryFilter, searchQuery]);
 
+  // Ekspor ke format JSON (schedule.json) untuk digunakan kembali di Pipeline atau folder parsial
+  const handleExportScheduleJson = async () => {
+    setExporting(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/timemark/export-schedule-json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folder: targetDir,
+          exportDir: exportDir,
+          customJson: scheduleData || undefined
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setFeedback({
+          type: 'success',
+          text: `🎉 Berkas schedule.json berhasil disimpan ke: ${data.path}`
+        });
+      } else if (!data.cancelled) {
+        setFeedback({ type: 'error', text: data.error || 'Gagal mengekspor berkas schedule.json' });
+      }
+    } catch (err) {
+      setFeedback({ type: 'error', text: 'Galat ekspor schedule.json: ' + err.message });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // 3. Ekspor ke Excel (.xlsx)
   const handleExportExcel = async () => {
     setExporting(true);
@@ -302,6 +332,28 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
             {generating ? '⏳ Menyusun Jadwal...' : '⚡ Buat Schedule Otomatis'}
           </button>
           
+          <button
+            onClick={handleExportScheduleJson}
+            disabled={exporting || (!scheduleData && rows.length === 0)}
+            style={{
+              padding: '0.45rem 0.95rem',
+              background: (exporting || (!scheduleData && rows.length === 0)) ? 'var(--bg-secondary)' : '#6366f1',
+              color: (exporting || (!scheduleData && rows.length === 0)) ? 'var(--text-muted)' : '#ffffff',
+              border: 'none',
+              borderRadius: '7px',
+              cursor: (exporting || (!scheduleData && rows.length === 0)) ? 'not-allowed' : 'pointer',
+              fontSize: '0.825rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              boxShadow: (exporting || (!scheduleData && rows.length === 0)) ? 'none' : '0 2px 6px rgba(99, 102, 241, 0.25)'
+            }}
+            title="Ekspor dan simpan struktur jadwal (schedule.json) ke berkas eksternal"
+          >
+            {exporting ? '⏳ Mengekspor...' : '💾 Ekspor schedule.json'}
+          </button>
+
           <button
             onClick={handleExportExcel}
             disabled={exporting || rows.length === 0}

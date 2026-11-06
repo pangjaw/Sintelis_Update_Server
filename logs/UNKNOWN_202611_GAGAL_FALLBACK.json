@@ -1,0 +1,24 @@
+{
+  "month": "UNKNOWN_202611",
+  "generated_at": "2026-11-06T11:27:32.970471",
+  "summary": {
+    "gagal_merge": 0,
+    "gagal_edit": 1,
+    "fallback_edit": 0,
+    "skipped_merge": 0,
+    "total_issues": 1
+  },
+  "gagal_merge": [],
+  "gagal_edit": [
+    {
+      "file": "0.jpg",
+      "category": "ASET",
+      "detail": "scratch",
+      "photo": "0.jpg",
+      "alasan": "negative dimensions are not allowed",
+      "timestamp": "2026-11-02 09:03:01"
+    }
+  ],
+  "fallback_edit": [],
+  "skipped_merge": []
+}

@@ -29,6 +29,8 @@ function InlineTimemarkBox({
   asset,
   photo,
   photoName,
+  targetKey,
+  localCoord,
   exportDir,
   activeDetector = 'google_vision',
   lastTimemarkPos,
@@ -37,12 +39,13 @@ function InlineTimemarkBox({
   onOpenModal
 }) {
   const boxRef = useRef(null);
-  const isReasonablePos = (p) => p && typeof p.x === 'number' && typeof p.y === 'number' && p.x <= 50 && p.y >= 160;
+  const isValidCoord = (n) => typeof n === 'number' && !isNaN(n) && n >= 0 && n <= 295;
   const validMetaX = (photo?.meta?.xPos !== undefined && photo?.meta?.xPos !== null) ? Number(photo.meta.xPos) : null;
   const validMetaY = (photo?.meta?.yPos !== undefined && photo?.meta?.yPos !== null) ? Number(photo.meta.yPos) : null;
 
-  const initialX = validMetaX ?? (isReasonablePos(lastTimemarkPos) ? lastTimemarkPos.x : 14);
-  const initialY = validMetaY ?? (isReasonablePos(lastTimemarkPos) ? lastTimemarkPos.y : 220);
+  // Prioritaskan koordinat lokal yang baru saja digeser user pada foto ini
+  const initialX = isValidCoord(localCoord?.x) ? localCoord.x : (isValidCoord(validMetaX) ? validMetaX : 14);
+  const initialY = isValidCoord(localCoord?.y) ? localCoord.y : (isValidCoord(validMetaY) ? validMetaY : 220);
   const [pos, setPos] = useState({
     x: initialX,
     y: initialY
@@ -52,19 +55,26 @@ function InlineTimemarkBox({
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
-    const curX = (photo?.meta?.xPos !== undefined && photo?.meta?.xPos !== null) ? Number(photo.meta.xPos) : null;
-    const curY = (photo?.meta?.yPos !== undefined && photo?.meta?.yPos !== null) ? Number(photo.meta.yPos) : null;
-    const nx = curX ?? (isReasonablePos(lastTimemarkPos) ? lastTimemarkPos.x : 14);
-    const ny = curY ?? (isReasonablePos(lastTimemarkPos) ? lastTimemarkPos.y : 220);
-    setPos({
-      x: nx,
-      y: ny
-    });
-    if (boxRef.current) {
-      boxRef.current.style.left = '';
-      boxRef.current.style.top = '';
+    // Sinkronisasi posisi jika foto ini memiliki koordinat lokal tersimpan sendiri atau meta tersimpan
+    if (isValidCoord(localCoord?.x) && isValidCoord(localCoord?.y)) {
+      setPos({ x: localCoord.x, y: localCoord.y });
+    } else {
+      const curX = (photo?.meta?.xPos !== undefined && photo?.meta?.xPos !== null) ? Number(photo.meta.xPos) : null;
+      const curY = (photo?.meta?.yPos !== undefined && photo?.meta?.yPos !== null) ? Number(photo.meta.yPos) : null;
+      if (isValidCoord(curX) && isValidCoord(curY)) {
+        setPos({ x: curX, y: curY });
+      } else if (!isValidCoord(pos.x) || !isValidCoord(pos.y)) {
+        setPos({ x: 14, y: 220 });
+      }
     }
-  }, [photo?.meta?.xPos, photo?.meta?.yPos, photo?.meta?.timestamp, photo?.meta?.updatedAt, photo?.meta?.detector, lastTimemarkPos?.x, lastTimemarkPos?.y]);
+    if (boxRef.current) {
+      const targetPos = isValidCoord(localCoord?.x) && isValidCoord(localCoord?.y)
+        ? { x: localCoord.x, y: localCoord.y }
+        : pos;
+      boxRef.current.style.left = `${(targetPos.x / 300) * 100}%`;
+      boxRef.current.style.top = `${(targetPos.y / 300) * 100}%`;
+    }
+  }, [localCoord?.x, localCoord?.y, localCoord?.ts, photo?.meta?.xPos, photo?.meta?.yPos, photo?.meta?.timestamp, photo?.meta?.updatedAt]);
 
   const handlePointerDown = (e) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -74,6 +84,10 @@ function InlineTimemarkBox({
     const boxEl = e.currentTarget;
     const containerEl = boxEl.parentElement;
     if (!containerEl) return;
+
+    const imgEl = containerEl.querySelector('img');
+    const containerW = (imgEl && imgEl.clientWidth > 10) ? imgEl.clientWidth : containerEl.clientWidth;
+    const containerH = (imgEl && imgEl.clientHeight > 10) ? imgEl.clientHeight : containerEl.clientHeight;
 
     const startPointerX = e.clientX;
     const startPointerY = e.clientY;
@@ -93,16 +107,16 @@ function InlineTimemarkBox({
       if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
         hasMoved = true;
       }
-      const maxLeft = containerEl.clientWidth - boxEl.offsetWidth;
-      const maxTop = containerEl.clientHeight - boxEl.offsetHeight;
+      const maxLeft = Math.max(0, containerW - boxEl.offsetWidth);
+      const maxTop = Math.max(0, containerH - boxEl.offsetHeight);
       const newLeft = Math.max(0, Math.min(maxLeft, startLeft + dx));
       const newTop = Math.max(0, Math.min(maxTop, startTop + dy));
 
-      lastNormX = Math.min(280, Math.max(0, Math.round((newLeft / containerEl.clientWidth) * 300)));
-      lastNormY = Math.min(280, Math.max(0, Math.round((newTop / containerEl.clientHeight) * 300)));
+      lastNormX = Math.min(280, Math.max(0, Math.round((newLeft / (containerW || 1)) * 300)));
+      lastNormY = Math.min(280, Math.max(0, Math.round((newTop / (containerH || 1)) * 300)));
 
-      boxEl.style.left = `${(newLeft / containerEl.clientWidth) * 100}%`;
-      boxEl.style.top = `${(newTop / containerEl.clientHeight) * 100}%`;
+      boxEl.style.left = `${(newLeft / (containerW || 1)) * 100}%`;
+      boxEl.style.top = `${(newTop / (containerH || 1)) * 100}%`;
     };
 
     const onPointerUp = async (ev) => {
@@ -116,14 +130,14 @@ function InlineTimemarkBox({
         return;
       }
 
-      // Hitung koordinat ternormalisasi (0 - 300)
+      // Kunci koordinat ternormalisasi (0 - 300) di memori foto ini secara permanen
       setPos({ x: lastNormX, y: lastNormY });
       if (boxRef.current) {
-        boxRef.current.style.left = '';
-        boxRef.current.style.top = '';
+        boxRef.current.style.left = `${(lastNormX / 300) * 100}%`;
+        boxRef.current.style.top = `${(lastNormY / 300) * 100}%`;
       }
       if (onPosChange) {
-        onPosChange({ x: lastNormX, y: lastNormY });
+        onPosChange(targetKey, { x: lastNormX, y: lastNormY });
       }
 
       let dateText = photo?.meta?.dateText || asset.dateText || '';
@@ -134,7 +148,7 @@ function InlineTimemarkBox({
 
       setSaving(true);
       try {
-        const rawRelPath = `${asset.relDir}/${photoName}`;
+        const rawRelPath = targetKey || `${asset.relDir}/${photoName}`;
         const res = await fetch('/api/timemark/manual-edit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -144,7 +158,7 @@ function InlineTimemarkBox({
             dateText,
             yPos: lastNormY,
             xPos: lastNormX,
-            applyToFolder: false, // HANYA FOTO INI (misal khusus foto kedua)
+            applyToFolder: false, // HANYA FOTO INI
             detector: activeDetector
           })
         });
@@ -152,7 +166,7 @@ function InlineTimemarkBox({
         if (res.ok && data.ok) {
           setSavedFlash(true);
           setTimeout(() => setSavedFlash(false), 1200);
-          if (onSaved) onSaved();
+          if (onSaved) onSaved({ targetKey: rawRelPath, xPos: lastNormX, yPos: lastNormY, dateText });
         }
       } catch (err) {
         console.error('Error saving inline box pos:', err);
@@ -251,7 +265,7 @@ function TimemarkEditorModal({
   const [xPos, setXPos] = useState(photo.meta?.xPos ?? lastTimemarkPos?.x ?? 14);
   const [dateText, setDateText] = useState(calculatedDefaultDate);
   const [previewUrl, setPreviewUrl] = useState(photo.editedUrl || null);
-  const [applyToFolder, setApplyToFolder] = useState(!isSecondOrThird);
+  const [applyToFolder, setApplyToFolder] = useState(false);
   const [saving, setSaving] = useState(false);
   const [processingAuto, setProcessingAuto] = useState(false);
   const [remerging, setRemerging] = useState(false);
@@ -364,7 +378,7 @@ function TimemarkEditorModal({
       if (onPosChange) {
         onPosChange({ x: Number(xPos), y: Number(yPos) });
       }
-      if (onSaved) onSaved();
+      if (onSaved) onSaved({ targetKey: rawRelPath, xPos: Number(xPos), yPos: Number(yPos), dateText: dateText.trim(), applyToFolder });
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
     } finally {
@@ -428,7 +442,7 @@ function TimemarkEditorModal({
         });
       }
 
-      if (onSaved) onSaved();
+      if (onSaved) onSaved({ targetKey: rawRelPath, xPos: Number(xPos), yPos: Number(yPos), dateText: dateText.trim(), applyToFolder });
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
     } finally {
@@ -503,7 +517,7 @@ function TimemarkEditorModal({
         </div>
 
         {/* Body Modal */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.25rem 1.5rem', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', padding: '1.25rem 1.5rem', overflowY: 'auto' }}>
           
           {/* Side-by-Side Comparison Box */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
@@ -540,7 +554,7 @@ function TimemarkEditorModal({
               </div>
               <div style={{ width: '100%', height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '6px', background: '#000000', position: 'relative' }}>
                 {previewUrl || photo.rawUrl ? (
-                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
+                  <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', lineHeight: 0, textAlign: 'center' }}>
                     <img
                       src={previewUrl || photo.rawUrl}
                       alt="Foto Preview Timemark"
@@ -921,7 +935,7 @@ function TimemarkEditorModal({
 // =============================================================================
 // Komponen Utama GalleryPanel
 // =============================================================================
-export default function GalleryPanel({ exportDir, onPickFolder }) {
+export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '', onPickSchedule, onScheduleChange }) {
   const [assets, setAssets] = useState([]);
   const [targetFiles, setTargetFiles] = useState([]);
   const [sourceFiles, setSourceFiles] = useState([]);
@@ -930,7 +944,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
   // Mode States (Sama Persis dengan Web App)
   const [pipelineMode, setPipelineMode] = useState('standard'); // 'standard' | 'time' | 'coord'
-  const [viewMode, setViewMode] = useState('dual'); // 'dual' | 'edited' | 'raw'
+  const [viewMode, setViewMode] = useState('edited'); // Default: 'edited' (04) | 'dual' | 'raw'
   const [cardSize, setCardSize] = useState('large'); // 'normal' | 'large'
   const [photoViewOverrides, setPhotoViewOverrides] = useState({}); // { [targetKey]: 'edited' | 'raw' }
   const [sourceTypeFilter, setSourceTypeFilter] = useState('all'); // 'timemark' | 'export' | 'all'
@@ -943,10 +957,92 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   const [selectedStatus, setSelectedStatus] = useState(''); // '' | 'complete' | 'incomplete'
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Status ciutkan/tampilkan bar filter pencarian (Default: tersembunyi agar galeri luas maksimal)
+  const [showFilters, setShowFilters] = useState(() => {
+    try {
+      const s = localStorage.getItem('sintelis_gallery_show_filters');
+      return s !== null ? JSON.parse(s) : false;
+    } catch (_) {
+      return false;
+    }
+  });
+
+  const toggleFilters = () => {
+    setShowFilters(prev => {
+      const next = !prev;
+      try { localStorage.setItem('sintelis_gallery_show_filters', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+  };
+
+  const activeFilterCount = useMemo(() => {
+    return [
+      Boolean(selectedFile),
+      Boolean(selectedStation),
+      Boolean(selectedCategory),
+      Boolean(selectedStatus),
+      Boolean(searchQuery),
+      sourceTypeFilter !== 'all'
+    ].filter(Boolean).length;
+  }, [selectedFile, selectedStation, selectedCategory, selectedStatus, searchQuery, sourceTypeFilter]);
+
   // Drag & Drop State
   const [dragOverRel, setDragOverRel] = useState(null);
   const [actionLoadingRel, setActionLoadingRel] = useState(null);
+  const [photoCardVersions, setPhotoCardVersions] = useState({}); // { [targetKey]: timestamp }
+
+  // Fast targeted refresh: Memperbarui 1 foto lokal tanpa reload seluruh network drive
+  const refreshSinglePhotoCard = (targetKey, newMeta = null) => {
+    if (!targetKey) return;
+    const now = Date.now();
+    // Normalisasi slash agar tahan terhadap Windows (\) dan Unix (/)
+    const normTarget = targetKey.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    setPhotoCardVersions(prev => ({ ...prev, [targetKey]: now, [normTarget]: now }));
+    setAssets(prevAssets => {
+      const parts = normTarget.split('/');
+      const pName = parts[parts.length - 1];
+      const relDir = parts.slice(0, -1).join('/');
+      return prevAssets.map(a => {
+        const normAssetRel = (a.relDir || a.relPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+        if (normAssetRel !== relDir) return a;
+        const nextPhotos = (a.photos || []).map(p => {
+          if (p.name !== pName) return p;
+          const mergedMeta = {
+            ...(p.meta || {}),
+            ...(newMeta || {}),
+            xPos: newMeta?.xPos !== undefined && newMeta?.xPos !== null ? Number(newMeta.xPos) : p.meta?.xPos,
+            yPos: newMeta?.yPos !== undefined && newMeta?.yPos !== null ? Number(newMeta.yPos) : p.meta?.yPos,
+            manualEdit: true,
+            updatedAt: new Date().toISOString()
+          };
+          return {
+            ...p,
+            hasEdited: true,
+            meta: mergedMeta
+          };
+        });
+        return {
+          ...a,
+          hasEdited: true,
+          photos: nextPhotos
+        };
+      });
+    });
+  };
   const [draggedPhotoInfo, setDraggedPhotoInfo] = useState(null); // { rel, photoName, assetRel }
+
+  // Peta Koordinat Lokal Per-Foto Terkunci (Mencegah Foto 0 Terpengaruh Foto 50/100)
+  const [photoCoordsMap, setPhotoCoordsMap] = useState({});
+
+  const updatePhotoLocalPos = (tKey, coords) => {
+    if (!tKey || !coords) return;
+    const norm = tKey.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    setPhotoCoordsMap(prev => ({
+      ...prev,
+      [tKey]: { ...coords, ts: Date.now() },
+      [norm]: { ...coords, ts: Date.now() }
+    }));
+  };
 
   // Persistent Last Timemark Box Position (X, Y)
   const [lastTimemarkPos, setLastTimemarkPos] = useState(() => {
@@ -954,7 +1050,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
       const raw = localStorage.getItem('sintelis_last_timemark_pos');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number' && parsed.x <= 50 && parsed.y >= 160) {
+        if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number' && parsed.x >= 0 && parsed.x <= 295 && parsed.y >= 0 && parsed.y <= 295) {
           return parsed;
         }
       }
@@ -968,7 +1064,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
     if (!newPos || typeof newPos.x !== 'number' || typeof newPos.y !== 'number') return;
     setLastTimemarkPos(newPos);
     try {
-      if (newPos.x <= 50 && newPos.y >= 160) {
+      if (newPos.x >= 0 && newPos.x <= 295 && newPos.y >= 0 && newPos.y <= 295) {
         localStorage.setItem('sintelis_last_timemark_pos', JSON.stringify(newPos));
       }
     } catch (_) {}
@@ -983,19 +1079,50 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   // Single Merge State per Asset Row
   const [mergingRel, setMergingRel] = useState(null);
 
+  const [activeSchedulePath, setActiveSchedulePath] = useState(schedulePath || '');
+  const [loadedScheduleInfo, setLoadedScheduleInfo] = useState('');
+
+  useEffect(() => {
+    if (schedulePath) {
+      setActiveSchedulePath(schedulePath);
+    }
+  }, [schedulePath]);
+
+  const handlePickScheduleFile = async () => {
+    try {
+      if (onPickSchedule) {
+        onPickSchedule();
+        return;
+      }
+      const res = await fetch('/api/select-file', { method: 'POST' });
+      const data = await res.json();
+      if (data && data.path) {
+        setActiveSchedulePath(data.path);
+        if (onScheduleChange) onScheduleChange(data.path);
+      }
+    } catch (err) {
+      alert('Gagal memilih berkas jadwal: ' + err.message);
+    }
+  };
+
   // Fetch photos and metadata from backend
   const fetchPhotos = async () => {
     if (!exportDir) return;
     setLoading(true);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/timemark/photos?folder=${encodeURIComponent(exportDir)}`);
+      const curSched = (activeSchedulePath || schedulePath || '').trim();
+      const schedQuery = curSched ? `&schedule=${encodeURIComponent(curSched)}` : '';
+      const res = await fetch(`/api/timemark/photos?folder=${encodeURIComponent(exportDir)}${schedQuery}`);
       if (res.ok) {
         const data = await res.json();
         const loadedAssets = data.assets || [];
         setAssets(loadedAssets);
         setTargetFiles(data.targetFiles || []);
         setSourceFiles(data.sourceFiles || []);
+        if (data.loadedSchedule) {
+          setLoadedScheduleInfo(data.loadedSchedule);
+        }
       } else {
         setFeedback({ type: 'error', text: 'Gagal memuat galeri foto dari folder ekspor.' });
       }
@@ -1008,7 +1135,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
   useEffect(() => {
     fetchPhotos();
-  }, [exportDir]);
+  }, [exportDir, activeSchedulePath]);
 
   // Counts
   const editedCount = useMemo(() => assets.filter(a => a.hasEdited).length, [assets]);
@@ -1189,7 +1316,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
         const data = await res.json();
         if (res.ok && data.ok) {
           setFeedback({ type: 'success', text: `✓ Foto ${photoName} untuk ${assetRel} berhasil diperbarui.` });
-          await fetchPhotos();
+          refreshSinglePhotoCard(targetKey, { xPos: lastTimemarkPos?.x, yPos: lastTimemarkPos?.y, manualEdit: true });
         } else {
           alert('Gagal mengganti foto: ' + (data.error || 'Terjadi kesalahan'));
         }
@@ -1364,113 +1491,149 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', width: '100%', overflowY: 'auto', paddingRight: '0.5rem' }}>
       
-      {/* ── STICKY FREEZE HEADER: Folder Bar & Mode Toolbar & Filter Box ── */}
+      {/* 🌟 ULTRA-COMPACT STICKY CONTROL BAR 🌟 */}
       <div
         style={{
           position: 'sticky',
           top: 0,
           zIndex: 35,
-          background: 'rgba(10, 15, 29, 0.96)',
+          background: 'rgba(9, 13, 22, 0.96)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.65rem',
-          paddingTop: '0.25rem',
-          paddingBottom: '0.75rem',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.55)'
+          gap: '0.45rem',
+          padding: '0.5rem 0.75rem',
+          borderRadius: '10px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.65)'
         }}
       >
-        {/* ── Top Bar: Folder & Status Bar ── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.75rem 1.25rem', width: '100%', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <div>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>Folder Foto Ekspor / Timemark:</span>
-              <strong style={{ fontSize: '0.875rem', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{exportDir || 'Belum dipilih'}</strong>
+        {/* Baris 1: Kontrol Utama (Folder + Switchers + Filter Toggle) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.6rem', flexWrap: 'wrap' }}>
+          
+          {/* Kiri: Folder + Ganti + Refresh + Counter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                background: 'var(--bg-secondary)',
+                padding: '0.25rem 0.6rem',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                maxWidth: '300px'
+              }}
+              title={`Folder Foto: ${exportDir || 'Belum dipilih'}`}
+            >
+              <span style={{ fontSize: '0.8rem' }}>📁</span>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-primary)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {exportDir ? exportDir.split(/[\\/]/).filter(Boolean).slice(-2).join('/') : 'Belum dipilih'}
+              </span>
             </div>
+
             {onPickFolder && (
               <button
                 onClick={onPickFolder}
-                style={{ padding: '0.4rem 0.85rem', background: 'var(--accent)', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                style={{ padding: '0.28rem 0.65rem', background: 'var(--accent)', color: '#ffffff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                title="Ganti folder foto"
               >
-                📁 Ganti Folder...
+                📂 Ganti
               </button>
             )}
+
             <button
               onClick={fetchPhotos}
               disabled={loading}
-              style={{ padding: '0.4rem 0.75rem', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              style={{ padding: '0.28rem 0.6rem', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+              title="Refresh daftar foto"
             >
               🔄 Refresh
             </button>
-          </div>
 
-          {/* Counter Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '0.35rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontWeight: 500 }}>
-              Menampilkan <strong style={{ color: '#10b981' }}>{filteredAssets.length}</strong> dari <strong>{assets.length}</strong> aset ({editedCount} telah diedit)
-            </span>
-          </div>
-        </div>
+            {/* Indikator & Selector Jadwal (schedule.json) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  background: (loadedScheduleInfo || activeSchedulePath) ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-secondary)',
+                  border: (loadedScheduleInfo || activeSchedulePath) ? '1px solid #6366f1' : '1px solid var(--border-color)',
+                  borderRadius: '5px',
+                  padding: '0.22rem 0.5rem',
+                  maxWidth: '220px'
+                }}
+                title={`Jadwal aktif: ${loadedScheduleInfo || activeSchedulePath || 'Otomatis'}`}
+              >
+                <span style={{ fontSize: '0.8rem' }}>📅</span>
+                <span style={{
+                  fontSize: '0.72rem',
+                  color: (loadedScheduleInfo || activeSchedulePath) ? '#a5b4fc' : 'var(--text-secondary)',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {(loadedScheduleInfo || activeSchedulePath)
+                    ? (loadedScheduleInfo || activeSchedulePath).split(/[\\/]/).filter(Boolean).slice(-1)[0]
+                    : 'Jadwal Otomatis'}
+                </span>
+              </div>
 
-        {/* ── Mode Toolbar (Diadopsi Persis dari Web App) ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '1rem 1.25rem', width: '100%' }}>
-          
-          {/* Row 1: Pipeline Mode & View Mode Switchers */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-            
-            {/* Pipeline Mode Switcher */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Mode:</span>
-              {[
-                { id: 'standard', label: '📅 Edit Tanggal' },
-                { id: 'time', label: '⏰ Edit Jam' },
-                { id: 'coord', label: '📍 Edit Koordinat' }
-              ].map(m => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setPipelineMode(m.id)}
-                  style={{
-                    padding: '0.35rem 0.8rem',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: pipelineMode === m.id ? '#10b981' : 'transparent',
-                    color: pipelineMode === m.id ? '#ffffff' : 'var(--text-secondary)',
-                    fontWeight: pipelineMode === m.id ? 700 : 500,
-                    fontSize: '0.75rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  {m.label}
-                </button>
-              ))}
+              <button
+                type="button"
+                onClick={handlePickScheduleFile}
+                style={{
+                  padding: '0.25rem 0.55rem',
+                  background: 'rgba(99, 102, 241, 0.18)',
+                  color: '#c7d2fe',
+                  border: '1px solid #6366f1',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
+                title="Pilih atau ganti berkas schedule.json untuk menampilkan jam foto di galeri"
+              >
+                🗓️ {(loadedScheduleInfo || activeSchedulePath) ? 'Ganti Jadwal' : 'Pilih Jadwal'}
+              </button>
             </div>
 
-            {/* View Mode Switcher (Dual vs Edited vs Raw) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Tampilan:</span>
+            {/* Counter Badge */}
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'rgba(15, 23, 42, 0.8)', padding: '0.28rem 0.6rem', borderRadius: '5px', border: '1px solid var(--border-color)', fontWeight: 600 }}>
+              <strong style={{ color: '#10b981' }}>{filteredAssets.length}</strong> / <strong>{assets.length}</strong> aset ({editedCount} diedit)
+            </span>
+          </div>
+
+          {/* Kanan: Switcher Tampilan + Ukuran + Detektor + Toggle Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+            
+            {/* View Mode Switcher */}
+            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
               {[
-                { id: 'dual', label: '⚖️ Komparasi / Dual' },
-                { id: 'edited', label: '✨ Edited (04)' },
-                { id: 'raw', label: '📷 Mentah (03)' }
+                { id: 'edited', label: '✓ Edited (04)' },
+                { id: 'dual', label: '⚡ Dual' },
+                { id: 'raw', label: '📄 Mentah (03)' }
               ].map(v => (
                 <button
                   key={v.id}
                   type="button"
                   onClick={() => setViewMode(v.id)}
                   style={{
-                    padding: '0.35rem 0.8rem',
-                    borderRadius: '6px',
+                    padding: '0.22rem 0.55rem',
+                    borderRadius: '4px',
                     border: 'none',
                     background: viewMode === v.id ? 'var(--accent)' : 'transparent',
                     color: viewMode === v.id ? '#ffffff' : 'var(--text-secondary)',
                     fontWeight: viewMode === v.id ? 700 : 500,
-                    fontSize: '0.75rem',
+                    fontSize: '0.72rem',
                     cursor: 'pointer',
-                    transition: 'all 0.2s'
+                    transition: 'all 0.15s'
                   }}
                 >
                   {v.label}
@@ -1479,184 +1642,198 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
             </div>
 
             {/* Card Size Switcher */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Ukuran:</span>
+            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
               {[
                 { id: 'normal', label: 'Standar' },
-                { id: 'large', label: '🔍 Besar (Fokus)' }
+                { id: 'large', label: '🔍 Fokus' }
               ].map(s => (
                 <button
                   key={s.id}
                   type="button"
                   onClick={() => setCardSize(s.id)}
                   style={{
-                    padding: '0.35rem 0.8rem',
-                    borderRadius: '6px',
+                    padding: '0.22rem 0.55rem',
+                    borderRadius: '4px',
                     border: 'none',
                     background: cardSize === s.id ? '#6366f1' : 'transparent',
                     color: cardSize === s.id ? '#ffffff' : 'var(--text-secondary)',
                     fontWeight: cardSize === s.id ? 700 : 500,
-                    fontSize: '0.75rem',
+                    fontSize: '0.72rem',
                     cursor: 'pointer',
-                    transition: 'all 0.2s'
+                    transition: 'all 0.15s'
                   }}
-                  title={s.id === 'large' ? 'Perbesar tampilan foto agar detail lapangan terbaca jelas' : 'Tampilan kartu proporsional standar'}
+                  title={s.id === 'large' ? 'Perbesar tampilan foto agar detail terbaca jelas' : 'Tampilan proporsional'}
                 >
                   {s.label}
                 </button>
               ))}
             </div>
 
-            {/* Detector Selector Switcher (Google AI Vision vs Metode Biasa HSV) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.4rem', fontWeight: 600 }}>Detektor:</span>
+            {/* Detektor Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
               {[
-                { id: 'google_vision', label: '✨ Google Vision AI', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.2)' },
-                { id: 'guide', label: '🎨 Metode Biasa (HSV)', color: '#0284c7', bg: 'rgba(2, 132, 199, 0.2)' }
+                { id: 'google_vision', label: '✨ Vision AI', color: '#a855f7' },
+                { id: 'guide', label: '🎯 HSV', color: '#0284c7' }
               ].map(d => (
                 <button
                   key={d.id}
                   type="button"
                   onClick={() => setActiveDetector(d.id)}
                   style={{
-                    padding: '0.35rem 0.8rem',
-                    borderRadius: '6px',
+                    padding: '0.22rem 0.55rem',
+                    borderRadius: '4px',
                     border: activeDetector === d.id ? `1px solid ${d.color}` : '1px solid transparent',
-                    background: activeDetector === d.id ? d.bg : 'transparent',
+                    background: activeDetector === d.id ? `${d.color}25` : 'transparent',
                     color: activeDetector === d.id ? d.color : 'var(--text-secondary)',
                     fontWeight: activeDetector === d.id ? 800 : 500,
-                    fontSize: '0.75rem',
+                    fontSize: '0.72rem',
                     cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    boxShadow: activeDetector === d.id ? `0 0 8px ${d.color}40` : 'none'
+                    transition: 'all 0.15s'
                   }}
-                  title={d.id === 'google_vision' ? 'Deteksi kotak tulisan waktu otomatis via Google Cloud Vision AI' : 'Deteksi garis panduan warna merah/oranye klasik'}
+                  title={d.id === 'google_vision' ? 'Deteksi Google Cloud Vision AI' : 'Deteksi garis warna HSV'}
                 >
                   {d.label}
                 </button>
               ))}
             </div>
 
+            {/* Toggle Filter Bar Button */}
+            <button
+              type="button"
+              onClick={toggleFilters}
+              style={{
+                padding: '0.28rem 0.7rem',
+                borderRadius: '6px',
+                border: activeFilterCount > 0 ? '1px solid #f59e0b' : '1px solid var(--border-color)',
+                background: showFilters ? 'rgba(245, 158, 11, 0.2)' : (activeFilterCount > 0 ? 'rgba(245, 158, 11, 0.12)' : 'var(--bg-secondary)'),
+                color: activeFilterCount > 0 ? '#fbbf24' : 'var(--text-primary)',
+                fontWeight: 700,
+                fontSize: '0.72rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                transition: 'all 0.2s'
+              }}
+              title={showFilters ? "Ciutkan bar filter untuk meluaskan galeri" : "Buka bar filter pencarian"}
+            >
+              <span>⚡ Filter</span>
+              {activeFilterCount > 0 && (
+                <span style={{ background: '#f59e0b', color: '#000000', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '10px', fontWeight: 800 }}>
+                  {activeFilterCount}
+                </span>
+              )}
+              <span>{showFilters ? '▲' : '▼'}</span>
+            </button>
+
           </div>
+        </div>
 
-          {/* Row 2: Search & Dropdown Filters */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
-            
-            {/* Filter Berkas PDF Target */}
-            <div>
-              <select
-                value={selectedFile}
-                onChange={e => {
-                  const val = e.target.value;
-                  setSelectedFile(val);
-                  const match = targetFiles.find(t => t.file === val);
-                  if (match) {
-                    if (match.category) setSelectedCategory(match.category);
-                    if (match.btp) setSelectedStation(match.btp);
-                  }
-                }}
-                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-                title="Filter aset berdasarkan berkas PDF target"
-              >
-                <option value="">📄 Semua Berkas Target PDF</option>
-                {allFileOptions.map((opt, idx) => (
-                  <option key={idx} value={opt.value} title={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Baris 2: Collapsible Filter Strip (Hanya tampil saat showFilters = true) */}
+        {showFilters && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: '0.45rem',
+              width: '100%',
+              alignItems: 'center',
+              paddingTop: '0.45rem',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)'
+            }}
+          >
+            {/* 1. Berkas Target */}
+            <select
+              value={selectedFile}
+              onChange={e => {
+                const val = e.target.value;
+                setSelectedFile(val);
+                const match = targetFiles.find(t => t.file === val);
+                if (match) {
+                  if (match.category) setSelectedCategory(match.category);
+                  if (match.btp) setSelectedStation(match.btp);
+                }
+              }}
+              style={{ width: '100%', padding: '0.3rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '5px', color: 'var(--text-primary)', fontSize: '0.75rem', outline: 'none' }}
+              title="Filter berkas PDF target"
+            >
+              <option value="">📄 Semua Target PDF</option>
+              {allFileOptions.map((opt, idx) => (
+                <option key={idx} value={opt.value} title={opt.value}>{opt.label}</option>
+              ))}
+            </select>
 
-            {/* Filter Stasiun / Wilayah (BTP) */}
-            <div>
-              <select
-                value={selectedStation}
-                onChange={e => setSelectedStation(e.target.value)}
-                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-              >
-                <option value="">🏢 Semua Stasiun / Wilayah (BTP)</option>
-                {uniqueStations.map(stn => {
-                  const count = assets.filter(a => a.station === stn).length;
-                  return (
-                    <option key={stn} value={stn}>
-                      {stn} ({count} Aset)
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
+            {/* 2. Stasiun / Wilayah */}
+            <select
+              value={selectedStation}
+              onChange={e => setSelectedStation(e.target.value)}
+              style={{ width: '100%', padding: '0.3rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '5px', color: 'var(--text-primary)', fontSize: '0.75rem', outline: 'none' }}
+            >
+              <option value="">🏢 Semua Stasiun/Wilayah</option>
+              {uniqueStations.map(stn => {
+                const count = assets.filter(a => a.station === stn).length;
+                return <option key={stn} value={stn}>{stn} ({count})</option>;
+              })}
+            </select>
 
-            {/* Filter Kategori Aset */}
-            <div>
-              <select
-                value={selectedCategory}
-                onChange={e => setSelectedCategory(e.target.value)}
-                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-              >
-                <option value="">⚙️ Semua Kategori Aset ({assets.length} Aset)</option>
-                {uniqueCategories.map(cat => (
-                  <option key={cat.key} value={cat.key}>
-                    {cat.label} ({cat.count})
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* 3. Kategori Aset */}
+            <select
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value)}
+              style={{ width: '100%', padding: '0.3rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '5px', color: 'var(--text-primary)', fontSize: '0.75rem', outline: 'none' }}
+            >
+              <option value="">🏷️ Semua Kategori ({assets.length})</option>
+              {uniqueCategories.map(cat => (
+                <option key={cat.key} value={cat.key}>{cat.label} ({cat.count})</option>
+              ))}
+            </select>
 
-            {/* Filter Status Kelengkapan Foto */}
-            <div>
-              <select
-                value={selectedStatus}
-                onChange={e => setSelectedStatus(e.target.value)}
-                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-              >
-                <option value="">📸 Semua Status Kelengkapan</option>
-                <option value="complete">✅ Lengkap (3 Foto: 0, 50, 100%) ({assets.filter(a => (a.photos || []).length >= 3).length})</option>
-                <option value="incomplete">⚠️ Belum Lengkap (&lt; 3 Foto) ({assets.filter(a => (a.photos || []).length < 3).length})</option>
-              </select>
-            </div>
+            {/* 4. Kelengkapan */}
+            <select
+              value={selectedStatus}
+              onChange={e => setSelectedStatus(e.target.value)}
+              style={{ width: '100%', padding: '0.3rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '5px', color: 'var(--text-primary)', fontSize: '0.75rem', outline: 'none' }}
+            >
+              <option value="">📊 Status Kelengkapan</option>
+              <option value="complete">✓ Lengkap (3 Foto)</option>
+              <option value="incomplete">⚠ Belum Lengkap (&lt; 3)</option>
+            </select>
 
-            {/* Filter Status Sumber Foto */}
-            <div>
-              <select
-                value={sourceTypeFilter}
-                onChange={e => setSourceTypeFilter(e.target.value)}
-                style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
-              >
-                <option value="all">🖼️ Semua Sumber Foto</option>
-                <option value="timemark">✨ Hanya Yang Sudah Diedit (04)</option>
-                <option value="export">📷 Hanya Yang Punya Mentah (03)</option>
-                <option value="collage">🗂️ Hanya Foto Kolase ({assets.filter(a => a.isCollage).length})</option>
-              </select>
-            </div>
+            {/* 5. Sumber */}
+            <select
+              value={sourceTypeFilter}
+              onChange={e => setSourceTypeFilter(e.target.value)}
+              style={{ width: '100%', padding: '0.3rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '5px', color: 'var(--text-primary)', fontSize: '0.75rem', outline: 'none' }}
+            >
+              <option value="all">📂 Semua Sumber</option>
+              <option value="timemark">✓ Sudah Diedit (04)</option>
+              <option value="export">📄 Punya Mentah (03)</option>
+              <option value="collage">📑 Foto Kolase ({assets.filter(a => a.isCollage).length})</option>
+            </select>
 
-            {/* Pencarian Teks Cepat */}
-            <div>
+            {/* 6. Cari & Reset */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <input
                 type="text"
-                placeholder="🔍 Cari nama aset (ZP 101, W11A, J10)..."
+                placeholder="🔍 Cari nama aset..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+                style={{ flex: 1, minWidth: '100px', padding: '0.3rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '5px', color: 'var(--text-primary)', fontSize: '0.75rem', outline: 'none' }}
               />
+              {isFilterActive && (
+                <button
+                  onClick={resetAllFilters}
+                  style={{ padding: '0.3rem 0.6rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                  title="Reset semua filter"
+                >
+                  ✕ Reset
+                </button>
+              )}
             </div>
-
           </div>
-
-          {/* Reset Filter Button row */}
-          {isFilterActive && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
-              <button
-                onClick={resetAllFilters}
-                style={{ padding: '0.35rem 0.85rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
-              >
-                ✕ Reset Semua Filter
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
-
-      {feedback && (
+{feedback && (
         <div style={{
           padding: '0.75rem 1rem',
           borderRadius: '6px',
@@ -1833,9 +2010,11 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                 }}
               >
                 {['0.jpg', '50.jpg', '100.jpg'].map((photoName) => {
-                  const photoObj = (asset.photos || []).find(p => p.name === photoName);
-                  const labelPercent = photoName.replace('.jpg', '') + '%';
                   const targetKey = `${asset.relDir}/${photoName}`;
+                  const photoObj = (asset.photos || []).find(p => p.name === photoName);
+                  const cardVer = photoCardVersions[targetKey];
+                  const editedPhotoUrl = photoObj?.editedUrl ? (cardVer ? `${photoObj.editedUrl}${photoObj.editedUrl.includes('?') ? '&' : '?'}_v=${cardVer}` : photoObj.editedUrl) : null;
+                  const labelPercent = photoName.replace('.jpg', '') + '%';
                   const isDragOver = dragOverRel === targetKey;
                   const isActionLoading = actionLoadingRel === targetKey;
                   const isManual = photoObj?.meta?.manualEdit;
@@ -2079,7 +2258,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
                             <div style={{ width: '100%', height: `${dualCardHeight}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '4px', background: '#000000', position: 'relative' }}>
                               {photoObj?.rawUrl ? (
-                                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
+                                <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', lineHeight: 0, textAlign: 'center' }}>
                                   <img
                                     src={(photoObj.hasTemp && photoObj.tempUrl) ? photoObj.tempUrl : photoObj.rawUrl}
                                     alt={`${asset.detail} - ${labelPercent} (${photoObj.hasTemp ? 'Mentah Terpotong' : 'Mentah'})`}
@@ -2179,7 +2358,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                               {photoObj?.editedUrl && (
                                 <button
                                   type="button"
-                                  onClick={() => setZoomPhoto({ url: photoObj.editedUrl, title: `${asset.detail} - ${labelPercent} (Hasil Timemark 04)` })}
+                                  onClick={() => setZoomPhoto({ url: editedPhotoUrl || photoObj.editedUrl, title: `${asset.detail} - ${labelPercent} (Hasil Timemark 04)` })}
                                   style={{ background: 'transparent', border: 'none', color: '#34d399', cursor: 'pointer', padding: '0 2px', fontSize: '0.75rem' }}
                                   title="Perbesar Foto Editan Timemark (04)"
                                 >
@@ -2190,9 +2369,9 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
                             <div style={{ width: '100%', height: `${dualCardHeight}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '4px', background: '#000000', position: 'relative' }}>
                               {photoObj?.editedUrl ? (
-                                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
+                                <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', lineHeight: 0, textAlign: 'center' }}>
                                   <img
-                                    src={photoObj.editedUrl}
+                                    src={editedPhotoUrl || photoObj.editedUrl}
                                     alt={`${asset.detail} - ${labelPercent} (Editan)`}
                                     style={{ maxWidth: '100%', maxHeight: `${dualCardHeight}px`, width: 'auto', height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block' }}
                                     loading="lazy"
@@ -2213,14 +2392,20 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
                                   {/* Kotak Timemark Interaktif yang Dapat Digeser (Inline Draggable Box) */}
                                   <InlineTimemarkBox
+                                    key={targetKey}
                                     asset={asset}
                                     photo={photoObj}
                                     photoName={photoName}
+                                    targetKey={targetKey}
+                                    localCoord={photoCoordsMap[targetKey] || photoCoordsMap[targetKey.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')]}
                                     exportDir={exportDir}
                                     activeDetector={activeDetector}
                                     lastTimemarkPos={lastTimemarkPos}
-                                    onPosChange={updateLastTimemarkPos}
-                                    onSaved={fetchPhotos}
+                                    onPosChange={(k, c) => {
+                                      updatePhotoLocalPos(k, c);
+                                      updateLastTimemarkPos(c);
+                                    }}
+                                    onSaved={(info) => info?.targetKey ? refreshSinglePhotoCard(info.targetKey, info) : fetchPhotos()}
                                     onOpenModal={() => setEditingModal({ asset, photo: photoObj })}
                                   />
                                 </div>
@@ -2326,7 +2511,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                         >
                           {currentSingleView === 'raw' ? (
                             photoObj?.rawUrl ? (
-                              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
+                              <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', lineHeight: 0, textAlign: 'center' }}>
                                 <img
                                   src={(photoObj.hasTemp && photoObj.tempUrl) ? photoObj.tempUrl : photoObj.rawUrl}
                                   alt={`${asset.detail} - ${labelPercent} (${photoObj.hasTemp ? 'Mentah Terpotong' : 'Mentah'})`}
@@ -2350,9 +2535,9 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                             )
                           ) : (
                             photoObj?.editedUrl ? (
-                              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', maxHeight: '100%', lineHeight: 0 }}>
+                              <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', lineHeight: 0, textAlign: 'center' }}>
                                 <img
-                                  src={photoObj.editedUrl}
+                                  src={editedPhotoUrl || photoObj.editedUrl}
                                   alt={`${asset.detail} - ${labelPercent} (Editan)`}
                                   style={{ maxWidth: '100%', maxHeight: `${singleCardHeight}px`, width: 'auto', height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block' }}
                                   loading="lazy"
@@ -2372,14 +2557,20 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
 
                                 {/* Kotak Timemark Interaktif yang Terkunci Tepat pada Foto */}
                                 <InlineTimemarkBox
+                                  key={targetKey}
                                   asset={asset}
                                   photo={photoObj}
                                   photoName={photoName}
+                                  targetKey={targetKey}
+                                  localCoord={photoCoordsMap[targetKey] || photoCoordsMap[targetKey.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')]}
                                   exportDir={exportDir}
                                   activeDetector={activeDetector}
                                   lastTimemarkPos={lastTimemarkPos}
-                                  onPosChange={updateLastTimemarkPos}
-                                  onSaved={fetchPhotos}
+                                  onPosChange={(k, c) => {
+                                    updatePhotoLocalPos(k, c);
+                                    updateLastTimemarkPos(c);
+                                  }}
+                                  onSaved={(info) => info?.targetKey ? refreshSinglePhotoCard(info.targetKey, info) : fetchPhotos()}
                                   onOpenModal={() => setEditingModal({ asset, photo: photoObj })}
                                 />
                               </div>
@@ -2448,7 +2639,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                               onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                             >
                               <img
-                                src={currentSingleView === 'edited' ? photoObj.rawUrl : photoObj.editedUrl}
+                                src={currentSingleView === 'edited' ? photoObj.rawUrl : (editedPhotoUrl || photoObj.editedUrl)}
                                 alt="Thumbnail sebaliknya"
                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                               />
@@ -2616,7 +2807,7 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
                             <button
                               type="button"
                               onClick={() => {
-                                const targetZoom = viewMode === 'raw' ? ((photoObj.hasTemp && photoObj.tempUrl) || photoObj.rawUrl) : photoObj.editedUrl;
+                                const targetZoom = viewMode === 'raw' ? ((photoObj.hasTemp && photoObj.tempUrl) || photoObj.rawUrl) : (editedPhotoUrl || photoObj.editedUrl);
                                 if (targetZoom) {
                                   setZoomPhoto({
                                     url: targetZoom,
@@ -2717,8 +2908,12 @@ export default function GalleryPanel({ exportDir, onPickFolder }) {
           defaultDetector={activeDetector}
           lastTimemarkPos={lastTimemarkPos}
           onPosChange={updateLastTimemarkPos}
-          onSaved={() => {
-            fetchPhotos();
+          onSaved={(info) => {
+            if (info?.targetKey && !info.applyToFolder) {
+              refreshSinglePhotoCard(info.targetKey, info);
+            } else {
+              fetchPhotos();
+            }
           }}
         />
       )}

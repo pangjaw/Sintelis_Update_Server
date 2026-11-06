@@ -87,13 +87,27 @@ def sanitize_segment(text: str) -> str:
     return text or "UNKNOWN"
 
 
+_CHECKLIST_CONFIG_CACHE = None
+
 def load_checklist_config(path: str = CHECKLIST_CONFIG_PATH) -> dict:
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        log(f"[WARNING] Checklist config not found at {path}, using defaults")
-        return {"search_keyword": "PERAWATAN", "types": {}}
+    global _CHECKLIST_CONFIG_CACHE
+    if _CHECKLIST_CONFIG_CACHE is not None:
+        return _CHECKLIST_CONFIG_CACHE
+    config_candidates = [
+        Path(path),
+        Path(__file__).resolve().parent / "checklist_types.json",
+        Path(__file__).resolve().parent.parent / "config" / "checklist_types.json",
+    ]
+    for c in config_candidates:
+        if c.exists():
+            try:
+                with open(c, encoding="utf-8") as f:
+                    _CHECKLIST_CONFIG_CACHE = json.load(f)
+                    return _CHECKLIST_CONFIG_CACHE
+            except Exception:
+                pass
+    _CHECKLIST_CONFIG_CACHE = {"search_keyword": "PERAWATAN", "types": {}}
+    return _CHECKLIST_CONFIG_CACHE
 
 
 # ── Asset parsing ───────────────────────────────────────────────
@@ -787,7 +801,12 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
         found = False
         candidates = get_identifier_candidates(identifier)
         if loc_id and loc_id not in candidates:
-            candidates.insert(0, loc_id)
+            if split_multi_asset:
+                # Prioritaskan folder foto nama spesifik aset (misal: 'OTB 1 ER BOGOR'),
+                # dan jadikan loc_id ('ER SINYAL BOO') hanya sebagai cadangan di akhir
+                candidates.append(loc_id)
+            else:
+                candidates.insert(0, loc_id)
 
         def _check_folder_photos(folder: Path):
             f0, f50, f100 = folder / "0.jpg", folder / "50.jpg", folder / "100.jpg"
@@ -1483,8 +1502,8 @@ def main():
                         for m_pdf in merged_candidates:
                             c_info = get_core_info(m_pdf)
                             if c_info and c_info.get("needs_correction"):
-                                ok_c, msg_c = apply_core_correction(m_pdf, c_info["target_core"], make_backup=False)
-                                log(f"  └── [CORE OPTIK] {msg_c} -> {c_info['target_core']} Core")
+                                ok_c, msg_c = apply_core_correction(m_pdf, make_backup=False)
+                                log(f"  └── [CORE OPTIK] {msg_c} -> [{c_info['target_core']}]")
                     except Exception as e_c:
                         log(f"  └── [WARNING CORE] Gagal koreksi core: {e_c}")
             elif status.startswith("skipped"):

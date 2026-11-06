@@ -177,7 +177,7 @@ def run_cmd(cmd_list, step_key, step_name, start_pct=0.0, end_pct=100.0):
         add_log("error", f"✗ Galat pada {step_name}: {e}")
         return False
 
-def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode="dual", overwrite_original=False, detector="google_vision", split_multi_asset=False, include_time=True):
+def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode="dual", overwrite_original=False, detector="google_vision", split_multi_asset=False, include_time=True, custom_schedule_file=None):
     with _state_lock:
         state["running"] = True
         state["cancelled"] = False
@@ -215,6 +215,24 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
     data_acuan = os.path.join(ENGINE_DIR, "data_acuan_tenaga_gabungan.json")
     schedule_file = os.path.join(export_root, "schedule.json")
 
+    if custom_schedule_file and os.path.isfile(custom_schedule_file):
+
+        add_log("info", f"📄 Menggunakan berkas jadwal eksternal terpilih: {custom_schedule_file}")
+
+        schedule_file = custom_schedule_file
+
+        try:
+
+            target_export_sch = os.path.join(export_root, "schedule.json")
+
+            if os.path.abspath(custom_schedule_file) != os.path.abspath(target_export_sch):
+
+                shutil.copy2(custom_schedule_file, target_export_sch)
+
+        except Exception as e_cp:
+
+            add_log("warn", f"Notice salin jadwal: {e_cp}")
+
     steps_to_run = selected_steps if isinstance(selected_steps, list) else ["1", "1.5", "2", "3", "4", "5"]
     total_steps = len(steps_to_run)
     step_idx = 0
@@ -236,6 +254,11 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
     temp_merge_dir = None
     if mode == "single" and overwrite_original:
         temp_merge_dir = os.path.join(export_root, "_temp_merged")
+        if os.path.exists(temp_merge_dir):
+            try:
+                shutil.rmtree(temp_merge_dir)
+            except Exception:
+                pass
         os.makedirs(temp_merge_dir, exist_ok=True)
         actual_step5_output = temp_merge_dir
 
@@ -310,25 +333,32 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
 
         # STEP 3: Penjadwalan Tim
         if "3" in steps_to_run:
-            step_idx += 1
-            with _state_lock:
-                state["current_step"] = 3
-                state["progress"] = int((step_idx - 1) / total_steps * 100)
-            step3_args = [
-                "--pdf-dir", target_dir,
-                "--photos-dir", raw_photos_dir,
-                "--mapping", time_mapping,
-                "--data-acuan", data_acuan,
-                "--output", schedule_file
-            ]
-            if split_multi_asset:
-                step3_args.append("--split-multi-asset")
-            cmd = make_cmd("scheduler.py", step3_args)
-            s_pct = (step_idx - 1) / total_steps * 100.0
-            e_pct = step_idx / total_steps * 100.0
-            ok = run_cmd(cmd, "step3", "Step 3: Penjadwalan Tim & Alokasi Waktu", s_pct, e_pct)
-            if not ok:
-                return
+            if custom_schedule_file and os.path.isfile(custom_schedule_file):
+                step_idx += 1
+                add_log("info", f"⚡ Step 3 dilewati karena menggunakan berkas jadwal eksternal: {os.path.basename(custom_schedule_file)}")
+                with _state_lock:
+                    state["step_statuses"]["step3"] = "done"
+                    state["progress"] = int(step_idx / total_steps * 100)
+            else:
+                step_idx += 1
+                with _state_lock:
+                    state["current_step"] = 3
+                    state["progress"] = int((step_idx - 1) / total_steps * 100)
+                step3_args = [
+                    "--pdf-dir", target_dir,
+                    "--photos-dir", raw_photos_dir,
+                    "--mapping", time_mapping,
+                    "--data-acuan", data_acuan,
+                    "--output", schedule_file
+                ]
+                if split_multi_asset:
+                    step3_args.append("--split-multi-asset")
+                cmd = make_cmd("scheduler.py", step3_args)
+                s_pct = (step_idx - 1) / total_steps * 100.0
+                e_pct = step_idx / total_steps * 100.0
+                ok = run_cmd(cmd, "step3", "Step 3: Penjadwalan Tim & Alokasi Waktu", s_pct, e_pct)
+                if not ok:
+                    return
 
             # Sinkronisasi schedule.json ke folder target_dir dan raw_photos_dir
             if os.path.isfile(schedule_file):
@@ -443,7 +473,11 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 merged_pdfs = list(Path(temp_merge_dir).rglob("*.pdf"))
                 replaced_count = 0
                 for mp in merged_pdfs:
-                    dst = orig_file_map.get(mp.name.lower(), src_path / mp.name)
+                    dst = orig_file_map.get(mp.name.lower())
+                    if not dst:
+                        # Keamanan: Hanya timpa berkas yang memang ada di dalam folder sumber asli
+                        # Jangan menaruh berkas asing dari folder lain yang tertinggal di _temp_merged
+                        continue
                     try:
                         dst.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(mp, dst)
@@ -470,7 +504,7 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
         with _state_lock:
             state["running"] = False
 
-def start_pipeline(source_dir, target_dir=None, export_dir=None, merged_dir=None, selected_steps=None, mode="dual", overwrite_original=False, detector="google_vision", split_multi_asset=False, include_time=True):
+def start_pipeline(source_dir, target_dir=None, export_dir=None, merged_dir=None, selected_steps=None, mode="dual", overwrite_original=False, detector="google_vision", split_multi_asset=False, include_time=True, custom_schedule_file=None):
     steps_list = selected_steps if isinstance(selected_steps, list) else ["1", "1.5", "2", "3", "4", "5"]
 
     if mode == "single":
@@ -498,7 +532,7 @@ def start_pipeline(source_dir, target_dir=None, export_dir=None, merged_dir=None
 
     t = threading.Thread(
         target=_execute_pipeline_task,
-        args=(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode, overwrite_original, detector, split_multi_asset, include_time),
+        args=(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode, overwrite_original, detector, split_multi_asset, include_time, custom_schedule_file),
         daemon=True
     )
     t.start()

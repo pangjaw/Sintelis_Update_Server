@@ -29,6 +29,16 @@ from export_pdf_foto import (
     determine_btp,
 )
 from extract_pdf_dates import extract_date_from_pdf, format_date_target
+try:
+    from correct_serat_optik_cores import get_target_core_for_asset, is_serat_optik_file
+except ImportError:
+    try:
+        from timemark_engine.correct_serat_optik_cores import get_target_core_for_asset, is_serat_optik_file
+    except ImportError:
+        def get_target_core_for_asset(funloc: str, name: str, is_jpl: bool = False) -> int:
+            return 12 if "JPL" in (name or "") or "JPL" in (funloc or "") else 24
+        def is_serat_optik_file(p):
+            return "SERAT OPTIK" in str(p).upper() or "OTB" in str(p).upper()
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -192,13 +202,13 @@ def read_date_from_photos(photos_dir: Path, btp: str, category: str, identifier:
 
 
 def m2hhmm(m: int) -> str:
-    rem_m = m % (24 * 60)
-    return f"{rem_m // 60:02d}:{rem_m % 60:02d}"
+    rem_m = int(round(m)) % (24 * 60)
+    return f"{int(rem_m // 60):02d}:{int(rem_m % 60):02d}"
 
 
 def m2iso(d: date, m: int) -> str:
-    rem_m = m % (24 * 60)
-    return datetime(d.year, d.month, d.day, rem_m // 60, rem_m % 60).isoformat()
+    rem_m = int(round(m)) % (24 * 60)
+    return datetime(d.year, d.month, d.day, int(rem_m // 60), int(rem_m % 60)).isoformat()
 
 
 def is_serat_optik_pdf(pdf_path: Path) -> bool:
@@ -349,13 +359,27 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
                     continue
                 seen_fl.add(asset_name)
 
+                # Aturan waktu dinas spesifik kategori:
+                # - SERAT OPTIK: 6 menit per core (diambil dari master otb_core_database.json)
+                # - PDSE: 420 menit dibagi rata jumlah aset per dokumen
+                # - CATUDAYA: 45 menit standar
+                if category == "SERAT OPTIK" or is_serat_optik_pdf(pdf_path):
+                    core_val = get_target_core_for_asset(fl_clean, asset_name)
+                    asset_w = core_val * 6
+                elif category == "PDSE":
+                    asset_w = max(15, round(420 / len(all_funclocs)))
+                elif category == "CATUDAYA":
+                    asset_w = 45
+                else:
+                    asset_w = per_asset_w
+
                 asset_items.append({
                     "identifier": asset_name,
                     "location_identifier": loc_ident,
-                    "folder": loc_ident,
+                    "folder": asset_name,
                     "base_identifier": loc_ident,
                     "btp": btp_cur,
-                    "waktu_menit": per_asset_w,
+                    "waktu_menit": asset_w,
                     "funcloc": fl_clean
                 })
 
@@ -375,10 +399,10 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
 
             # Core count check for SERAT OPTIK
             w = get_waktu(category, mapping, acuan)
-            if is_serat_optik_pdf(pdf_path):
-                m = re.search(r'Jumlah Core[^\d]*(\d+)', page1_text, re.IGNORECASE)
-                if m:
-                    w = int(m.group(1)) * 6
+            if is_serat_optik_pdf(pdf_path) or category == "SERAT OPTIK":
+                fl_line = all_funclocs[0] if all_funclocs else ""
+                core_val = get_target_core_for_asset(fl_line, identifier)
+                w = core_val * 6
 
             btp = _determine_btp(identifier, pdf_path)
             target_ident = identifier
@@ -513,11 +537,16 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
                     schedules.append(entry)
                 else:
                     # Aset baru pada tanggal ini -> alokasikan slot jam berikutnya
-                    if clock > jam_selesai:
-                        tim += 1
-                        clock = jam_mulai
-
                     w = a["waktu_menit"]
+                    # Jika waktu pengerjaan aset melewati batas jam kerja dinas (misal: 15:30),
+                    # alokasikan aset ini ke Tim berikutnya (maksimal tim_max) mulai jam 08:30 pada tanggal yang sama
+                    if ((clock + w > jam_selesai and clock > jam_mulai) or clock > jam_selesai):
+                        if tim < tim_max:
+                            tim += 1
+                            clock = jam_mulai
+                        else:
+                            clock = jam_mulai
+
                     t0 = clock
                     t50 = round(clock + w / 2)
                     t100 = clock + w
@@ -568,8 +597,8 @@ def main() -> int:
     p.add_argument("--photos-dir", default="./03_photos_export")
     p.add_argument("--mapping", default="asset_waktu_mapping.json")
     p.add_argument("--data-acuan", default="data_acuan_tenaga_gabungan.json")
-    p.add_argument("--jam-mulai", type=int, default=7, help="jam mulai (0-23)")
-    p.add_argument("--jam-selesai", type=int, default=18, help="jam selesai (0-23)")
+    p.add_argument("--jam-mulai", type=float, default=8.5, help="jam mulai (0-23)")
+    p.add_argument("--jam-selesai", type=float, default=15.5, help="jam selesai (0-23)")
     p.add_argument("--tim-max", type=int, default=2)
     p.add_argument("--split-multi-asset", action="store_true", help="Bagi foto dan jam sesuai jumlah baris aset")
     p.add_argument("--output", default="schedule.json")
@@ -604,8 +633,8 @@ def main() -> int:
     else:
         print(f"[WARNING] data acuan not found: {data_acuan_path}")
 
-    jm = max(0, min(23 * 60, args.jam_mulai * 60))
-    js = max(0, min(24 * 60, args.jam_selesai * 60))
+    jm = int(round(max(0, min(23 * 60, args.jam_mulai * 60))))
+    js = int(round(max(0, min(24 * 60, args.jam_selesai * 60))))
 
     sched = build_schedule(pdf_dir, photos_dir, mapping, acuan, jm, js, max(1, args.tim_max), args.split_multi_asset)
 

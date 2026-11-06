@@ -1,0 +1,48 @@
+{
+  "total_pdf": 7,
+  "failed_count": 7,
+  "errors": [
+    {
+      "file": "PERAWATAN SERAT OPTIK OTB 1-3 ER TELKOM BOGOR 22-05-2025.pdf",
+      "error_type": "NameError",
+      "error_msg": "name 'date_text' is not defined",
+      "traceback": "Traceback (most recent call last):\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1599, in _export_worker_job\n    exported = export_pdf(pdf_path, output_root, log_dir,\n                          start_page, resolution, input_root, sap_mapping,\n                          render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,\n                          multi_date_lookup=multi_date_lookup,\n                          split_multi_asset=split_multi_asset)\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1449, in export_pdf\n    if date_text:\n       ^^^^^^^^^\nNameError: name 'date_text' is not defined. Did you mean: 'page1_text'?\n"
+    },
+    {
+      "file": "PERAWATAN SERAT OPTIK OTB 11-12 ER BOGOR 28-05-2025.pdf",
+      "error_type": "NameError",
+      "error_msg": "name 'date_text' is not defined",
+      "traceback": "Traceback (most recent call last):\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1599, in _export_worker_job\n    exported = export_pdf(pdf_path, output_root, log_dir,\n                          start_page, resolution, input_root, sap_mapping,\n                          render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,\n                          multi_date_lookup=multi_date_lookup,\n                          split_multi_asset=split_multi_asset)\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1449, in export_pdf\n    if date_text:\n       ^^^^^^^^^\nNameError: name 'date_text' is not defined. Did you mean: 'page1_text'?\n"
+    },
+    {
+      "file": "PERAWATAN SERAT OPTIK OTB 1-5 ER BOGOR 28-05-2025.pdf",
+      "error_type": "NameError",
+      "error_msg": "name 'date_text' is not defined",
+      "traceback": "Traceback (most recent call last):\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1599, in _export_worker_job\n    exported = export_pdf(pdf_path, output_root, log_dir,\n                          start_page, resolution, input_root, sap_mapping,\n                          render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,\n                          multi_date_lookup=multi_date_lookup,\n                          split_multi_asset=split_multi_asset)\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1449, in export_pdf\n    if date_text:\n       ^^^^^^^^^\nNameError: name 'date_text' is not defined. Did you mean: 'page1_text'?\n"
+    },
+    {
+      "file": "PERAWATAN SERAT OPTIK OTB 1-5 ER CLT 05-05-2025.pdf",
+      "error_type": "NameError",
+      "error_msg": "name 'date_text' is not defined",
+      "traceback": "Traceback (most recent call last):\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1599, in _export_worker_job\n    exported = export_pdf(pdf_path, output_root, log_dir,\n                          start_page, resolution, input_root, sap_mapping,\n                          render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,\n                          multi_date_lookup=multi_date_lookup,\n                          split_multi_asset=split_multi_asset)\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1449, in export_pdf\n    if date_text:\n       ^^^^^^^^^\nNameError: name 'date_text' is not defined. Did you mean: 'page1_text'?\n"
+    },
+    {
+      "file": "PERAWATAN SERAT OPTIK OTB 6-10 ER BOGOR 28-05-2025.pdf",
+      "error_type": "NameError",
+      "error_msg": "name 'date_text' is not defined",
+      "traceback": "Traceback (most recent call last):\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1599, in _export_worker_job\n    exported = export_pdf(pdf_path, output_root, log_dir,\n                          start_page, resolution, input_root, sap_mapping,\n                          render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,\n                          multi_date_lookup=multi_date_lookup,\n                          split_multi_asset=split_multi_asset)\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1449, in export_pdf\n    if date_text:\n       ^^^^^^^^^\nNameError: name 'date_text' is not defined. Did you mean: 'page1_text'?\n"
+    },
+    {
+      "file": "PERAWATAN SERAT OPTIK OTB 6-10 ER CLT 05-05-2025.pdf",
+      "error_type": "NameError",
+      "error_msg": "name 'date_text' is not defined",
+      "traceback": "Traceback (most recent call last):\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1599, in _export_worker_job\n    exported = export_pdf(pdf_path, output_root, log_dir,\n                          start_page, resolution, input_root, sap_mapping,\n                          render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,\n                          multi_date_lookup=multi_date_lookup,\n                          split_multi_asset=split_multi_asset)\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1449, in export_pdf\n    if date_text:\n       ^^^^^^^^^\nNameError: name 'date_text' is not defined. Did you mean: 'page1_text'?\n"
+    },
+    {
+      "file": "PERAWATAN SERAT OPTIK OTB 11-13 ER CLT 05-05-2025.pdf",
+      "error_type": "NameError",
+      "error_msg": "name 'date_text' is not defined",
+      "traceback": "Traceback (most recent call last):\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1599, in _export_worker_job\n    exported = export_pdf(pdf_path, output_root, log_dir,\n                          start_page, resolution, input_root, sap_mapping,\n                          render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,\n                          multi_date_lookup=multi_date_lookup,\n                          split_multi_asset=split_multi_asset)\n  File \"d:\\Dika\\Project\\Sintelis_Update_Server\\01_scripts_pendukung\\web-app\\timemark_engine\\export_pdf_foto.py\", line 1449, in export_pdf\n    if date_text:\n       ^^^^^^^^^\nNameError: name 'date_text' is not defined. Did you mean: 'page1_text'?\n"
+    }
+  ]
+}
