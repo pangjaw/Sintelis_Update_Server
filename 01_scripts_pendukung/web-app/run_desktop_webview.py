@@ -4964,11 +4964,19 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
     def _handle_timemark_schedule_list(self, parsed):
         try:
             qs = urllib.parse.parse_qs(parsed.query)
-            folder = qs.get("folder", [""])[0]
-            export_dir = qs.get("exportDir", [""])[0]
+            folder = qs.get("folder", [""])[0].strip(' "'')
+            export_dir = qs.get("exportDir", [""])[0].strip(' "'')
+            schedule_param = qs.get("schedule", [""])[0].strip(' "'')
 
             # 1. Kumpulkan seluruh lokasi kandidat schedule.json
             search_candidates = []
+            if schedule_param:
+                if os.path.isfile(schedule_param):
+                    search_candidates.append(schedule_param)
+                elif os.path.isdir(schedule_param):
+                    c_in_dir = os.path.join(schedule_param, "schedule.json")
+                    if os.path.isfile(c_in_dir):
+                        search_candidates.append(c_in_dir)
             if folder and os.path.exists(folder):
                 if os.path.isfile(folder) and folder.lower().endswith(".json"):
                     search_candidates.append(folder)
@@ -5073,6 +5081,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             mapping = load_mapping(Path(time_mapping)) if os.path.isfile(time_mapping) else {}
             acuan = load_data_acuan(Path(data_acuan)) if os.path.isfile(data_acuan) else {}
 
+            split_multi = bool(data.get("splitMultiAssetRows", data.get("splitMultiAsset", True)))
             sched = build_schedule(
                 pdf_dir=Path(pdf_dir).resolve(),
                 photos_dir=Path(photos_dir).resolve(),
@@ -5080,7 +5089,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 acuan=acuan,
                 jam_mulai=7 * 60,
                 jam_selesai=18 * 60,
-                tim_max=2
+                tim_max=2,
+                split_multi_asset=split_multi
             )
 
             os.makedirs(os.path.dirname(schedule_file), exist_ok=True)

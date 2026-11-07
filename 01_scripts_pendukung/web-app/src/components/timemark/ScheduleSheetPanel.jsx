@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 
-export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder }) {
+export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder, schedulePath = '' }) {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -18,14 +18,91 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
 
+  const [compactBanner, setCompactBanner] = useState(false);
+
+  // Folder & File Selection State (Default menggunakan folder yang di-set di pipeline)
+  const [activeTargetDir, setActiveTargetDir] = useState(targetDir || '');
+  const [activeExportDir, setActiveExportDir] = useState(exportDir || '');
+  const [activeScheduleFile, setActiveScheduleFile] = useState(schedulePath || '');
+  const [isCustomMode, setIsCustomMode] = useState(false);
+  const [splitMultiAssetRows, setSplitMultiAssetRows] = useState(true);
+
+  // Sinkronisasi otomatis dari props pipeline jika belum dalam mode kustom
+  useEffect(() => {
+    if (!isCustomMode) {
+      setActiveTargetDir(targetDir || '');
+      setActiveExportDir(exportDir || '');
+      setActiveScheduleFile(schedulePath || '');
+    }
+  }, [targetDir, exportDir, schedulePath, isCustomMode]);
+
+  // Handler memilih folder target PDF secara mandiri
+  const handlePickTargetFolder = async () => {
+    try {
+      const res = await fetch('/api/select-folder', { method: 'POST' });
+      const data = await res.json();
+      if (data && data.path) {
+        setActiveTargetDir(data.path);
+        setIsCustomMode(true);
+        setFeedback({ type: 'info', text: `📁 Folder target PDF diatur ke: ${data.path}` });
+      }
+    } catch (err) {
+      alert('Gagal memilih folder: ' + err.message);
+    }
+  };
+
+  // Handler memilih berkas schedule.json spesifik
+  const handlePickScheduleFile = async () => {
+    try {
+      const res = await fetch('/api/select-file', { method: 'POST' });
+      const data = await res.json();
+      if (data && data.path) {
+        const filePath = data.path.trim();
+        setActiveScheduleFile(filePath);
+        setIsCustomMode(true);
+        
+        // Jika folder target masih kosong, otomatis isi dengan direktori induk file schedule
+        let targetCandidate = activeTargetDir;
+        if (!targetCandidate) {
+          const parentDir = filePath.replace(/[\\/][^\\/]+$/, '');
+          if (parentDir) {
+            targetCandidate = parentDir;
+            setActiveTargetDir(parentDir);
+          }
+        }
+        
+        setFeedback({ type: 'info', text: `📄 Berkas jadwal dipilih: ${filePath}` });
+        // Langsung muat daftar jadwal dengan path yang baru dipilih
+        fetchScheduleList(targetCandidate, undefined, filePath);
+      }
+    } catch (err) {
+      alert('Gagal memilih berkas: ' + err.message);
+    }
+  };
+
+  // Handler reset kembali ke folder bawaan Pipeline Runner
+  const handleResetToPipeline = () => {
+    setActiveTargetDir(targetDir || '');
+    setActiveExportDir(exportDir || '');
+    setActiveScheduleFile(schedulePath || '');
+    setIsCustomMode(false);
+    setFeedback({ type: 'info', text: '🔄 Lokasi dikembalikan ke pengaturan default Pipeline Runner.' });
+    fetchScheduleList(targetDir || '', exportDir || '', schedulePath || '');
+  };
+
   // 1. Ambil data schedule dari backend
-  const fetchScheduleList = async () => {
+  const fetchScheduleList = async (overrideTarget, overrideExport, overrideSched) => {
+    const tDir = overrideTarget !== undefined ? overrideTarget : activeTargetDir;
+    const eDir = overrideExport !== undefined ? overrideExport : activeExportDir;
+    const sFile = overrideSched !== undefined ? overrideSched : activeScheduleFile;
+
     setLoading(true);
     setFeedback(null);
     try {
       const params = new URLSearchParams();
-      if (targetDir) params.append('folder', targetDir);
-      if (exportDir) params.append('exportDir', exportDir);
+      if (tDir) params.append('folder', tDir);
+      if (eDir) params.append('exportDir', eDir);
+      if (sFile) params.append('schedule', sFile);
       const q = params.toString() ? `?${params.toString()}` : '';
       const res = await fetch(`/api/timemark/schedule-list${q}`);
       const data = await res.json();
@@ -46,8 +123,12 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
     }
   };
 
-  // Generate Schedule On-demand
+  // Generate Schedule On-demand menggunakan activeTargetDir
   const handleGenerateSchedule = async () => {
+    if (!activeTargetDir) {
+      alert('Silakan pilih Folder PDF Target terlebih dahulu!');
+      return;
+    }
     setGenerating(true);
     setFeedback(null);
     try {
@@ -55,8 +136,9 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pdfDir: targetDir,
-          exportDir: exportDir
+          pdfDir: activeTargetDir,
+          exportDir: activeExportDir || activeTargetDir,
+          splitMultiAssetRows: splitMultiAssetRows
         })
       });
       const data = await res.json();
@@ -76,7 +158,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
 
   useEffect(() => {
     fetchScheduleList();
-  }, [targetDir, exportDir]);
+  }, [activeTargetDir, activeExportDir, activeScheduleFile]);
 
   // 2. Parse rekord jadwal ke daftar baris tabel yang seragam
   const rows = useMemo(() => {
@@ -209,8 +291,8 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          folder: targetDir,
-          exportDir: exportDir,
+          folder: activeTargetDir,
+          exportDir: activeExportDir,
           customJson: scheduleData || undefined
         })
       });
@@ -238,7 +320,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
       const res = await fetch('/api/timemark/export-schedule-excel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: targetDir })
+        body: JSON.stringify({ folder: activeTargetDir })
       });
       const data = await res.json();
       if (res.ok && data.ok) {
@@ -257,7 +339,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', width: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%', minHeight: '100%', paddingBottom: '3.5rem' }}>
       
       {/* ── HEADER BANNER ── */}
       <div
@@ -265,29 +347,48 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
           background: 'var(--bg-card)',
           border: '1px solid var(--border-color)',
           borderRadius: '10px',
-          padding: '1rem 1.25rem',
+          padding: compactBanner ? '0.6rem 1rem' : '0.85rem 1.25rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '1rem'
+          gap: '0.85rem',
+          transition: 'all 0.2s ease'
         }}
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '1.25rem' }}>📅</span>
-            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            <span style={{ fontSize: '1.2rem' }}>📅</span>
+            <h3 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               Schedule Sheet & Daftar Jadwal Perawatan
             </h3>
             {sourcePath && (
-              <span style={{ fontSize: '0.725rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-                {rows.length} Rekord Aset
+              <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(34, 197, 94, 0.12)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.25)', fontWeight: 600 }}>
+                {rows.length} Rekord
               </span>
             )}
+            <button
+              type="button"
+              onClick={() => setCompactBanner(!compactBanner)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: '0.72rem',
+                textDecoration: 'underline',
+                padding: '0 0.3rem'
+              }}
+              title="Ciutkan / perluas deskripsi banner agar ruang tabel lebih maksimal"
+            >
+              {compactBanner ? '▾ Tampilkan Deskripsi' : '▴ Ciutkan Header'}
+            </button>
           </div>
-          <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-            Matriks alokasi waktu kerja, pembagian Tim 1/Tim 2, dan rincian stempel foto (0%, 50%, 100%) hasil Step 3 Penjadwalan.
-          </p>
+          {!compactBanner && (
+            <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Matriks alokasi waktu kerja, pembagian Tim 1/Tim 2, dan rincian stempel foto (0%, 50%, 100%) hasil Step 3 Penjadwalan.
+            </p>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -377,6 +478,188 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
         </div>
       </div>
 
+      {/* ── PANEL KONTROL SUMBER FOLDER / FILE JADWAL ── */}
+      <div
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '10px',
+          padding: '0.85rem 1.15rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.65rem',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              📂 Lokasi Sumber PDF & Jadwal
+            </span>
+            <span
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                padding: '0.15rem 0.5rem',
+                borderRadius: '4px',
+                background: isCustomMode ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                color: isCustomMode ? '#f59e0b' : '#3b82f6',
+                border: isCustomMode ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)'
+              }}
+            >
+              {isCustomMode ? '⚙️ Folder Kustom (Luar Pipeline)' : '🔗 Default Pipeline Runner'}
+            </span>
+          </div>
+
+          {isCustomMode && (
+            <button
+              type="button"
+              onClick={handleResetToPipeline}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+                borderRadius: '5px',
+                color: 'var(--text-secondary)',
+                fontSize: '0.725rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                padding: '0.25rem 0.6rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem'
+              }}
+              title="Kembalikan lokasi ke folder target yang sedang aktif di Pipeline Runner"
+            >
+              🔄 Reset ke Default Pipeline
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
+          {/* Kolom 1: Folder PDF Target */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <label style={{ fontSize: '0.725rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+              Folder PDF Target (Checklist / Folder Lain):
+            </label>
+            <div style={{ display: 'flex', gap: '0.35rem' }}>
+              <input
+                type="text"
+                readOnly
+                value={activeTargetDir || ''}
+                placeholder="Belum ada folder target..."
+                style={{
+                  flex: 1,
+                  padding: '0.35rem 0.6rem',
+                  fontSize: '0.775rem',
+                  borderRadius: '5px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  color: activeTargetDir ? 'var(--text-primary)' : 'var(--text-muted)'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handlePickTargetFolder}
+                style={{
+                  padding: '0.35rem 0.65rem',
+                  background: 'var(--accent)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '5px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
+                title="Pilih folder PDF target checklist (bisa dari folder mana saja di luar pipeline)"
+              >
+                📂 Pilih Folder
+              </button>
+            </div>
+          </div>
+
+          {/* Kolom 2: Berkas Jadwal Spesifik / schedule.json */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <label style={{ fontSize: '0.725rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+              Berkas Jadwal (schedule.json) Spesifik:
+            </label>
+            <div style={{ display: 'flex', gap: '0.35rem' }}>
+              <input
+                type="text"
+                readOnly
+                value={activeScheduleFile || (sourcePath ? sourcePath : '')}
+                placeholder="Otomatis dari folder target (atau pilih file json)..."
+                style={{
+                  flex: 1,
+                  padding: '0.35rem 0.6rem',
+                  fontSize: '0.775rem',
+                  borderRadius: '5px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  color: (activeScheduleFile || sourcePath) ? 'var(--text-primary)' : 'var(--text-muted)'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handlePickScheduleFile}
+                style={{
+                  padding: '0.35rem 0.65rem',
+                  background: 'rgba(99, 102, 241, 0.2)',
+                  color: '#818cf8',
+                  border: '1px solid rgba(99, 102, 241, 0.4)',
+                  borderRadius: '5px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
+                title="Pilih berkas schedule.json yang sudah ada dari direktori manapun"
+              >
+                📄 Pilih File .json
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Opsi Alokasi Jam per OTB (Serat Optik) & Multi-Row (PDSE) */}
+        <div
+          style={{
+            marginTop: '0.2rem',
+            padding: '0.45rem 0.75rem',
+            borderRadius: '6px',
+            background: splitMultiAssetRows ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-secondary)',
+            border: splitMultiAssetRows ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={splitMultiAssetRows}
+              onChange={e => setSplitMultiAssetRows(e.target.checked)}
+              style={{ accentColor: '#3b82f6', cursor: 'pointer', width: '15px', height: '15px' }}
+            />
+            <div>
+              <span style={{ fontSize: '0.785rem', fontWeight: 700, color: splitMultiAssetRows ? '#60a5fa' : 'var(--text-primary)' }}>
+                📑 Bagi Jam per OTB (Serat Optik 6 mnt/core) & Multi-Row (PDSE 420 mnt)
+              </span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: '0.4rem' }}>
+                — Membagi slot waktu mandiri untuk setiap OTB (0%, 50%, 100%) berdasarkan jumlah core, bukan 1 jam flat per PDF.
+              </span>
+            </div>
+          </label>
+        </div>
+      </div>
+
       {/* ── FEEDBACK ALERT ── */}
       {feedback && (
         <div
@@ -396,18 +679,23 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
         </div>
       )}
 
-      {/* ── FILTER TOOLBAR ── */}
+      {/* ── FILTER TOOLBAR (STICKY PADA SAAT SCROLLING) ── */}
       <div
         style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 30,
           background: 'var(--bg-card)',
           border: '1px solid var(--border-color)',
           borderRadius: '10px',
-          padding: '0.75rem 1rem',
+          padding: '0.65rem 0.95rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '0.75rem'
+          gap: '0.75rem',
+          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+          backdropFilter: 'blur(8px)'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -509,20 +797,19 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
       {/* ── TABEL SCHEDULE SPREADSHEET ── */}
       <div
         style={{
-          flex: 1,
           background: 'var(--bg-card)',
           border: '1px solid var(--border-color)',
           borderRadius: '10px',
-          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          minHeight: 0
+          width: '100%',
+          minHeight: '400px',
+          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.08)'
         }}
       >
         {filteredRows.length === 0 ? (
           <div
             style={{
-              flex: 1,
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'center',
@@ -574,16 +861,18 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder 
             )}
           </div>
         ) : (
-          <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div style={{ overflowX: 'auto', width: '100%' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.785rem' }}>
               <thead
                 style={{
                   position: 'sticky',
-                  top: 0,
+                  top: '52px',
+                  zIndex: 20,
                   background: 'var(--bg-secondary)',
-                  borderBottom: '1px solid var(--border-color)',
+                  borderBottom: '2px solid var(--border-color)',
                   color: 'var(--text-secondary)',
-                  fontSize: '0.735rem'
+                  fontSize: '0.735rem',
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)'
                 }}
               >
                 <tr>
