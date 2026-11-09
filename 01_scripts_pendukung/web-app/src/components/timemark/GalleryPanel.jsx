@@ -7,7 +7,13 @@ import { MASTER_CATEGORIES, CATEGORY_LABEL_MAP, normalizeCategory } from '../../
 function helperCalculateDate(baseDate, photoStem) {
   let cleanDate = (baseDate || '').trim();
   const m = cleanDate.match(/^(.*?\d{4})\s+(\d{2}):(\d{2})$/);
-  if (!m) return cleanDate;
+  if (!m) {
+    if (cleanDate) {
+      const defaultTime = photoStem === '50' ? '08:22' : (photoStem === '100' ? '08:45' : '08:00');
+      return `${cleanDate} ${defaultTime}`;
+    }
+    return cleanDate;
+  }
 
   const [_, datePart, hh, mm] = m;
   let totalMin = parseInt(hh, 10) * 60 + parseInt(mm, 10);
@@ -253,18 +259,22 @@ function TimemarkEditorModal({
   if (!isOpen || !asset || !photo) return null;
 
   const isSecondOrThird = photo.name === '50.jpg' || photo.name === '100.jpg';
-  const calculatedDefaultDate = photo.meta?.dateText || (
+  let calculatedDefaultDate = photo.meta?.dateText || (
     photo.name === '50.jpg' ? helperCalculateDate(asset.dateText, '50') :
     photo.name === '100.jpg' ? helperCalculateDate(asset.dateText, '100') :
     asset.dateText
   ) || '';
+  if (calculatedDefaultDate && !/:\d{2}$/.test(calculatedDefaultDate.trim())) {
+    const defaultTime = photo.name === '50.jpg' ? '08:22' : (photo.name === '100.jpg' ? '08:45' : '08:00');
+    calculatedDefaultDate = `${calculatedDefaultDate.trim()} ${defaultTime}`;
+  }
 
   const rawRelPath = `${asset.relDir}/${photo.name}`;
   const [detector, setDetector] = useState(photo.meta?.detector || defaultDetector || 'google_vision');
   const [yPos, setYPos] = useState(photo.meta?.yPos ?? lastTimemarkPos?.y ?? 220);
   const [xPos, setXPos] = useState(photo.meta?.xPos ?? lastTimemarkPos?.x ?? 14);
   const [dateText, setDateText] = useState(calculatedDefaultDate);
-  const [previewUrl, setPreviewUrl] = useState(photo.editedUrl || null);
+  const [previewUrl, setPreviewUrl] = useState(photo.editedUrl || photo.outputUrl || null);
   const [applyToFolder, setApplyToFolder] = useState(false);
   const [saving, setSaving] = useState(false);
   const [processingAuto, setProcessingAuto] = useState(false);
@@ -370,15 +380,20 @@ function TimemarkEditorModal({
 
       // Perbarui preview URL dengan timestamp baru agar cache browser bypass
       const ts = Date.now();
-      setPreviewUrl(`${photo.rawUrl.split('?')[0]}?t=${ts}&mode=edited`);
+      if (data.outputUrl) {
+        setPreviewUrl(data.outputUrl);
+      } else {
+        const baseSrc = photo.editedUrl || photo.outputUrl || photo.rawUrl || '';
+        const cleanSrc = baseSrc.replace(/03_export_foto/i, '04_photos_edited').replace(/03_photos_export/i, '04_photos_edited');
+        const cleanNoT = cleanSrc.replace(/&t=\d+/i, '').replace(/\?t=\d+&?/i, '?');
+        const sep = cleanNoT.includes('?') ? (cleanNoT.endsWith('?') ? '' : '&') : '?';
+        setPreviewUrl(`${cleanNoT}${sep}t=${ts}`);
+      }
       setMsg({
         type: 'success',
         text: `✓ Foto berhasil diproses menggunakan ${detector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa (HSV)'}!`
       });
-      if (onPosChange) {
-        onPosChange({ x: Number(xPos), y: Number(yPos) });
-      }
-      if (onSaved) onSaved({ targetKey: rawRelPath, xPos: Number(xPos), yPos: Number(yPos), dateText: dateText.trim(), applyToFolder });
+      if (onSaved) onSaved({ targetKey: rawRelPath, xPos: Number(updatedX), yPos: Number(updatedY), dateText: dateText.trim(), applyToFolder, outputUrl: data.outputUrl });
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
     } finally {
@@ -414,7 +429,15 @@ function TimemarkEditorModal({
       }
 
       const ts = Date.now();
-      setPreviewUrl(`${photo.rawUrl.split('?')[0]}?t=${ts}&mode=manual`);
+      if (data.outputUrl) {
+        setPreviewUrl(data.outputUrl);
+      } else {
+        const baseSrc = photo.editedUrl || photo.outputUrl || photo.rawUrl || '';
+        const cleanSrc = baseSrc.replace(/03_export_foto/i, '04_photos_edited').replace(/03_photos_export/i, '04_photos_edited');
+        const cleanNoT = cleanSrc.replace(/&t=\d+/i, '').replace(/\?t=\d+&?/i, '?');
+        const sep = cleanNoT.includes('?') ? (cleanNoT.endsWith('?') ? '' : '&') : '?';
+        setPreviewUrl(`${cleanNoT}${sep}t=${ts}`);
+      }
 
       if (andRemerge) {
         setRemerging(true);
@@ -442,7 +465,7 @@ function TimemarkEditorModal({
         });
       }
 
-      if (onSaved) onSaved({ targetKey: rawRelPath, xPos: Number(xPos), yPos: Number(yPos), dateText: dateText.trim(), applyToFolder });
+      if (onSaved) onSaved({ targetKey: rawRelPath, xPos: Number(xPos), yPos: Number(yPos), dateText: dateText.trim(), applyToFolder, outputUrl: data.outputUrl });
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
     } finally {
@@ -559,6 +582,12 @@ function TimemarkEditorModal({
                       src={previewUrl || photo.rawUrl}
                       alt="Foto Preview Timemark"
                       draggable={false}
+                      onError={() => {
+                        // Jika URL hasil edit gagal me-load, fallback agar tidak muncul broken image icon
+                        if (previewUrl && previewUrl !== photo.rawUrl) {
+                          setPreviewUrl(null);
+                        }
+                      }}
                       style={{ maxWidth: '100%', maxHeight: '300px', width: 'auto', height: 'auto', objectFit: 'contain', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
                     />
 
@@ -1006,7 +1035,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
         const normAssetRel = (a.relDir || a.relPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
         if (normAssetRel !== relDir) return a;
         const nextPhotos = (a.photos || []).map(p => {
-          if (p.name !== pName) return p;
+          if (p.name !== pName && !newMeta?.applyToFolder) return p;
           const mergedMeta = {
             ...(p.meta || {}),
             ...(newMeta || {}),
@@ -1015,9 +1044,17 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
             manualEdit: true,
             updatedAt: new Date().toISOString()
           };
+          const resolvedEditedUrl = (p.name === pName && newMeta?.outputUrl) ? newMeta.outputUrl : (
+            p.editedUrl || p.outputUrl || (
+              p.rawUrl ? p.rawUrl.replace(/03_export_foto/i, '04_photos_edited').replace(/03_photos_export/i, '04_photos_edited') : null
+            )
+          );
           return {
             ...p,
             hasEdited: true,
+            editedUrl: resolvedEditedUrl,
+            outputUrl: resolvedEditedUrl,
+            url: resolvedEditedUrl || p.url,
             meta: mergedMeta
           };
         });

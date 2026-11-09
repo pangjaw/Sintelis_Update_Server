@@ -1772,7 +1772,8 @@ def main():
             if args.single_out:
                 # Fallback for single-out with manual date or custom path
                 btp = "BTP BD" if "BTP BD" in str(src_resolved).upper() else "BTP JAK"
-                category = "ASET"
+                cand_cat = src_resolved.parent.parent.name if len(src_resolved.parts) >= 3 else "ASET"
+                category = cand_cat if cand_cat.lower() not in ("03_export_foto", "04_photos_edited", "03_photos_cropped_temp", "tim_1", "tim_2", "tim_3", "tim_4") else "ASET"
                 identifier = src_resolved.parent.name
                 photo_name = src_resolved.name
                 asset_key = (btp, category, identifier, photo_name)

@@ -3085,7 +3085,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             export_root, photos_export, photos_edited = _resolve_photo_directories(base_dir)
             os.makedirs(photos_edited, exist_ok=True)
 
-            schedule_file = os.path.join(export_root, "schedule.json")
+            custom_sched = data.get("schedulePath") or data.get("schedule") or ""
+            schedule_file = custom_sched if (custom_sched and os.path.isfile(custom_sched)) else os.path.join(export_root, "schedule.json")
             if not os.path.isfile(schedule_file):
                 cand_sched = os.path.join(os.path.dirname(export_root), "schedule.json")
                 if os.path.isfile(cand_sched):
@@ -3094,18 +3095,28 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             # Cari tanggal dari date.txt jika custom_date tidak diberikan
             date_to_use = custom_date
             if not date_to_use:
-                df = os.path.join(photos_export, asset_rel, "date.txt")
-                if os.path.isfile(df):
-                    try:
-                        with open(df, "r", encoding="utf-8", errors="ignore") as f:
-                            date_to_use = f.read().strip()
-                    except Exception:
-                        pass
+                for cdf in [
+                    os.path.join(photos_export, asset_rel, "date.txt"),
+                    os.path.join(photos_edited, asset_rel, "date.txt"),
+                    os.path.join(photos_edited, tim_group, asset_rel, "date.txt"),
+                    os.path.join(export_root, "03_photos_cropped_temp", asset_rel, "date.txt")
+                ]:
+                    if os.path.isfile(cdf):
+                        try:
+                            with open(cdf, "r", encoding="utf-8", errors="ignore") as f:
+                                date_to_use = f.read().strip()
+                            if date_to_use:
+                                break
+                        except Exception:
+                            pass
 
             def calc_photo_date(base_dt, stem):
                 clean_dt = str(base_dt or "").strip()
                 m = re.search(r"^(.*?\d{4})\s+(\d{2}):(\d{2})$", clean_dt)
                 if not m:
+                    if clean_dt:
+                        default_time = "08:00" if stem == "0" else ("08:22" if stem == "50" else "08:45")
+                        return f"{clean_dt} {default_time}"
                     return clean_dt
                 d_part, hh, mm = m.group(1), int(m.group(2)), int(m.group(3))
                 tot = hh * 60 + mm
@@ -3150,17 +3161,26 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 )
 
                 if os.path.isfile(out_target):
+                    flat_target = os.path.join(photos_edited, asset_rel, fname)
+                    if os.path.abspath(flat_target) != os.path.abspath(out_target):
+                        try:
+                            os.makedirs(os.path.dirname(flat_target), exist_ok=True)
+                            shutil.copy2(out_target, flat_target)
+                        except Exception:
+                            pass
                     for alt_t in ["", "Tim_1", "Tim_2", "Tim_3", "Tim_4"]:
                         ao = os.path.join(photos_edited, alt_t, asset_rel, fname) if alt_t else os.path.join(photos_edited, asset_rel, fname)
-                        if os.path.abspath(ao) != os.path.abspath(out_target) and os.path.isfile(ao):
+                        if os.path.abspath(ao) != os.path.abspath(out_target):
                             try:
+                                os.makedirs(os.path.dirname(ao), exist_ok=True)
                                 shutil.copy2(out_target, ao)
                             except Exception:
                                 pass
                     return fname, True, {
                         "dateText": p_date,
                         "detector": detector,
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
+                        "out_target": out_target
                     }
                 return fname, False, None
 
@@ -3221,11 +3241,29 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             if processed > 0:
                 _invalidate_timemark_photos_cache()
                 detector_title = "Google AI Vision" if detector == "google_vision" else "Metode Biasa (HSV)"
+                
+                # Cari preview file dari out_target yang berhasil dibuat
+                preview_file = None
+                for fname, success, minfo in results:
+                    if success and minfo and minfo.get("out_target") and os.path.isfile(minfo["out_target"]):
+                        preview_file = minfo["out_target"]
+                        break
+                if not preview_file and len(target_fnames) > 0:
+                    cand_p = os.path.join(photos_edited, tim_group, asset_rel, target_fnames[0])
+                    if os.path.isfile(cand_p):
+                        preview_file = cand_p
+                    else:
+                        cand_p2 = os.path.join(photos_edited, asset_rel, target_fnames[0])
+                        if os.path.isfile(cand_p2):
+                            preview_file = cand_p2
+
+                out_url = f"/api/timemark/photo-file?path={urllib.parse.quote(preview_file)}&t={int(time.time())}" if preview_file else None
                 self._json({
                     "ok": True,
                     "success": True,
                     "processed": processed,
                     "detector": detector,
+                    "outputUrl": out_url,
                     "meta": final_returned_meta,
                     "message": f"Berhasil memproses timemark untuk {processed} foto menggunakan {detector_title}!"
                 })
@@ -3415,6 +3453,9 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 clean_dt = str(base_dt or "").strip()
                 m = re.search(r"^(.*?\d{4})\s+(\d{2}):(\d{2})$", clean_dt)
                 if not m:
+                    if clean_dt:
+                        default_time = "08:00" if stem == "0" else ("08:22" if stem == "50" else "08:45")
+                        return f"{clean_dt} {default_time}"
                     return clean_dt
                 d_part, hh, mm = m.group(1), int(m.group(2)), int(m.group(3))
                 tot = hh * 60 + mm
@@ -3436,6 +3477,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env["PYTHONIOENCODING"] = "utf-8"
 
             meta_saved = {}
+            last_out_target = None
             for fname in target_fnames:
                 stem = os.path.splitext(fname)[0]
                 if not apply_to_folder:
@@ -3494,10 +3536,18 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 if x_pos is not None and str(x_pos) != "":
                     cmd.extend(["--x-override", str(x_pos)])
 
-                subprocess.run(
+                res_run = subprocess.run(
                     cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
                 )
+
+                if not os.path.isfile(out_target):
+                    err_msg = res_run.stderr.strip() or res_run.stdout.strip() or "Gagal membuat berkas timemark hasil edit."
+                    _log(f"Manual edit failed on {out_target}: {err_msg}")
+                    self._json({"ok": False, "error": err_msg}, 500)
+                    return
+
+                last_out_target = out_target
 
                 # Jika ada duplikasi di path tanpa Tim_1 atau dengan Tim_1, sinkronkan
                 alt_outs = [
@@ -3506,8 +3556,9 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     os.path.join(photos_edited, "Tim_2", asset_rel, fname)
                 ]
                 for ao in alt_outs:
-                    if ao != out_target and os.path.isfile(ao):
+                    if ao != out_target:
                         try:
+                            os.makedirs(os.path.dirname(ao), exist_ok=True)
                             shutil.copy2(out_target, ao)
                         except Exception:
                             pass
@@ -3554,7 +3605,14 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             pass
 
             _invalidate_timemark_photos_cache()
-            self._json({"ok": True, "success": True, "message": "Timemark berhasil diperbarui dan disimpan."})
+            preview_file = last_out_target if ('last_out_target' in locals() and last_out_target and os.path.isfile(last_out_target)) else None
+            out_url = f"/api/timemark/photo-file?path={urllib.parse.quote(preview_file)}&t={int(time.time())}" if preview_file else None
+            self._json({
+                "ok": True,
+                "success": True,
+                "message": "Timemark berhasil diperbarui dan disimpan.",
+                "outputUrl": out_url
+            })
         except Exception as e:
             _log(f"Manual edit error: {e}")
             self._json({"ok": False, "error": str(e)}, 500)
