@@ -434,7 +434,7 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
                 src_path = Path(source_dir)
                 all_pdfs = [
                     p for p in src_path.rglob("*.pdf")
-                    if "backups" not in p.parts and "_temp_merged" not in p.parts
+                    if not any(part.lower() in ("backups", "backup", "_temp_merged") for part in p.relative_to(src_path).parts[:-1])
                 ]
                 for p in all_pdfs:
                     try:

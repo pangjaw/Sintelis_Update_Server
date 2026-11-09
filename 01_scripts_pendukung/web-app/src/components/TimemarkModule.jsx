@@ -944,12 +944,17 @@ export default function TimemarkModule() {
 
       </div>
 
-      {/* SUB-TAB: SCHEDULE SHEET & DAFTAR JADWAL (Dapat di-scroll vertikal untuk tampilan luas) */}
-      <div style={{ display: activeSubTab === 'schedule' ? 'flex' : 'none', flexDirection: 'column', flex: 1, width: '100%', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+      {/* SUB-TAB: SCHEDULE SHEET & DAFTAR JADWAL */}
+      <div style={{ display: activeSubTab === 'schedule' ? 'flex' : 'none', flexDirection: 'column', flex: 1, width: '100%', height: '100%', minHeight: 0, overflow: 'hidden' }}>
         <ScheduleSheetPanel
           targetDir={currentActiveTarget}
           exportDir={currentActiveExport}
           schedulePath={customSchedulePath}
+          onScheduleChange={handleCustomScheduleChange}
+          onTargetDirChange={(newTarget) => {
+            if (folderMode === 'single') setSingleDir(newTarget);
+            else setTargetDir(newTarget);
+          }}
           onPickFolder={() => handlePickFolder(folderMode === 'single' ? setSingleDir : setTargetDir, folderMode === 'single' ? 'single' : 'target')}
         />
       </div>

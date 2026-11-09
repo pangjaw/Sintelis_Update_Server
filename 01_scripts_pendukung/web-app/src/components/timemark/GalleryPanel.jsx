@@ -1106,14 +1106,15 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
   };
 
   // Fetch photos and metadata from backend
-  const fetchPhotos = async () => {
+  const fetchPhotos = async (isManualRefresh = false) => {
     if (!exportDir) return;
     setLoading(true);
     setFeedback(null);
     try {
       const curSched = (activeSchedulePath || schedulePath || '').trim();
       const schedQuery = curSched ? `&schedule=${encodeURIComponent(curSched)}` : '';
-      const res = await fetch(`/api/timemark/photos?folder=${encodeURIComponent(exportDir)}${schedQuery}`);
+      const refreshQuery = isManualRefresh ? '&refresh=1' : '';
+      const res = await fetch(`/api/timemark/photos?folder=${encodeURIComponent(exportDir)}${schedQuery}${refreshQuery}`);
       if (res.ok) {
         const data = await res.json();
         const loadedAssets = data.assets || [];
@@ -1122,6 +1123,11 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
         setSourceFiles(data.sourceFiles || []);
         if (data.loadedSchedule) {
           setLoadedScheduleInfo(data.loadedSchedule);
+          if (!activeSchedulePath) {
+            setActiveSchedulePath(data.loadedSchedule);
+          }
+        } else {
+          setLoadedScheduleInfo('');
         }
       } else {
         setFeedback({ type: 'error', text: 'Gagal memuat galeri foto dari folder ekspor.' });
@@ -1439,12 +1445,24 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
         })
       });
       const data = await res.json();
-      if (res.ok && data.ok) {
+      if (res.ok && (data.ok || data.success)) {
         setFeedback({
           type: 'success',
           text: `✓ ${data.message}`
         });
-        await fetchPhotos();
+        const metaObj = data.meta || {};
+        if (photoName) {
+          const pMeta = metaObj[photoName] || { detector: activeDetector };
+          refreshSinglePhotoCard(`${asset.relDir}/${photoName}`, pMeta);
+        } else {
+          const fnames = (asset.photos && asset.photos.length > 0)
+            ? asset.photos.map(p => p.name)
+            : ['0.jpg', '50.jpg', '100.jpg'];
+          fnames.forEach(pName => {
+            const pMeta = metaObj[pName] || { detector: activeDetector };
+            refreshSinglePhotoCard(`${asset.relDir}/${pName}`, pMeta);
+          });
+        }
       } else {
         alert('Gagal memproses timemark: ' + (data.error || 'Terjadi kesalahan'));
       }

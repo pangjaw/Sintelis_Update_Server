@@ -400,6 +400,8 @@ def generate_tablo_workbook(schedule_data: dict, year: int = None, month: int = 
     for search_dir in search_dirs:
         if search_dir.exists():
             for pdf_file in search_dir.rglob("*.pdf"):
+                if any(part.lower() in ("backups", "backup", "_temp_merged") for part in pdf_file.relative_to(search_dir).parts[:-1]):
+                    continue
                 m = re.search(r'(\d{2})-(\d{2})-(\d{4})', pdf_file.name)
                 if m:
                     d_str = m.group(0)

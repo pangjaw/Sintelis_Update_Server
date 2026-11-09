@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 
-export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder, schedulePath = '' }) {
+export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder, schedulePath = '', onScheduleChange, onTargetDirChange }) {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -44,6 +44,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
       if (data && data.path) {
         setActiveTargetDir(data.path);
         setIsCustomMode(true);
+        if (onTargetDirChange) onTargetDirChange(data.path);
         setFeedback({ type: 'info', text: `📁 Folder target PDF diatur ke: ${data.path}` });
       }
     } catch (err) {
@@ -60,6 +61,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
         const filePath = data.path.trim();
         setActiveScheduleFile(filePath);
         setIsCustomMode(true);
+        if (onScheduleChange) onScheduleChange(filePath);
         
         // Jika folder target masih kosong, otomatis isi dengan direktori induk file schedule
         let targetCandidate = activeTargetDir;
@@ -86,6 +88,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
     setActiveExportDir(exportDir || '');
     setActiveScheduleFile(schedulePath || '');
     setIsCustomMode(false);
+    if (onScheduleChange) onScheduleChange(schedulePath || '');
     setFeedback({ type: 'info', text: '🔄 Lokasi dikembalikan ke pengaturan default Pipeline Runner.' });
     fetchScheduleList(targetDir || '', exportDir || '', schedulePath || '');
   };
@@ -128,6 +131,10 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
     if (!activeTargetDir) {
       alert('Silakan pilih Folder PDF Target terlebih dahulu!');
       return;
+    }
+    if (rows.length > 0) {
+      const ok = window.confirm(`Jadwal saat ini sudah memuat ${rows.length} data aset.\nMenyusun ulang jadwal dari ratusan berkas PDF jaringan dapat memakan waktu 30-60 detik.\n\nApakah Anda yakin ingin menyusun ulang (re-generate) jadwal?`);
+      if (!ok) return;
     }
     setGenerating(true);
     setFeedback(null);
@@ -339,7 +346,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%', minHeight: '100%', paddingBottom: '3.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, width: '100%', height: '100%', minHeight: 0, gap: '0.65rem', overflow: 'hidden' }}>
       
       {/* ── HEADER BANNER ── */}
       <div
@@ -679,12 +686,9 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
         </div>
       )}
 
-      {/* ── FILTER TOOLBAR (STICKY PADA SAAT SCROLLING) ── */}
+      {/* ── FILTER TOOLBAR ── */}
       <div
         style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 30,
           background: 'var(--bg-card)',
           border: '1px solid var(--border-color)',
           borderRadius: '10px',
@@ -694,8 +698,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '0.75rem',
-          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
-          backdropFilter: 'blur(8px)'
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -861,29 +864,35 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
             )}
           </div>
         ) : (
-          <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.785rem' }}>
+          <div style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'auto',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            background: 'var(--bg-card)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+          }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, textAlign: 'left', fontSize: '0.785rem' }}>
               <thead
                 style={{
                   position: 'sticky',
-                  top: '52px',
-                  zIndex: 20,
+                  top: 0,
+                  zIndex: 25,
                   background: 'var(--bg-secondary)',
-                  borderBottom: '2px solid var(--border-color)',
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.735rem',
-                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)'
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.2)'
                 }}
               >
                 <tr>
-                  <th style={{ padding: '0.55rem 0.65rem', width: '45px', textAlign: 'center' }}>No</th>
-                  <th style={{ padding: '0.55rem 0.75rem', width: '130px' }}>Tanggal</th>
-                  <th style={{ padding: '0.55rem 0.65rem', width: '65px', textAlign: 'center' }}>Tim</th>
-                  <th style={{ padding: '0.55rem 0.65rem', width: '130px', textAlign: 'center' }}>Jam (0% - 50% - 100%)</th>
-                  <th style={{ padding: '0.55rem 0.75rem', width: '90px' }}>Wilayah</th>
-                  <th style={{ padding: '0.55rem 0.75rem', width: '110px' }}>Kategori</th>
-                  <th style={{ padding: '0.55rem 0.75rem' }}>Detail Aset / Identifier</th>
-                  <th style={{ padding: '0.55rem 0.75rem' }}>Berkas PDF</th>
+                  <th style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 26, padding: '0.55rem 0.65rem', width: '45px', textAlign: 'center', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.735rem' }}>No</th>
+                  <th style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 26, padding: '0.55rem 0.75rem', width: '130px', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.735rem' }}>Tanggal</th>
+                  <th style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 26, padding: '0.55rem 0.65rem', width: '65px', textAlign: 'center', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.735rem' }}>Tim</th>
+                  <th style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 26, padding: '0.55rem 0.65rem', width: '130px', textAlign: 'center', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.735rem' }}>Jam (0% - 50% - 100%)</th>
+                  <th style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 26, padding: '0.55rem 0.75rem', width: '90px', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.735rem' }}>Wilayah</th>
+                  <th style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 26, padding: '0.55rem 0.75rem', width: '110px', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.735rem' }}>Kategori</th>
+                  <th style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 26, padding: '0.55rem 0.75rem', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.735rem' }}>Detail Aset / Identifier</th>
+                  <th style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 26, padding: '0.55rem 0.75rem', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.735rem' }}>Berkas PDF</th>
                 </tr>
               </thead>
               <tbody>

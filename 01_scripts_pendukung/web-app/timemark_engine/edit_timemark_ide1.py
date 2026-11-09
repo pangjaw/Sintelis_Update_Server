@@ -214,7 +214,8 @@ def find_red_guide(arr: np.ndarray, y_start: int | None = None):
     hue = (g - b) / safe_delta * 60
     hue = np.where(hue < 0, hue + 360, hue)
     max_c = np.maximum(np.maximum(r, g), b)
-    sat = np.where(max_c > 0, delta / max_c * 100, 0.0)
+    safe_max_c = np.where(max_c > 0, max_c, 1.0)
+    sat = np.where(max_c > 0, delta / safe_max_c * 100.0, 0.0)
 
     ry_mask = red_yellow & ((hue <= 52.0) | (hue >= 330.0)) & (sat >= 63.0)
 
@@ -557,6 +558,7 @@ def find_collage_custom_guide(arr: np.ndarray, y_start: int | None = None):
     delta = r - np.minimum(g, b)
     safe_delta = np.where(delta > 0, delta, 1.0)
     max_c = np.maximum(np.maximum(r, g), b)
+    safe_max_c = np.where(max_c > 0, max_c, 1.0)
     
     # Calculate Hue
     hue = np.zeros_like(r)
@@ -570,7 +572,7 @@ def find_collage_custom_guide(arr: np.ndarray, y_start: int | None = None):
     hue = hue * 60.0
     hue = np.where(hue < 0, hue + 360.0, hue)
     
-    sat = np.where(max_c > 0, (delta / max_c) * 100.0, 0.0)
+    sat = np.where(max_c > 0, (delta / safe_max_c) * 100.0, 0.0)
     val = (max_c / 255.0) * 100.0
     
     hue_diff = np.abs(hue - 32.0)
@@ -653,9 +655,12 @@ def find_old_date_by_ocr(arr: np.ndarray, w: int, h: int) -> tuple[int, int, int
     
     Format: 'Senin, Mei 25,2026:' atau 'Rabu, Nov 05 2025 07:00'
     Scan area: y > 35%, x < 70% gambar (area watermark di kiri-bawah).
-    Mencoba 3 threshold (180/200/220) untuk menangani variasi kecerahan teks.
+    Mencoba threshold (200/180/220) untuk menangani variasi kecerahan teks.
     Returns: (x1, y1, x2, y2) atau None jika tidak ditemukan.
     """
+    if os.environ.get("ENABLE_OCR_FALLBACK") == "0" or not os.path.exists(TESSERACT_PATH):
+        return None
+
     from PIL import Image
     
     cy1 = int(h * 0.35)
@@ -673,12 +678,21 @@ def find_old_date_by_ocr(arr: np.ndarray, w: int, h: int) -> tuple[int, int, int
     
     cfg = "--psm 6 -l eng"
     all_candidates = []
+
+    # Downscale crop jika terlalu besar (>700px) agar Tesseract 3x lebih cepat
+    if crop_img.width > 700:
+        factor = 700.0 / crop_img.width
+        crop_img_scaled = crop_img.resize((700, int(crop_img.height * factor)), Image.Resampling.BILINEAR)
+        scale_ocr = 1.0 / factor
+    else:
+        crop_img_scaled = crop_img
+        scale_ocr = 1.0
     
-    for threshold in [180, 200, 220]:
-        th = crop_img.point(lambda p, t=threshold: 255 if p > t else 0)
+    for threshold in [200, 180, 220]:
+        th = crop_img_scaled.point(lambda p, t=threshold: 255 if p > t else 0)
         # Skip if almost no white pixels
         white_px = np.array(th).sum() // 255
-        if white_px < 200:
+        if white_px < 150:
             continue
         th_inv = th.point(lambda p: 255 - p)
         
@@ -698,6 +712,7 @@ def find_old_date_by_ocr(arr: np.ndarray, w: int, h: int) -> tuple[int, int, int
                 lines[line_key] = []
             lines[line_key].append(i)
         
+        threshold_found = False
         for line_key, indices in lines.items():
             line_text = " ".join(str(data["text"][i]) for i in indices if str(data["text"][i]).strip())
             m = DATE_RE.search(line_text)
@@ -707,10 +722,10 @@ def find_old_date_by_ocr(arr: np.ndarray, w: int, h: int) -> tuple[int, int, int
             valid = [i for i in indices if str(data["text"][i]).strip()]
             if not valid:
                 continue
-            xs = [data["left"][i] for i in valid]
-            ys = [data["top"][i] for i in valid]
-            ws = [data["width"][i] for i in valid]
-            hs = [data["height"][i] for i in valid]
+            xs = [int(data["left"][i] * scale_ocr) for i in valid]
+            ys = [int(data["top"][i] * scale_ocr) for i in valid]
+            ws = [int(data["width"][i] * scale_ocr) for i in valid]
+            hs = [int(data["height"][i] * scale_ocr) for i in valid]
             confs = [int(data["conf"][i]) for i in valid]
             avg_conf = sum(confs) / len(confs)
             
@@ -720,6 +735,11 @@ def find_old_date_by_ocr(arr: np.ndarray, w: int, h: int) -> tuple[int, int, int
             y2 = max(y + hi for y, hi in zip(ys, hs)) + cy1
             
             all_candidates.append((avg_conf, x1, y1, x2, y2))
+            if avg_conf >= 55:
+                threshold_found = True
+        
+        if threshold_found:
+            break
     
     if not all_candidates:
         return None
@@ -919,7 +939,8 @@ def locate_date_box(arr_orig: np.ndarray, w: int, h: int,
 
     # Stage 4: Folder consensus
     if consensus_gy1 is not None:
-        synthetic = (8, y_bot + consensus_gy1, 9, y_bot + consensus_gy1 + 84)
+        actual_gy = consensus_gy1 if consensus_gy1 >= y_bot else (y_bot + consensus_gy1)
+        synthetic = (8, actual_gy, 9, actual_gy + 84)
         box = place_textbox_fixed_offset(synthetic, w, h)
         return box, "stage_1c_guide_consensus"
 
@@ -1103,28 +1124,49 @@ def _read_yolo_label(image_path: Path, w: int, h: int) -> tuple[int, int, int, i
 
 
 # ─── Google Cloud Vision Integration ───
-GOOGLE_VISION_CACHE_FILE = Path("logs/google_vision_cache.json")
+def _get_gv_cache_file() -> Path:
+    candidates = [
+        Path("logs/google_vision_cache.json"),
+        Path(__file__).resolve().parent.parent / "logs" / "google_vision_cache.json",
+        Path(__file__).resolve().parents[2] / "logs" / "google_vision_cache.json",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    d = Path(__file__).resolve().parent.parent / "logs"
+    if d.exists() or Path(__file__).resolve().parent.parent.exists():
+        return d / "google_vision_cache.json"
+    return Path("logs/google_vision_cache.json")
+
 _GV_CACHE = {}
 
 def load_google_vision_cache():
     global _GV_CACHE
-    if GOOGLE_VISION_CACHE_FILE.exists():
+    c_file = _get_gv_cache_file()
+    if c_file.exists():
         try:
-            with open(GOOGLE_VISION_CACHE_FILE, "r", encoding="utf-8") as f:
+            with open(c_file, "r", encoding="utf-8") as f:
                 _GV_CACHE = json.load(f)
         except Exception:
             _GV_CACHE = {}
 
 def save_google_vision_cache():
-    GOOGLE_VISION_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    c_file = _get_gv_cache_file()
+    c_file.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with open(GOOGLE_VISION_CACHE_FILE, "w", encoding="utf-8") as f:
+        with open(c_file, "w", encoding="utf-8") as f:
             json.dump(_GV_CACHE, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
 
 def get_google_vision_api_key():
-    for p in [Path("config/google_vision_api_key.txt"), Path("experiments_google_vision/api_key.txt")]:
+    candidates = [
+        Path("config/google_vision_api_key.txt"),
+        Path(__file__).resolve().parent.parent / "config" / "google_vision_api_key.txt",
+        Path(__file__).resolve().parents[2] / "config" / "google_vision_api_key.txt",
+        Path("experiments_google_vision/api_key.txt"),
+    ]
+    for p in candidates:
         if p.exists():
             k = p.read_text(encoding="utf-8").strip()
             if k:
@@ -1142,20 +1184,52 @@ def detect_timemark_via_google_vision(image_path: Path, w: int, h: int, arr_orig
     rel_key = str(image_path).replace("\\", "/")
     if "03_photos_cropped_temp" in rel_key and Path(image_path).is_file():
         rel_key = f"{rel_key}@{int(Path(image_path).stat().st_mtime)}"
-    if rel_key in _GV_CACHE:
-        cached_box = _GV_CACHE[rel_key]
-        # Only use cache if it was not an anomalous narrow/offset box
-        if cached_box and len(cached_box) == 4 and cached_box[0] <= 25 and (cached_box[2] - cached_box[0]) >= 50:
-            return tuple(cached_box), "stage_google_vision"
+
+    short_key = None
+    for kw in ["03_export_foto", "03_photos_export", "04_photos_edited", "04_edit_foto"]:
+        if kw in rel_key:
+            short_key = rel_key.split(kw)[-1].strip("/")
+            break
+
+    for k in [rel_key, short_key]:
+        if k and k in _GV_CACHE:
+            cached_box = _GV_CACHE[k]
+            # Only use cache if it was not an anomalous narrow/offset box
+            if cached_box and len(cached_box) == 4 and cached_box[0] <= 25 and (cached_box[2] - cached_box[0]) >= 50:
+                return tuple(cached_box), "stage_google_vision"
 
     api_key = get_google_vision_api_key()
     if not api_key:
         return None, "no_api_key"
 
     url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+    
+    # Downscale image to max 1280px to reduce payload by 98% (faster upload over SMB/internet)
+    scale_x = 1.0
+    scale_y = 1.0
     try:
-        with open(image_path, "rb") as f:
-            img_b64 = base64.b64encode(f.read()).decode("utf-8")
+        max_dim = 1280
+        if w > max_dim or h > max_dim:
+            if w >= h:
+                down_w = max_dim
+                down_h = max(1, int(round(h * (max_dim / float(w)))))
+            else:
+                down_h = max_dim
+                down_w = max(1, int(round(w * (max_dim / float(h)))))
+            scale_x = w / float(down_w)
+            scale_y = h / float(down_h)
+
+            if arr_orig is not None:
+                pil_to_send = Image.fromarray(arr_orig).resize((down_w, down_h), Image.Resampling.BILINEAR)
+            else:
+                pil_to_send = Image.open(image_path).convert("RGB").resize((down_w, down_h), Image.Resampling.BILINEAR)
+
+            buf = io.BytesIO()
+            pil_to_send.save(buf, format="JPEG", quality=82)
+            img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        else:
+            with open(image_path, "rb") as f:
+                img_b64 = base64.b64encode(f.read()).decode("utf-8")
     except Exception as e:
         return None, f"file_read_error_{e}"
 
@@ -1218,11 +1292,16 @@ def detect_timemark_via_google_vision(image_path: Path, w: int, h: int, arr_orig
         date_words = []
         for ann in word_annotations:
             txt = ann.get("description", "")
+            norm_verts = ann.get("boundingPoly", {}).get("normalizedVertices", [])
             verts = ann.get("boundingPoly", {}).get("vertices", [])
-            if not verts:
+            if norm_verts and any(v.get("x") is not None for v in norm_verts):
+                xs = [int(round(v.get("x", 0.0) * w)) for v in norm_verts]
+                ys = [int(round(v.get("y", 0.0) * h)) for v in norm_verts]
+            elif verts:
+                xs = [int(round(v.get("x", 0) * scale_x)) for v in verts]
+                ys = [int(round(v.get("y", 0) * scale_y)) for v in verts]
+            else:
                 continue
-            xs = [v.get("x", 0) for v in verts]
-            ys = [v.get("y", 0) for v in verts]
             x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
             cy = (y1 + y2) // 2
             word_obj = {"text": txt, "bbox": [x1, y1, x2, y2], "cy": cy}
@@ -1305,6 +1384,8 @@ def detect_timemark_via_google_vision(image_path: Path, w: int, h: int, arr_orig
         box = (x1, y1, x2, y2)
 
         _GV_CACHE[rel_key] = list(box)
+        if short_key:
+            _GV_CACHE[short_key] = list(box)
         save_google_vision_cache()
         return box, "stage_google_vision"
 
@@ -1796,6 +1877,50 @@ def main():
 
         fkey = _folder_key_from_path(rel, input_dir)
         consensus_gy1 = folder_consensus.get(fkey) if fkey else None
+
+        # Smart sibling consensus: jika single-file run atau folder consensus tidak ada
+        if consensus_gy1 is None:
+            # 1. Cek meta.json di folder output atau folder sumber
+            for check_dir in [meta_lookup_dir, src.parent]:
+                m_file = check_dir / "meta.json"
+                if m_file.exists():
+                    try:
+                        with open(m_file, "r", encoding="utf-8") as mf:
+                            m_data = json.load(mf)
+                        for sib_name, sib_info in m_data.items():
+                            if sib_name != photo_name and isinstance(sib_info, dict) and "yPos" in sib_info:
+                                sib_y = sib_info["yPos"]
+                                try:
+                                    with Image.open(src) as _im_check:
+                                        _chk_h = _im_check.height
+                                except Exception:
+                                    _chk_h = 300
+                                consensus_gy1 = int((sib_y / 300.0) * _chk_h)
+                                break
+                    except Exception:
+                        pass
+                if consensus_gy1 is not None:
+                    break
+
+            # 2. Cek label YOLO .txt dari sibling di folder sumber (misal 0.txt / 50.txt)
+            if consensus_gy1 is None and src.parent.exists():
+                for sib_txt in ["0.txt", "50.txt", "100.txt"]:
+                    if sib_txt != f"{Path(photo_name).stem}.txt":
+                        st_p = src.parent / sib_txt
+                        if st_p.exists():
+                            try:
+                                parts = st_p.read_text(encoding="utf-8").strip().split()
+                                if len(parts) >= 5:
+                                    cy = float(parts[2])
+                                    try:
+                                        with Image.open(src) as _im_check:
+                                            _chk_h = _im_check.height
+                                    except Exception:
+                                        _chk_h = 300
+                                    consensus_gy1 = int(cy * _chk_h)
+                                    break
+                            except Exception:
+                                pass
 
         asset_folder_key = (btp, category, identifier, tim_n)
         if asset_folder_key != current_asset_folder:

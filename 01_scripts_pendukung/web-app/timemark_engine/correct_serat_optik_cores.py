@@ -461,6 +461,8 @@ def scan_folder(folder_path: Path) -> list[dict]:
 
     results = []
     for p in sorted(folder_path.rglob("*.pdf")):
+        if any(part.lower() in ("backups", "backup") for part in p.relative_to(folder_path).parts[:-1]):
+            continue
         if is_serat_optik_file(p):
             info = get_core_info(p)
             if info:

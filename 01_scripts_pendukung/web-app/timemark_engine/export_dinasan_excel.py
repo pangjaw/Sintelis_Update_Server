@@ -328,6 +328,8 @@ def build_dinasan_workbook(year: int, month: int, schedule_path: Path, config_pa
         src_dir = Path("01_pdf_source")
         if src_dir.exists():
             for pdf_file in src_dir.rglob("*.pdf"):
+                if any(part.lower() in ("backups", "backup", "_temp_merged") for part in pdf_file.relative_to(src_dir).parts[:-1]):
+                    continue
                 m = re.search(r'(\d{2})-(\d{2})-(\d{4})', pdf_file.name)
                 if m:
                     pdf_by_date.setdefault(m.group(0), []).append(pdf_file)

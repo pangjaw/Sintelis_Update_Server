@@ -449,8 +449,16 @@ def main() -> int:
         print(f"[ERROR] Folder PDF '{pdf_dir}' tidak ditemukan.")
         return 1
 
-    EXCLUDE_DIRS = {"backups", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
-    pdf_files = sorted([p for p in pdf_dir.rglob("*.pdf") if not any(x in p.parts for x in EXCLUDE_DIRS) and p.is_file()])
+    EXCLUDE_DIRS = {"backups", "backup", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
+    EXCLUDE_LOWER = {x.lower() for x in EXCLUDE_DIRS}
+    def _is_sub_excluded(p: Path, base: Path) -> bool:
+        try:
+            sub_parts = [x.lower() for x in p.relative_to(base).parts[:-1]]
+        except Exception:
+            sub_parts = [x.lower() for x in p.parts[:-1]]
+        return any(x in EXCLUDE_LOWER for x in sub_parts)
+
+    pdf_files = sorted([p for p in pdf_dir.rglob("*.pdf") if not _is_sub_excluded(p, pdf_dir) and p.is_file()])
     if not pdf_files:
         print(f"Tidak ada PDF di '{pdf_dir}'.")
         return 0

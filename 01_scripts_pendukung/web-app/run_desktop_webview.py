@@ -123,6 +123,16 @@ APP_DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~
 os.makedirs(APP_DATA_DIR, exist_ok=True)
 ACCOUNTS_FILE = os.path.join(APP_DATA_DIR, "p3ste_accounts.json")
 
+_TIMEMARK_PHOTOS_CACHE = {
+    "key": None,
+    "time": 0,
+    "data": None
+}
+
+def _invalidate_timemark_photos_cache():
+    global _TIMEMARK_PHOTOS_CACHE
+    _TIMEMARK_PHOTOS_CACHE = {"key": None, "time": 0, "data": None}
+
 
 def _init_persistent_storage():
     """
@@ -2329,6 +2339,15 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             qs = urllib.parse.parse_qs(parsed.query)
             folder = qs.get("folder", [""])[0]
             deep_mode = qs.get("deep", ["0"])[0] in ("1", "true")
+            force_refresh = qs.get("refresh", ["0"])[0] in ("1", "true")
+            schedule_param = qs.get("schedule", [""])[0].strip()
+
+            cache_key = f"{folder}::{deep_mode}::{schedule_param}"
+            if not force_refresh and _TIMEMARK_PHOTOS_CACHE.get("key") == cache_key:
+                if (time.time() - _TIMEMARK_PHOTOS_CACHE.get("time", 0)) < 120:
+                    self._json(_TIMEMARK_PHOTOS_CACHE["data"])
+                    return
+
             folder_res = resolve_fuzzy_path(folder)
             if not folder or not os.path.isdir(folder_res):
                 self._json({
@@ -2342,7 +2361,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             if deep_mode:
                 target_folder = qs.get("targetFolder", [""])[0]
                 deep_assets, resolved_path = scan_deep_photo_subfolders(folder, target_dir=target_folder)
-                self._json({
+                resp_data = {
                     "ok": True,
                     "assets": deep_assets,
                     "resolvedPath": resolved_path,
@@ -2352,17 +2371,15 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     "exportCount": sum(1 for a in deep_assets if not a.get("hasEdited")),
                     "total": len(deep_assets),
                     "message": f"Ditemukan {len(deep_assets)} folder aset foto." if deep_assets else f"Folder ditemukan tetapi tidak memuat foto (.jpg/.png): {resolved_path}"
-                })
-                return
-            if not folder or not os.path.isdir(folder):
-                self._json({"ok": True, "assets": []})
+                }
+                _TIMEMARK_PHOTOS_CACHE["key"] = cache_key
+                _TIMEMARK_PHOTOS_CACHE["time"] = time.time()
+                _TIMEMARK_PHOTOS_CACHE["data"] = resp_data
+                self._json(resp_data)
                 return
 
             # Resolusi terpusat folder 03 (foto mentah) dan 04 (foto editan)
             export_root, dir_raw, dir_edited = _resolve_photo_directories(folder)
-
-            dir_time = os.path.join(export_root, "04_Time")
-            dir_coord = os.path.join(export_root, "04_koordinat")
 
             # Indeks berkas target, tanggal, dan jam per foto dari schedule.json
             target_files_map = {}
@@ -2390,86 +2407,118 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     pass
                 return str(ts_str).strip()
 
-            schedule_param = qs.get("schedule", [""])[0].strip()
             sched_candidates = []
             if schedule_param and os.path.isfile(schedule_param):
-                sched_candidates.append(schedule_param)
+                sched_candidates.append(os.path.abspath(schedule_param))
+
+            # Auto-discovery cepat: hanya cek direktori saat ini dan 1 level subfolder
+            def _gather_sched_candidates(bases):
+                found = []
+                for b in bases:
+                    if not b or not os.path.isdir(b):
+                        continue
+                    b_abs = os.path.abspath(b)
+                    d_f = os.path.join(b_abs, "schedule.json")
+                    if os.path.isfile(d_f) and d_f not in found:
+                        found.append(d_f)
+                    try:
+                        for entry in os.scandir(b_abs):
+                            if entry.is_dir() and not entry.name.startswith((".", "$", "backups", "_temp")):
+                                sf = os.path.join(entry.path, "schedule.json")
+                                if os.path.isfile(sf) and sf not in found:
+                                    found.append(sf)
+                    except Exception:
+                        pass
+                return found
+
+            for cand_p in _gather_sched_candidates([folder, export_root, dir_raw, dir_edited]):
+                if cand_p not in sched_candidates:
+                    sched_candidates.append(cand_p)
+
             for cand in [
-                os.path.join(folder, "schedule.json"),
-                os.path.join(export_root, "schedule.json"),
-                os.path.join(os.path.dirname(export_root), "schedule.json"),
-                os.path.join(os.path.dirname(folder), "schedule.json"),
-                os.path.join(os.path.dirname(os.path.dirname(folder)), "schedule.json"),
                 os.path.join(BASE_DIR, "schedule.json"),
                 os.path.join(os.getcwd(), "schedule.json"),
             ]:
-                if cand and cand not in sched_candidates and os.path.isfile(cand):
-                    sched_candidates.append(cand)
+                if cand and os.path.isfile(cand):
+                    cand_abs = os.path.abspath(cand)
+                    if cand_abs not in sched_candidates:
+                        sched_candidates.append(cand_abs)
 
+            best_schedule_data = None
+            best_schedule_path = None
             for sc_path in sched_candidates:
                 if os.path.isfile(sc_path):
                     try:
                         with open(sc_path, "r", encoding="utf-8") as sf:
                             sdata = json.load(sf)
-                        loaded_schedule_path = sc_path
-                        for item in sdata.get("schedules", []):
-                            fn = item.get("file")
-                            item_photos = item.get("photos", {})
-                            item_photo_timemarks = {}
-                            if isinstance(item_photos, dict):
-                                for pk, pval in item_photos.items():
-                                    ft = _format_schedule_ts(pval)
-                                    if ft:
-                                        item_photo_timemarks[pk] = ft
-
-                            d_text = (
-                                item_photo_timemarks.get("0.jpg")
-                                or item.get("dateText")
-                                or item.get("date")
-                                or _format_schedule_ts(item.get("iso_date", ""))
-                            )
-                            if not fn and not d_text and not item_photo_timemarks:
-                                continue
-
-                            if fn and fn not in seen_target_files:
-                                seen_target_files.add(fn)
-                                target_files_list.append({
-                                    "file": fn,
-                                    "category": item.get("category", ""),
-                                    "btp": item.get("btp", ""),
-                                    "date": item.get("iso_date", "")
-                                })
-
-                            keys_to_index = []
-                            for k in ["identifier", "base_identifier", "folder", "location_identifier"]:
-                                ident = item.get(k)
-                                if ident:
-                                    keys_to_index.append(ident)
-                                    stripped = re.sub(r'_\d{2}-\d{2}$', '', ident.strip())
-                                    if stripped != ident:
-                                        keys_to_index.append(stripped)
-                                    m_otb = re.match(r'^(OTB\s+\d+)', ident.strip(), re.IGNORECASE)
-                                    if m_otb and m_otb.group(1) not in keys_to_index:
-                                        keys_to_index.append(m_otb.group(1))
-
-                            for ident_raw in keys_to_index:
-                                norm_id = " ".join(re.sub(r'_\d{2}-\d{2}$', '', ident_raw.strip().upper()).split())
-                                raw_id = ident_raw.strip().upper()
-                                for idx_k in set([norm_id, raw_id]):
-                                    if fn:
-                                        if idx_k not in target_files_map:
-                                            target_files_map[idx_k] = []
-                                        if fn not in target_files_map[idx_k]:
-                                            target_files_map[idx_k].append(fn)
-                                    if d_text:
-                                        if idx_k not in schedule_date_map or (":" not in schedule_date_map[idx_k] and ":" in d_text):
-                                            schedule_date_map[idx_k] = d_text
-                                    if item_photo_timemarks:
-                                        if idx_k not in schedule_photos_map:
-                                            schedule_photos_map[idx_k] = item_photo_timemarks
-                        break
+                        s_list = sdata.get("schedules", []) if isinstance(sdata, dict) else (sdata if isinstance(sdata, list) else [])
+                        if not isinstance(sdata, dict):
+                            sdata = {"schedules": s_list}
+                        if best_schedule_data is None or len(s_list) > len(best_schedule_data.get("schedules", [])):
+                            best_schedule_data = sdata
+                            best_schedule_path = sc_path
+                            if schedule_param and os.path.abspath(schedule_param) == sc_path and len(s_list) > 0:
+                                break
                     except Exception as e:
-                        _log(f"Error reading schedule candidate {sc_path}: {e}")
+                        _log(f"Error checking schedule candidate {sc_path}: {e}")
+
+            if best_schedule_data and best_schedule_path:
+                loaded_schedule_path = best_schedule_path
+                for item in best_schedule_data.get("schedules", []):
+                    fn = item.get("file")
+                    item_photos = item.get("photos", {})
+                    item_photo_timemarks = {}
+                    if isinstance(item_photos, dict):
+                        for pk, pval in item_photos.items():
+                            ft = _format_schedule_ts(pval)
+                            if ft:
+                                item_photo_timemarks[pk] = ft
+
+                    d_text = (
+                        item_photo_timemarks.get("0.jpg")
+                        or item.get("dateText")
+                        or item.get("date")
+                        or _format_schedule_ts(item.get("iso_date", ""))
+                    )
+                    if not fn and not d_text and not item_photo_timemarks:
+                        continue
+
+                    if fn and fn not in seen_target_files:
+                        seen_target_files.add(fn)
+                        target_files_list.append({
+                            "file": fn,
+                            "category": item.get("category", ""),
+                            "btp": item.get("btp", ""),
+                            "date": item.get("iso_date", "")
+                        })
+
+                    keys_to_index = []
+                    for k in ["identifier", "base_identifier", "folder", "location_identifier"]:
+                        ident = item.get(k)
+                        if ident:
+                            keys_to_index.append(ident)
+                            stripped = re.sub(r'_\d{2}-\d{2}$', '', ident.strip())
+                            if stripped != ident:
+                                keys_to_index.append(stripped)
+                            m_otb = re.match(r'^(OTB\s+\d+)', ident.strip(), re.IGNORECASE)
+                            if m_otb and m_otb.group(1) not in keys_to_index:
+                                keys_to_index.append(m_otb.group(1))
+
+                    for ident_raw in keys_to_index:
+                        norm_id = " ".join(re.sub(r'_\d{2}-\d{2}$', '', ident_raw.strip().upper()).split())
+                        raw_id = ident_raw.strip().upper()
+                        for idx_k in set([norm_id, raw_id]):
+                            if fn:
+                                if idx_k not in target_files_map:
+                                    target_files_map[idx_k] = []
+                                if fn not in target_files_map[idx_k]:
+                                    target_files_map[idx_k].append(fn)
+                            if d_text:
+                                if idx_k not in schedule_date_map or (":" not in schedule_date_map[idx_k] and ":" in d_text):
+                                    schedule_date_map[idx_k] = d_text
+                            if item_photo_timemarks:
+                                if idx_k not in schedule_photos_map:
+                                    schedule_photos_map[idx_k] = item_photo_timemarks
 
             # Indeks berkas sumber dari pdf_photo_export_log.csv
             source_files_map = {}
@@ -2478,9 +2527,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             csv_candidates = [
                 os.path.join(folder, "logs", "pdf_photo_export_log.csv"),
                 os.path.join(export_root, "logs", "pdf_photo_export_log.csv"),
-                os.path.join(os.path.dirname(folder), "logs", "pdf_photo_export_log.csv"),
                 os.path.join(BASE_DIR, "logs", "pdf_photo_export_log.csv"),
-                os.path.join(os.getcwd(), "logs", "pdf_photo_export_log.csv"),
             ]
             for c_path in csv_candidates:
                 if os.path.isfile(c_path):
@@ -2505,18 +2552,18 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             # Kumpulkan semua folder aset unik: (btp, category, detail)
             asset_dict = {}
 
-            # 1. Scan dari dir_raw (Foto Mentah) - Pastikan TIDAK PERNAH masuk ke subfolder 04_
+            # 1. Scan dari dir_raw (Foto Mentah) - Single pass in-memory sets
             if os.path.isdir(dir_raw):
                 for root, dirs, files in os.walk(dir_raw):
                     dirs[:] = [d for d in dirs if d.lower() not in (
                         "04_photos_edited", "04_foto_edited", "04_time", "04_koordinat", "05_pdf_merged", "backups", "_temp_merged", ".git", "node_modules"
                     )]
-                    photo_files = [f for f in files if f.lower() in ("0.jpg", "50.jpg", "100.jpg")]
+                    f_set = set(files)
+                    photo_files = [f for f in ("0.jpg", "50.jpg", "100.jpg") if f in f_set]
                     rel = os.path.relpath(root, dir_raw).replace("\\", "/")
                     parts = [p for p in rel.split("/") if p and p != "."]
                     if not parts or len(parts) < 2:
                         continue
-                    # Jika masih memiliki sub-folder dan belum ada foto di folder ini, biarkan os.walk menyelam lebih dalam
                     if dirs and not photo_files:
                         continue
                     detail = parts[-1]
@@ -2529,9 +2576,14 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             "category": category,
                             "detail": detail,
                             "raw_dir": root,
+                            "raw_files": f_set,
                             "edited_dir": None,
+                            "edited_files": set(),
                             "tim": ""
                         }
+                    else:
+                        asset_dict[key]["raw_dir"] = root
+                        asset_dict[key]["raw_files"] = f_set
 
             # 2. Scan dari dir_edited jika ada (Foto Hasil Timemark)
             if os.path.isdir(dir_edited):
@@ -2539,12 +2591,12 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     dirs[:] = [d for d in dirs if d.lower() not in (
                         "backups", "_temp_merged", ".git", "node_modules", "03_photos_export", "03_export_foto"
                     )]
-                    photo_files = [f for f in files if f.lower() in ("0.jpg", "50.jpg", "100.jpg")]
+                    f_set = set(files)
+                    photo_files = [f for f in ("0.jpg", "50.jpg", "100.jpg") if f in f_set]
                     rel = os.path.relpath(root, dir_edited).replace("\\", "/")
                     parts = [p for p in rel.split("/") if p and p != "."]
                     if not parts or len(parts) < 2:
                         continue
-                    # Jika masih memiliki sub-folder dan belum ada foto di folder ini, biarkan os.walk menyelam lebih dalam
                     if dirs and not photo_files:
                         continue
                     detail = parts[-1]
@@ -2556,19 +2608,6 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             tim = p.replace("_", " ").title()
                             break
 
-                    def _dir_latest_mtime(d_p):
-                        if not d_p or not os.path.isdir(d_p):
-                            return 0.0
-                        mts = []
-                        for _fn in ("0.jpg", "50.jpg", "100.jpg", "meta.json"):
-                            _fp = os.path.join(d_p, _fn)
-                            if os.path.isfile(_fp):
-                                try:
-                                    mts.append(os.path.getmtime(_fp))
-                                except Exception:
-                                    pass
-                        return max(mts) if mts else 0.0
-
                     key = (station.upper(), category.upper(), detail.upper())
                     if key not in asset_dict:
                         asset_dict[key] = {
@@ -2576,36 +2615,22 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             "category": category,
                             "detail": detail,
                             "raw_dir": None,
+                            "raw_files": set(),
                             "edited_dir": root,
+                            "edited_files": f_set,
                             "tim": tim
                         }
                     else:
-                        prev_ed = asset_dict[key].get("edited_dir")
-                        if not prev_ed or _dir_latest_mtime(root) >= _dir_latest_mtime(prev_ed):
-                            asset_dict[key]["edited_dir"] = root
-                            if tim:
-                                asset_dict[key]["tim"] = tim
+                        asset_dict[key]["edited_dir"] = root
+                        asset_dict[key]["edited_files"] = f_set
+                        if tim:
+                            asset_dict[key]["tim"] = tim
 
-            # 3. Check jika dir_edited punya subfolder Tim_1/Tim_2 untuk asset_dict yang belum terhubung
-            if os.path.isdir(dir_edited):
-                for key, ainfo in asset_dict.items():
-                    if not ainfo["edited_dir"]:
-                        st, cat, det = ainfo["station"], ainfo["category"], ainfo["detail"]
-                        for tim_name in ["Tim_1", "Tim_2", ""]:
-                            cand = os.path.join(dir_edited, tim_name, st, cat, det) if tim_name else os.path.join(dir_edited, st, cat, det)
-                            if os.path.isdir(cand) and any(os.path.isfile(os.path.join(cand, x)) for x in ("0.jpg", "50.jpg", "100.jpg")):
-                                ainfo["edited_dir"] = cand
-                                if tim_name and not ainfo["tim"]:
-                                    ainfo["tim"] = tim_name.replace("_", " ").title()
-                                break
-
-            # 4. Baca daftar kolase yang telah dipotong dari cropped_collages.json atau manifest
+            # 3. Baca daftar kolase yang telah dipotong dari cropped_collages.json atau manifest
             cropped_set = set()
             for cand_crop in [
                 os.path.join(export_root, "logs", "cropped_collages.json"),
-                os.path.join(export_root, "logs", "auto_crop_manifest.json"),
                 os.path.join(BASE_DIR, "logs", "cropped_collages.json"),
-                os.path.join(BASE_DIR, "logs", "auto_crop_manifest.json")
             ]:
                 if os.path.isfile(cand_crop):
                     try:
@@ -2618,17 +2643,32 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                                 for item in c_data.get("collages", []):
                                     if "rel_path" in item:
                                         cropped_set.add(str(item["rel_path"]).replace("\\", "/").lower())
+                        break
                     except Exception:
                         pass
 
-            # Bangun list aset terpadu
+            # 4. Pre-scan folder 03_photos_cropped_temp jika ada (hanya sekali)
+            temp_cropped_root = os.path.join(export_root, "03_photos_cropped_temp")
+            temp_cropped_set = set()
+            if os.path.isdir(temp_cropped_root):
+                for t_root, t_dirs, t_files in os.walk(temp_cropped_root):
+                    t_dirs[:] = [d for d in t_dirs if d.lower() not in ("backups", "_temp_merged")]
+                    for tf in t_files:
+                        if tf.lower() in ("0.jpg", "50.jpg", "100.jpg"):
+                            rel_t = os.path.relpath(os.path.join(t_root, tf), temp_cropped_root).replace("\\", "/").lower()
+                            temp_cropped_set.add(rel_t)
+
+            # Bangun list aset terpadu (100% in-memory checks)
+            url_timestamp = int(time.time())
             assets = []
             for (st_u, cat_u, det_u), ainfo in asset_dict.items():
                 station = ainfo["station"]
                 category = ainfo["category"]
                 detail = ainfo["detail"]
                 raw_dir = ainfo["raw_dir"]
+                raw_files = ainfo.get("raw_files") or set()
                 edited_dir = ainfo["edited_dir"]
+                edited_files = ainfo.get("edited_files") or set()
                 tim = ainfo["tim"]
 
                 norm_detail = " ".join(re.sub(r'_\d{2}-\d{2}$', '', detail.strip().upper()).split())
@@ -2637,7 +2677,6 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 matching_targets = target_files_map.get(norm_detail) or target_files_map.get(raw_detail) or []
                 matching_source = source_files_map.get(norm_detail) or source_files_map.get(raw_detail) or ""
 
-                # Cari schedule photos dan date
                 sched_photo_map = {}
                 sched_asset_date = ""
                 for k_c in [norm_detail, raw_detail, f"{station.strip().upper()} {norm_detail}", f"{category.strip().upper()} {norm_detail}"]:
@@ -2646,26 +2685,24 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     if not sched_asset_date and k_c in schedule_date_map:
                         sched_asset_date = schedule_date_map[k_c]
 
-                # Ambil tanggal: meta.json -> schedule (dengan jam) -> date.txt
                 date_text = ""
                 meta_data = {}
                 meta_date_text = ""
-                if edited_dir:
+                if "meta.json" in edited_files and edited_dir:
                     mf = os.path.join(edited_dir, "meta.json")
-                    if os.path.isfile(mf):
-                        try:
-                            with open(mf, "r", encoding="utf-8", errors="ignore") as m_file:
-                                meta_data = json.load(m_file)
-                            for pk in ["0.jpg", "50.jpg", "100.jpg"]:
-                                if pk in meta_data and isinstance(meta_data[pk], dict) and meta_data[pk].get("dateText"):
-                                    cand_dt = meta_data[pk]["dateText"]
-                                    if ":" in cand_dt:
-                                        meta_date_text = cand_dt
-                                        break
-                                    elif not meta_date_text:
-                                        meta_date_text = cand_dt
-                        except Exception:
-                            pass
+                    try:
+                        with open(mf, "r", encoding="utf-8", errors="ignore") as m_file:
+                            meta_data = json.load(m_file)
+                        for pk in ["0.jpg", "50.jpg", "100.jpg"]:
+                            if pk in meta_data and isinstance(meta_data[pk], dict) and meta_data[pk].get("dateText"):
+                                cand_dt = meta_data[pk]["dateText"]
+                                if ":" in cand_dt:
+                                    meta_date_text = cand_dt
+                                    break
+                                elif not meta_date_text:
+                                    meta_date_text = cand_dt
+                    except Exception:
+                        pass
 
                 if meta_date_text and ":" in meta_date_text:
                     date_text = meta_date_text
@@ -2675,53 +2712,41 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     date_text = sched_asset_date
                 elif meta_date_text:
                     date_text = meta_date_text
-                elif raw_dir:
+                elif "date.txt" in raw_files and raw_dir:
                     df = os.path.join(raw_dir, "date.txt")
-                    if os.path.isfile(df):
-                        try:
-                            with open(df, "r", encoding="utf-8", errors="ignore") as d_file:
-                                date_text = d_file.read().strip()
-                        except Exception:
-                            pass
+                    try:
+                        with open(df, "r", encoding="utf-8", errors="ignore") as d_file:
+                            date_text = d_file.read().strip()
+                    except Exception:
+                        pass
                 if not date_text and sched_asset_date:
                     date_text = sched_asset_date
 
                 rel_dir = f"{station}/{category}/{detail}"
                 photos = []
                 for p_name in ["0.jpg", "50.jpg", "100.jpg"]:
-                    raw_path = os.path.join(raw_dir, p_name) if raw_dir else None
-                    has_raw = bool(raw_path and os.path.isfile(raw_path))
-
-                    edited_path = os.path.join(edited_dir, p_name) if edited_dir else None
-                    has_edited = bool(edited_path and os.path.isfile(edited_path))
+                    has_raw = p_name in raw_files
+                    has_edited = p_name in edited_files
 
                     if not has_raw and not has_edited:
                         continue
 
-                    # URL foto raw (HANYA jika file mentah benar-benar ada di folder 03)
-                    raw_url = None
-                    if has_raw:
-                        mtime_r = int(os.path.getmtime(raw_path))
-                        raw_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(raw_path))}&t={mtime_r}"
+                    raw_path = os.path.join(raw_dir, p_name) if has_raw else None
+                    edited_path = os.path.join(edited_dir, p_name) if has_edited else None
 
-                    # URL foto edited (HANYA jika file editan benar-benar ada di folder 04)
-                    edited_url = None
-                    if has_edited:
-                        mtime_e = int(os.path.getmtime(edited_path))
-                        edited_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(edited_path))}&t={mtime_e}"
+                    raw_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(raw_path))}&t={url_timestamp}" if has_raw else None
+                    edited_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(edited_path))}&t={url_timestamp}" if has_edited else None
 
-                    # Deteksi dan URL preview foto hasil crop kolase (03_photos_cropped_temp)
                     rel_p = f"{station}/{category}/{detail}/{p_name}".replace("\\", "/")
-                    temp_photo_path = os.path.join(export_root, "03_photos_cropped_temp", station, category, detail, p_name)
-                    has_temp = bool(os.path.isfile(temp_photo_path))
+                    has_temp = rel_p.lower() in temp_cropped_set
+                    temp_photo_path = os.path.join(temp_cropped_root, station, category, detail, p_name) if has_temp else None
+                    temp_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(temp_photo_path))}&t={url_timestamp}" if has_temp else None
+
                     cat_u = category.upper()
                     is_cat_eligible = any(k in cat_u for k in ("CATUDAYA", "CATU DAYA", "PDSE", "PTDS", "PTLS"))
                     is_collage = bool(has_temp or (rel_p.lower() in cropped_set) or is_cat_eligible)
 
-                    temp_url = None
-                    if has_temp:
-                        mtime_t = int(os.path.getmtime(temp_photo_path))
-                        temp_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(temp_photo_path))}&t={mtime_t}"
+                    has_backup = bool(has_raw and (f"{p_name}.original_backup.jpg" in raw_files or f"{p_name}.orig.jpg" in raw_files))
 
                     p_meta = dict(meta_data.get(p_name, {})) if isinstance(meta_data.get(p_name), dict) else {}
                     existing_p_dt = p_meta.get("dateText", "")
@@ -2732,8 +2757,6 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             pass
                         elif date_text:
                             p_meta["dateText"] = date_text
-
-                    has_backup = bool(has_raw and (os.path.isfile(raw_path + ".original_backup.jpg") or os.path.isfile(raw_path + ".orig.jpg")))
 
                     photos.append({
                         "name": p_name,
@@ -2756,7 +2779,6 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     })
 
                 has_any_edited = any(p["hasEdited"] for p in photos)
-                has_any_raw = any(p["hasRaw"] for p in photos)
                 has_any_collage = any(p["isCollage"] for p in photos)
                 assets.append({
                     "station": station,
@@ -2777,12 +2799,11 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     "sourceType": "timemark" if has_any_edited else "export"
                 })
 
-            # Sortir: Aset dengan hasEdited tampil lebih dulu, lalu yang memiliki foto mentah, lalu yang kosong
             if not assets and os.path.isdir(folder):
                 assets = scan_deep_photo_subfolders(folder)
             assets.sort(key=lambda a: (0 if a.get("hasEdited") else (1 if a.get("photos") else 2), a.get("station", ""), a.get("category", ""), a.get("detail", "")))
 
-            self._json({
+            resp_data = {
                 "ok": True,
                 "assets": assets,
                 "targetFiles": sorted(target_files_list, key=lambda x: x["file"]),
@@ -2791,7 +2812,11 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 "exportCount": sum(1 for a in assets if not a.get("hasEdited")),
                 "total": len(assets),
                 "loadedSchedule": loaded_schedule_path
-            })
+            }
+            _TIMEMARK_PHOTOS_CACHE["key"] = cache_key
+            _TIMEMARK_PHOTOS_CACHE["time"] = time.time()
+            _TIMEMARK_PHOTOS_CACHE["data"] = resp_data
+            self._json(resp_data)
         except Exception as e:
             _log(f"Error scanning photos: {e}")
             self._json({"ok": False, "error": str(e)}, 500)
@@ -3092,13 +3117,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
 
-            processed = 0
-            meta_saved = {}
-            for fname in target_fnames:
+            def _process_one_fname(fname):
                 stem = os.path.splitext(fname)[0]
                 p_date = calc_photo_date(date_to_use, stem) if date_to_use else ""
 
-                # Prioritaskan foto hasil potong kolase (03_photos_cropped_temp) jika ada
                 temp_cand = os.path.join(export_root, "03_photos_cropped_temp", asset_rel, fname)
                 in_cand = os.path.join(photos_export, asset_rel, fname)
                 if os.path.isfile(temp_cand):
@@ -3106,7 +3128,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 elif not os.path.isfile(in_cand):
                     in_cand = os.path.join(photos_edited, tim_group, asset_rel, fname)
                     if not os.path.isfile(in_cand):
-                        continue
+                        return fname, False, None
 
                 out_target = os.path.join(photos_edited, tim_group, asset_rel, fname)
                 os.makedirs(os.path.dirname(out_target), exist_ok=True)
@@ -3128,8 +3150,6 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 )
 
                 if os.path.isfile(out_target):
-                    processed += 1
-                    # Sinkronkan ke folder Tim lain jika aset ini memiliki duplikat di Tim_1/Tim_2/Tim_3/root
                     for alt_t in ["", "Tim_1", "Tim_2", "Tim_3", "Tim_4"]:
                         ao = os.path.join(photos_edited, alt_t, asset_rel, fname) if alt_t else os.path.join(photos_edited, asset_rel, fname)
                         if os.path.abspath(ao) != os.path.abspath(out_target) and os.path.isfile(ao):
@@ -3137,18 +3157,48 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                                 shutil.copy2(out_target, ao)
                             except Exception:
                                 pass
-                    meta_saved[fname] = {
+                    return fname, True, {
                         "dateText": p_date,
                         "detector": detector,
                         "timestamp": time.time()
                     }
+                return fname, False, None
 
+            processed = 0
+            meta_saved = {}
+            if len(target_fnames) > 1:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(target_fnames), 3)) as executor:
+                    results = list(executor.map(_process_one_fname, target_fnames))
+            else:
+                results = [_process_one_fname(target_fnames[0])]
+
+            for fname, success, m_info in results:
+                if success:
+                    processed += 1
+                    if m_info:
+                        meta_saved[fname] = m_info
+
+            final_returned_meta = {}
             if meta_saved:
                 meta_dirs = {os.path.join(photos_edited, tim_group, asset_rel)}
                 for alt_t in ["", "Tim_1", "Tim_2", "Tim_3", "Tim_4"]:
                     ad = os.path.join(photos_edited, alt_t, asset_rel) if alt_t else os.path.join(photos_edited, asset_rel)
                     if os.path.isdir(ad):
                         meta_dirs.add(ad)
+
+                primary_meta_file = os.path.join(photos_edited, tim_group, asset_rel, "meta.json")
+                if os.path.isfile(primary_meta_file):
+                    try:
+                        with open(primary_meta_file, "r", encoding="utf-8") as mf:
+                            final_returned_meta = json.load(mf)
+                    except Exception:
+                        final_returned_meta = {}
+
+                for fname, m_dict in meta_saved.items():
+                    if fname not in final_returned_meta:
+                        final_returned_meta[fname] = {}
+                    final_returned_meta[fname].update(m_dict)
+
                 for target_meta_dir in meta_dirs:
                     meta_file = os.path.join(target_meta_dir, "meta.json")
                     curr_meta = {}
@@ -3158,7 +3208,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                                 curr_meta = json.load(mf)
                         except Exception:
                             pass
-                    curr_meta.update(meta_saved)
+                    for fname, m_dict in final_returned_meta.items():
+                        if fname not in curr_meta:
+                            curr_meta[fname] = {}
+                        curr_meta[fname].update(m_dict)
                     try:
                         with open(meta_file, "w", encoding="utf-8") as mf:
                             json.dump(curr_meta, mf, indent=2, ensure_ascii=False)
@@ -3166,12 +3219,14 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         pass
 
             if processed > 0:
+                _invalidate_timemark_photos_cache()
                 detector_title = "Google AI Vision" if detector == "google_vision" else "Metode Biasa (HSV)"
                 self._json({
                     "ok": True,
                     "success": True,
                     "processed": processed,
                     "detector": detector,
+                    "meta": final_returned_meta,
                     "message": f"Berhasil memproses timemark untuk {processed} foto menggunakan {detector_title}!"
                 })
             else:
@@ -3498,6 +3553,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         except Exception:
                             pass
 
+            _invalidate_timemark_photos_cache()
             self._json({"ok": True, "success": True, "message": "Timemark berhasil diperbarui dan disimpan."})
         except Exception as e:
             _log(f"Manual edit error: {e}")
@@ -3537,6 +3593,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             # Jika path tidak langsung ketemu di photos_export, lakukan pencarian toleran
             if not os.path.isfile(src_file) or not os.path.isfile(tgt_file):
                 for r, d, fls in os.walk(photos_export):
+                    d[:] = [x for x in d if x.lower() not in ("backups", "backup", "_temp_merged")]
                     if not os.path.isfile(src_file) and os.path.basename(norm_src) in fls:
                         c = os.path.join(r, os.path.basename(norm_src))
                         if os.path.normpath(c).lower().endswith(os.path.normpath(norm_src).lower()):
@@ -3622,6 +3679,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
                 )
 
+            _invalidate_timemark_photos_cache()
             self._json({
                 "ok": True,
                 "success": True,
@@ -3865,6 +3923,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 else f"Kolase dipotong ke kuadran {q_label} dan timemark diperbarui!"
             )
 
+            _invalidate_timemark_photos_cache()
             self._json({
                 "ok": True,
                 "message": msg,
@@ -4165,12 +4224,14 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
 
             out_file_path = ""
             for r, d, files in os.walk(merged_dir):
+                d[:] = [x for x in d if x.lower() not in ("backups", "backup", "_temp_merged")]
                 if pdf_name in files:
                     out_file_path = os.path.join(r, pdf_name)
                     break
 
             file_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(out_file_path))}" if out_file_path else ""
 
+            _invalidate_timemark_photos_cache()
             self._json({
                 "ok": True,
                 "success": True,
@@ -4237,6 +4298,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 ])
                 subprocess.run(cmd, capture_output=True, text=True, env=sub_env, cwd=BASE_DIR, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
 
+            _invalidate_timemark_photos_cache()
             self._json({"ok": True, "success": True, "message": "Foto berhasil dipulihkan ke versi asli."})
         except Exception as e:
             _log(f"Revert photo error: {e}")
@@ -4414,6 +4476,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception as me:
                     _log(f"Failed to update meta.json in {m_file}: {me}")
 
+            _invalidate_timemark_photos_cache()
             self._json({"ok": True, "message": "Foto berhasil diganti dan di-watermark ulang."})
         except Exception as e:
             _log(f"Replace photo error: {e}")
@@ -4964,9 +5027,9 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
     def _handle_timemark_schedule_list(self, parsed):
         try:
             qs = urllib.parse.parse_qs(parsed.query)
-            folder = qs.get("folder", [""])[0].strip(' "'')
-            export_dir = qs.get("exportDir", [""])[0].strip(' "'')
-            schedule_param = qs.get("schedule", [""])[0].strip(' "'')
+            folder = qs.get("folder", [""])[0].strip().strip('"\'')
+            export_dir = qs.get("exportDir", [""])[0].strip().strip('"\'')
+            schedule_param = qs.get("schedule", [""])[0].strip().strip('"\'')
 
             # 1. Kumpulkan seluruh lokasi kandidat schedule.json
             search_candidates = []
@@ -5103,6 +5166,16 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 if os.path.abspath(alt_file) != os.path.abspath(schedule_file):
                     with open(alt_file, "w", encoding="utf-8") as f:
                         json.dump(sched, f, indent=2, ensure_ascii=False)
+            except Exception:
+                pass
+
+            # Salin juga ke photos_dir jika ada dan berbeda
+            try:
+                if photos_dir and os.path.isdir(photos_dir):
+                    p_file = os.path.join(photos_dir, "schedule.json")
+                    if os.path.abspath(p_file) != os.path.abspath(schedule_file):
+                        with open(p_file, "w", encoding="utf-8") as f:
+                            json.dump(sched, f, indent=2, ensure_ascii=False)
             except Exception:
                 pass
 

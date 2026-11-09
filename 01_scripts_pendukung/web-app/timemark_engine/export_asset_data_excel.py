@@ -60,7 +60,10 @@ def export_assets(schedule_path: Path, pdf_dir: Path, output_path: Path) -> tupl
         if identifier:
             assets_by_name[name_key].append(asset)
 
-    pdf_files = sorted(pdf_dir.rglob("*.pdf"))
+    pdf_files = sorted(
+        p for p in pdf_dir.rglob("*.pdf")
+        if not any(part.lower() in ("backups", "backup", "_temp_merged") for part in p.relative_to(pdf_dir).parts[:-1])
+    )
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Data Aset"

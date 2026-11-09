@@ -238,7 +238,7 @@ def _determine_btp(identifier: str, pdf_path: Path = None) -> str:
 MULTI_ROW_CATEGORIES = {"SINYAL", "WESEL", "AXC"}
 
 
-def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, p_map: dict, photos_dir: Path | None = None, multi_date_lookup: dict | None = None, split_multi_asset: bool = False):
+def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, p_map: dict, photos_dir: Path | None = None, multi_date_lookup: dict | None = None, split_multi_asset: bool = False, existing_photo_dirs: set | None = None):
     from extract_pdf_dates import parse_target_filename, parse_date_from_filename, parse_date_indonesian
     import warnings; warnings.filterwarnings("ignore", category=FutureWarning)
     try:
@@ -320,7 +320,8 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
                 target_ident = ident
                 should_suffix = (
                     category == "WESEL" or
-                    (photos_dir and date_suffix and (photos_dir / btp / category / f"{ident}{date_suffix}").is_dir()) or
+                    (existing_photo_dirs and date_suffix and f"{ident}{date_suffix}".upper() in existing_photo_dirs) or
+                    (photos_dir and date_suffix and not existing_photo_dirs and (photos_dir / btp / category / f"{ident}{date_suffix}").is_dir()) or
                     (multi_date_lookup and (
                         multi_date_lookup.get((category, ident), 0) > 1 or
                         multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
@@ -442,13 +443,24 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
     }
 
 
+EXCLUDE_DIRS = {"backups", "backup", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
+EXCLUDE_LOWER = {x.lower() for x in EXCLUDE_DIRS}
+
+def is_subfolder_excluded(p: Path, base: Path, exclude_set: set | None = None) -> bool:
+    target_set = {x.lower() for x in exclude_set} if exclude_set else EXCLUDE_LOWER
+    try:
+        sub_parts = [x.lower() for x in p.relative_to(base).parts[:-1]]
+    except Exception:
+        sub_parts = [x.lower() for x in p.parts[:-1]]
+    return any(x in target_set for x in sub_parts)
+
+
 def build_schedule(pdf_dir: Path, photos_dir: Path,
                    mapping: dict, acuan: dict,
                    jam_mulai: int, jam_selesai: int, tim_max: int,
                    split_multi_asset: bool = False) -> dict:
-    EXCLUDE_DIRS = {"backups", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
     files = sorted(p for p in pdf_dir.rglob("*.pdf")
-                   if not any(x in p.parts for x in EXCLUDE_DIRS) and p.is_file())
+                   if not is_subfolder_excluded(p, pdf_dir) and p.is_file())
     if not files:
         return {"version": 1, "schedules": []}
 
@@ -473,14 +485,46 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
         if st and cat:
             multi_date_lookup[(cat, st)] += 1
 
+    # Pre-scan subfolder foto satu kali saja ke RAM untuk menghindari ribuan pengecekan jaringan SMB
+    existing_photo_dirs = set()
+    if photos_dir and photos_dir.is_dir():
+        try:
+            for entry in os.scandir(str(photos_dir)):
+                if entry.is_dir() and not entry.name.startswith(('.', '$')):
+                    existing_photo_dirs.add(entry.name.upper())
+                    try:
+                        for sub_entry in os.scandir(entry.path):
+                            if sub_entry.is_dir():
+                                existing_photo_dirs.add(sub_entry.name.upper())
+                                try:
+                                    for sub2 in os.scandir(sub_entry.path):
+                                        if sub2.is_dir():
+                                            existing_photo_dirs.add(sub2.name.upper())
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # Nonaktifkan OCR fallback selama proses penjadwalan agar tidak membekukan worker thread
+    orig_ocr = os.environ.get("ENABLE_OCR_FALLBACK")
+    os.environ["ENABLE_OCR_FALLBACK"] = "0"
+
     import concurrent.futures
 
     # ── PASS 1: Extract all items in parallel and group by target date ──
     files_by_date: dict[date, list[dict]] = {}
-    max_w = min(8, os.cpu_count() or 4)
+    max_w = min(16, max(8, (os.cpu_count() or 4) * 2))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as executor:
-        results = list(executor.map(lambda p: _process_pdf_pass1(p, mapping, acuan, k_map, p_map, photos_dir, multi_date_lookup, split_multi_asset), files))
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as executor:
+            results = list(executor.map(lambda p: _process_pdf_pass1(p, mapping, acuan, k_map, p_map, photos_dir, multi_date_lookup, split_multi_asset, existing_photo_dirs), files))
+    finally:
+        if orig_ocr is not None:
+            os.environ["ENABLE_OCR_FALLBACK"] = orig_ocr
+        else:
+            os.environ.pop("ENABLE_OCR_FALLBACK", None)
 
     for idx, pdf_entry in enumerate(results, 1):
         if not pdf_entry:

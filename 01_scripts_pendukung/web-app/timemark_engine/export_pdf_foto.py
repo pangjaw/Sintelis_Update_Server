@@ -128,20 +128,53 @@ def _build_wesel_target_lookup(target_dir: str = "02_pdf_target") -> dict[str, l
     return dict(lookup)
 
 
-def original_images_by_name(reader: PdfReader, page_index: int) -> dict[str, tuple[str, bytes]]:
-    """Return mapping of image name stem -> (suffix, raw_bytes) from pypdf XObjects."""
+def original_images_by_name(reader: PdfReader, page_index: int, pdf_path: str | Path | None = None) -> dict[str, tuple[str, bytes]]:
+    """Return mapping of image name stem -> (suffix, raw_bytes).
+    Uses PyMuPDF (fitz) for ultra-fast, resilient extraction; falls back safely to pypdf."""
     result = {}
-    try:
-        page = reader.pages[page_index]
-        for img_name, img in (page.images or {}).items():
-            # img_name might include extension, stem removes it for matching
-            stem = Path(img_name).stem
-            suffix = Path(img_name).suffix or ".jpg"
-            if suffix.lower() not in (".jpg", ".jpeg", ".png"):
-                suffix = ".jpg"
-            result[stem] = (suffix, img.data)
-    except Exception:
-        pass
+
+    # 1. Ekstraksi langsung via PyMuPDF (fitz) - cepat, langsung dari XObject tanpa memicu PIL UnidentifiedImageError
+    if pdf_path:
+        try:
+            import pymupdf as fitz
+            with fitz.open(str(pdf_path)) as doc:
+                if 0 <= page_index < len(doc):
+                    page = doc[page_index]
+                    for img_info in page.get_images(full=True):
+                        xref = img_info[0]
+                        base_image = doc.extract_image(xref)
+                        if base_image and "image" in base_image:
+                            ext = base_image.get("ext", "jpg")
+                            if not ext.startswith("."):
+                                ext = f".{ext}"
+                            if ext.lower() in (".jpeg", ".jpg"):
+                                ext = ".jpg"
+                            name = img_info[7] if len(img_info) > 7 and img_info[7] else f"img_{xref}"
+                            stem = Path(name).stem
+                            result[stem] = (ext, base_image["image"])
+                            result[f"img_{xref}"] = (ext, base_image["image"])
+                    if result:
+                        return result
+        except Exception:
+            pass
+
+    # 2. Fallback via pypdf dengan proteksi menyeluruh terhadap corrupted / non-standard images
+    if reader and hasattr(reader, "pages") and 0 <= page_index < len(reader.pages):
+        try:
+            page = reader.pages[page_index]
+            imgs = getattr(page, "images", None)
+            if imgs is not None:
+                for img in imgs:
+                    try:
+                        stem = Path(img.name).stem
+                        suffix = Path(img.name).suffix or ".jpg"
+                        if suffix.lower() not in (".jpg", ".jpeg", ".png"):
+                            suffix = ".jpg"
+                        result[stem] = (suffix, img.data)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
     return result
 
 
@@ -532,12 +565,7 @@ def extract_asset_rows(page: pdfplumber.page.Page, sap_mapping: dict) -> list[As
     return rows
 
 
-def original_images_by_name(reader: PdfReader, page_index: int) -> dict[str, tuple[str, bytes]]:
-    images = {}
-    for image in reader.pages[page_index].images:
-        suffix = Path(image.name).suffix.lower() or ".jpg"
-        images[Path(image.name).stem] = (suffix, image.data)
-    return images
+
 
 
 # ── Station from Filename ───────────────────────────────────────
@@ -931,6 +959,29 @@ def save_asset_location_mapping(output_root: Path, log_dir: Path) -> None:
                 except Exception:
                     pass
 
+def _cluster_images_into_rows(images: list) -> list[list]:
+    """Group images into horizontal rows by clustering their 'top' coordinates (tolerance ~18px),
+    then inside each row sort left-to-right by 'x0'."""
+    if not images:
+        return []
+    sorted_by_top = sorted(images, key=lambda i: float(i.get('top', 0)))
+    rows: list[list] = []
+    current_row: list = []
+    prev_top = None
+    for img in sorted_by_top:
+        img_top = float(img.get('top', 0))
+        if prev_top is None or abs(img_top - prev_top) < 18:
+            current_row.append(img)
+        else:
+            if current_row:
+                rows.append(sorted(current_row, key=lambda i: float(i.get('x0', 0))))
+            current_row = [img]
+        prev_top = img_top
+    if current_row:
+        rows.append(sorted(current_row, key=lambda i: float(i.get('x0', 0))))
+    return rows
+
+
 def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                      all_funclocs: list[str], output_root: Path,
                      log_path: Path, log_exists: bool,
@@ -983,7 +1034,7 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
     # Map each image row to nearest funcloc above it
     exported = 0
     log_rows = []
-    originals = {} if render_crop else original_images_by_name(reader, photo_page_idx)
+    originals = {} if render_crop else original_images_by_name(reader, photo_page_idx, pdf_path=getattr(pdf, 'stream', None) or getattr(pdf, 'name', None) or pdf_name)
 
     for row_imgs in rows:
             row_top = float(row_imgs[0]['top'])
@@ -1309,9 +1360,9 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                 # Standard export: 3 photos → one folder
                 page = pdf.pages[photo_page_idx]
                 page_img = page.to_image(resolution=_resolution) if render_crop else None
-                placements = sorted(page.images, key=lambda img: float(img['x0']))
-                selected = placements[:3]
-                originals = {} if render_crop else original_images_by_name(reader, photo_page_idx)
+                photo_rows = _cluster_images_into_rows(page.images)
+                selected = photo_rows[0][:3] if photo_rows else []
+                originals = {} if render_crop else original_images_by_name(reader, photo_page_idx, pdf_path=pdf_path)
 
                 for placement, stem in zip(selected, ['0', '50', '100']):
                     img_name = str(placement.get('name', ''))
@@ -1365,39 +1416,40 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                         "output_file": str(out_file), "status": "ok",
                     })
             else:
-                # ── Multi-funcloc with shared photo page ──
-                # Extract photos once, then copy to ALL funcloc folders
-                page = pdf.pages[photo_page_idx]
-                page_img = page.to_image(resolution=_resolution) if render_crop else None
-                placements = sorted(page.images, key=lambda img: float(img['x0']))
-                selected = placements[:3]
-                originals = {} if render_crop else original_images_by_name(reader, photo_page_idx)
+                # ── Multi-funcloc with shared photo page / multi-row photos ──
+                # Gather photo rows across all photo pages
+                all_photo_rows: list[list[tuple[str, str, bytes]]] = []
+                for p_idx in (photo_pages or [photo_page_idx]):
+                    p_obj = pdf.pages[p_idx]
+                    p_origs = {} if render_crop else original_images_by_name(reader, p_idx, pdf_path=pdf_path)
+                    p_img = p_obj.to_image(resolution=_resolution) if render_crop else None
+                    for r_imgs in _cluster_images_into_rows(p_obj.images):
+                        if len(r_imgs) >= 3:
+                            r_data: list[tuple[str, str, bytes]] = []
+                            for placement, stem in zip(r_imgs[:3], ['0', '50', '100']):
+                                img_name = str(placement.get('name', ''))
+                                if render_crop:
+                                    try:
+                                        data = _render_page_and_crop(p_obj, placement, resolution=_resolution, page_img=p_img)
+                                        r_data.append((stem, '.jpg', data))
+                                    except Exception:
+                                        pass
+                                else:
+                                    original = p_origs.get(Path(img_name).stem)
+                                    if not original:
+                                        try:
+                                            data = _render_page_and_crop(p_obj, placement, resolution=_resolution)
+                                            r_data.append((stem, '.jpg', data))
+                                        except Exception:
+                                            pass
+                                    else:
+                                        r_data.append((stem, original[0], original[1]))
+                            if len(r_data) == 3:
+                                all_photo_rows.append(r_data)
 
-                # Gather photo data once
-                photo_data: list[tuple[str, str, bytes]] = []
-                for placement, stem in zip(selected, ['0', '50', '100']):
-                    img_name = str(placement.get('name', ''))
-                    if render_crop:
-                        try:
-                            data = _render_page_and_crop(page, placement, resolution=_resolution, page_img=page_img)
-                            suffix = '.jpg'
-                        except Exception:
-                            continue
-                    else:
-                        original = originals.get(Path(img_name).stem)
-                        if not original:
-                            try:
-                                data = _render_page_and_crop(page, placement, resolution=_resolution)
-                                suffix = '.jpg'
-                            except Exception:
-                                continue
-                        else:
-                            suffix, data = original
-                    photo_data.append((stem, suffix, data))
-
-                if not photo_data:
+                if not all_photo_rows:
                     log_rows.append({
-                        "pdf": pdf_path.name, "page": page.page_number,
+                        "pdf": pdf_path.name, "page": (photo_page_idx + 1) if photo_page_idx is not None else 1,
                         "asset_code": "", "asset_name": "",
                         "label": "", "image_name": "",
                         "output_file": "", "status": "failed: no photos extracted",
@@ -1405,42 +1457,46 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                 else:
                     # Export to each funcloc's folder (deduplicate by identifier)
                     written_targets: set[str] = set()
-                    for funcloc_line in all_funclocs:
+                    for fc_idx, funcloc_line in enumerate(all_funclocs):
                         row_id = extract_identifier(funcloc_line, category)
                         parts = funcloc_line.strip().split(":", 1)
                         asset_name = parts[1].strip() if len(parts) > 1 else funcloc_line.strip()
                         asset_name = re.sub(r'\s+', ' ', asset_name)
 
+                        # Row data for this funcloc: use corresponding row if available, else first row
+                        fc_photo_data = all_photo_rows[fc_idx] if fc_idx < len(all_photo_rows) else all_photo_rows[0]
+
                         targets = []
+                        # 1. Folder gabungan/lokasi (misal ER SINYAL BOO): ambil dari baris pertama
                         if row_id and row_id not in written_targets:
                             written_targets.add(row_id)
-                            targets.append((row_id, determine_btp(row_id)))
+                            targets.append((row_id, determine_btp(row_id), all_photo_rows[0]))
 
-                        # Jika split_multi_asset aktif, ekspor juga folder mandiri per nama aset
-                        # (misal: OTB 1 ER BOGOR, OTB 2 ER BOGOR, dst.)
+                        # 2. Folder mandiri per nama aset jika split_multi_asset aktif
+                        # (misal OTB 1 ER BOGOR, OTB 4 ER BOGOR, dst.): ambil baris yang sesuai
                         if split_multi_asset and asset_name and asset_name not in written_targets:
                             written_targets.add(asset_name)
-                            targets.append((asset_name, determine_btp(row_id or asset_name)))
+                            targets.append((asset_name, determine_btp(row_id or asset_name), fc_photo_data))
 
-                        for tid, t_btp in targets:
+                        for tid, t_btp, target_photos in targets:
                             row_out_dir = identifier_output_dir(output_root, t_btp, category, tid)
                             ensure_dir(row_out_dir)
 
-                            for stem, suffix, data in photo_data:
+                            for stem, suffix, data in target_photos:
                                 out_file = row_out_dir / f"{stem}{suffix}"
                                 try:
                                     out_file.write_bytes(data)
                                     exported += 1
                                 except OSError as exc:
                                     log_rows.append({
-                                        "pdf": pdf_path.name, "page": page.page_number,
+                                        "pdf": pdf_path.name, "page": (photo_page_idx + 1) if photo_page_idx is not None else 1,
                                         "asset_code": funcloc_line, "asset_name": tid,
                                         "label": stem, "image_name": "",
                                         "output_file": str(out_file), "status": f"failed: {exc}",
                                     })
                                     continue
                                 log_rows.append({
-                                    "pdf": pdf_path.name, "page": page.page_number,
+                                    "pdf": pdf_path.name, "page": (photo_page_idx + 1) if photo_page_idx is not None else 1,
                                     "asset_code": funcloc_line, "asset_name": tid,
                                     "label": stem, "image_name": "",
                                     "output_file": str(out_file), "status": "ok",
@@ -1467,7 +1523,7 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                 rows = extract_asset_rows(page, sap_mapping)
                 page_height = float(page.height)
                 page_img = page.to_image(resolution=_resolution) if render_crop else None
-                originals = {} if render_crop else original_images_by_name(reader, page_index)
+                originals = {} if render_crop else original_images_by_name(reader, page_index, pdf_path=pdf_path)
 
                 if not rows:
                     continue
@@ -1724,8 +1780,12 @@ def main() -> int:
             print(f"[WARN] Gagal menyimpan log error ke JSON: {log_err}", flush=True)
 
         save_asset_location_mapping(output_root, log_dir)
-        print("\n❌ Pipeline dihentikan karena terdapat file yang gagal diproses.", flush=True)
-        return 1
+        if total_exported > 0:
+            print(f"\n⚠️ {len(failed_files)} file gagal diekspor, namun {total_exported} foto berhasil diekspor. Melanjutkan pipeline...", flush=True)
+            return 0
+        else:
+            print("\n❌ Pipeline dihentikan karena seluruh file gagal diproses.", flush=True)
+            return 1
 
     # Persist asset location mapping once at end of pipeline
     save_asset_location_mapping(output_root, log_dir)
