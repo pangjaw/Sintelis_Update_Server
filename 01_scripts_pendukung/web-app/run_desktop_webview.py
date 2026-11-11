@@ -284,6 +284,47 @@ def _invalidate_timemark_photos_cache():
     global _TIMEMARK_PHOTOS_CACHE
     _TIMEMARK_PHOTOS_CACHE = {"key": None, "time": 0, "data": None}
 
+
+def _resolve_target_schedule_file(target_dir="", export_root="", schedule_param="", folder=""):
+    """Pilih schedule.json secara ketat dari pilihan eksplisit atau DIR PDF Target saja."""
+    sp = (schedule_param or "").strip().strip('"\'')
+    if sp:
+        if os.path.isfile(sp):
+            return os.path.abspath(sp)
+        if os.path.isdir(sp):
+            c_dir = os.path.join(sp, "schedule.json")
+            if os.path.isfile(c_dir):
+                return os.path.abspath(c_dir)
+        return None
+
+    td = (target_dir or "").strip().strip('"\'')
+    if td:
+        if os.path.isfile(td) and td.lower().endswith(".json"):
+            return os.path.abspath(td)
+        if os.path.isdir(td):
+            c_t = os.path.join(td, "schedule.json")
+            if os.path.isfile(c_t):
+                return os.path.abspath(c_t)
+        return None
+
+    for fb_dir in (folder, export_root):
+        fd = (fb_dir or "").strip().strip('"\'')
+        if not fd:
+            continue
+        if os.path.isfile(fd) and fd.lower().endswith(".json"):
+            return os.path.abspath(fd)
+        if os.path.isdir(fd):
+            c_f = os.path.join(fd, "schedule.json")
+            if os.path.isfile(c_f):
+                try:
+                    # Hanya baca schedule di folder fallback jika folder memang direktori PDF (mode tunggal)
+                    has_pdfs = any(fn.lower().endswith(".pdf") for fn in os.listdir(fd))
+                except Exception:
+                    has_pdfs = False
+                if has_pdfs:
+                    return os.path.abspath(c_f)
+    return None
+
 _PROCESS_SINGLE_LOCK = threading.Lock()
 
 
@@ -543,7 +584,608 @@ def _safe_evaluate(page, js_func, arg=None, max_retries=6, delay=1.5):
     _log(f"safe_evaluate notice (retried {max_retries}x): {last_err}")
     return None
 
-def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folder, start_id=None, end_id=None, show_browser=False, curl_cmd=""):
+def _parse_p3ste_asset_numbers(raw_assets):
+    """Parse daftar Nomor Aset (string paste Excel/koma/spasi atau list) menjadi list kode unik terurut."""
+    if not raw_assets:
+        return []
+    if isinstance(raw_assets, (list, tuple)):
+        tokens = []
+        for item in raw_assets:
+            tokens.extend(re.split(r'[\s,;]+', str(item or "")))
+    else:
+        tokens = re.split(r'[\s,;]+', str(raw_assets))
+
+    result = []
+    seen = set()
+    for tok in tokens:
+        clean = tok.strip().upper()
+        if clean and clean not in seen:
+            seen.add(clean)
+            result.append(clean)
+    return result
+
+
+def _resolve_p3ste_type_slug(type_val, raw_text=""):
+    """Konversi kode tipe checklist atau teks kolom ke slug URL export PDF P3-STE."""
+    txt = str(raw_text or "").strip().lower()
+    if "pemeriksaan" in txt:
+        return "pemeriksaan"
+    if "gangguan" in txt:
+        return "gangguan"
+    if "perawatan" in txt:
+        return "perawatan"
+
+    tv = str(type_val or "").strip()
+    if tv == "1":
+        return "pemeriksaan"
+    if tv == "3":
+        return "gangguan"
+    return "perawatan"
+
+
+def _build_p3ste_report_asset_url(awal, akhir, type_val, asset_no, daop="1", resort="170", hasil="baik"):
+    """Bangun URL query /report_asset dengan parameter yang aman untuk satu Nomor Aset."""
+    from urllib.parse import quote
+    awal_q = quote(str(awal or ""), safe="")
+    akhir_q = quote(str(akhir or ""), safe="")
+    type_q = quote(str(type_val or "2"), safe="")
+    asset_q = quote(str(asset_no or ""), safe="")
+    daop_q = quote(str(daop or "1"), safe="")
+    resort_q = quote("" if resort is None else str(resort), safe="")
+    hasil_q = quote(str(hasil or "baik"), safe="")
+    return (
+        f"https://p3-ste.kai.id/report_asset"
+        f"?awal={awal_q}&akhir={akhir_q}&type={type_q}&assetno={asset_q}"
+        f"&daop={daop_q}&resort={resort_q}&hasil={hasil_q}"
+    )
+
+
+def _extract_p3ste_table_items(page, fallback_type_name="perawatan"):
+    """Ekstrak daftar {id, url, date} dari baris DataTables yang sedang tampil."""
+    return _safe_evaluate(page, r"""(fallbackTypeName) => {
+        const items = [];
+        const seen = new Set();
+
+        function extractRowDate(tr) {
+            if (!tr) return '';
+            const tds = tr.querySelectorAll('td');
+            for (let i = 0; i < Math.min(tds.length, 4); i++) {
+                const txt = (tds[i].innerText || '').trim();
+                const dm = txt.match(/(\d{2})[/-](\d{2})[/-](\d{4})/);
+                if (dm) {
+                    return `${dm[1]}-${dm[2]}-${dm[3]}`;
+                }
+            }
+            return '';
+        }
+
+        function resolveRowTypeSlug(tr, fallbackSlug) {
+            if (!tr) return fallbackSlug;
+            const tds = tr.querySelectorAll('td');
+            for (let i = 0; i < Math.min(tds.length, 5); i++) {
+                const txt = (tds[i].innerText || '').trim().toLowerCase();
+                if (txt === 'pemeriksaan' || txt.includes('pemeriksaan')) return 'pemeriksaan';
+                if (txt === 'gangguan' || txt.includes('gangguan')) return 'gangguan';
+                if (txt === 'perawatan' || txt.includes('perawatan')) return 'perawatan';
+            }
+            return fallbackSlug;
+        }
+
+        const els = document.querySelectorAll('#table tbody tr a, #table tbody tr button, #table tbody tr [onclick], table tbody tr a, table tbody tr button');
+        els.forEach(el => {
+            const href = el.getAttribute('href') || '';
+            const onclick = el.getAttribute('onclick') || '';
+            const dataUrl = el.getAttribute('data-url') || el.getAttribute('data-href') || '';
+            const dataId = el.getAttribute('data-id') || '';
+            const combined = `${href} ${onclick} ${dataUrl} ${dataId}`;
+
+            const m = combined.match(/exports\/pdf\/(\d{4,8})/i)
+                || combined.match(/cetak_checklist\/report\/(\d{4,8})/i)
+                || combined.match(/checklist.*?(\d{5,8})/i)
+                || onclick.match(/['"](\d{5,8})['"]/);
+            let fid = null;
+            if (m) {
+                fid = m[1];
+            } else if (/^\d{5,8}$/.test(dataId)) {
+                fid = dataId;
+            }
+
+            if (fid && !seen.has(fid)) {
+                seen.add(fid);
+                const tr = el.closest('tr');
+                const rowDate = extractRowDate(tr);
+                const rowTypeSlug = resolveRowTypeSlug(tr, fallbackTypeName);
+                items.push({
+                    id: fid,
+                    url: `https://p3-ste.kai.id/cetak_checklist/report/${rowTypeSlug}/exports/pdf/${fid}?false`,
+                    detail_url: href && href.includes('cetak_checklist/report/') ? href : `https://p3-ste.kai.id/cetak_checklist/report/${fid}/false`,
+                    date: rowDate
+                });
+            }
+        });
+
+        if (items.length === 0) {
+            document.querySelectorAll('#table tbody tr, table tbody tr').forEach(tr => {
+                if (tr.querySelector('.dataTables_empty')) return;
+                const txt = tr.innerText || '';
+                const m = txt.match(/\b(\d{6,8})\b/);
+                if (m && !seen.has(m[1])) {
+                    seen.add(m[1]);
+                    const rowDate = extractRowDate(tr);
+                    const rowTypeSlug = resolveRowTypeSlug(tr, fallbackTypeName);
+                    items.push({
+                        id: m[1],
+                        url: `https://p3-ste.kai.id/cetak_checklist/report/${rowTypeSlug}/exports/pdf/${m[1]}?false`,
+                        detail_url: `https://p3-ste.kai.id/cetak_checklist/report/${m[1]}/false`,
+                        date: rowDate
+                    });
+                }
+            });
+        }
+
+        return items;
+    }""", fallback_type_name) or []
+
+
+def _wait_report_asset_table_ready(page, timeout_sec=45):
+    """Tunggu tabel DataTables /report_asset selesai loading (punya data atau benar-benar kosong)."""
+    for sec in range(timeout_sec):
+        if _p3ste_state["cancelled"]:
+            return {"status": "cancelled", "total": 0, "info": ""}
+        page.wait_for_timeout(1000)
+        st = _safe_evaluate(page, r"""() => {
+            let total = null;
+            let infoText = '';
+            try {
+                if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable) {
+                    const tbls = Array.from(document.querySelectorAll('table'));
+                    for (const t of tbls) {
+                        if ($.fn.DataTable.isDataTable(t)) {
+                            const info = $(t).DataTable().page.info();
+                            if (info) {
+                                total = info.recordsDisplay;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (e) {}
+
+            const infoEl = document.querySelector('.dataTables_info, #table_info, [id*="_info"]');
+            if (infoEl) infoText = (infoEl.innerText || '').trim();
+
+            const procEl = document.querySelector('.dataTables_processing, #table_processing, [id*="_processing"]');
+            const isProcessing = !!(procEl && window.getComputedStyle(procEl).display !== 'none' && procEl.offsetParent !== null);
+
+            const emptyEl = document.querySelector('.dataTables_empty');
+            const emptyText = emptyEl ? (emptyEl.innerText || '').trim().toLowerCase() : '';
+            const emptyLoading = emptyText.includes('loading') || emptyText.includes('memuat') || emptyText.includes('processing') || emptyText.includes('...');
+
+            const actionLinks = Array.from(document.querySelectorAll('table tbody tr a, table tbody tr button'))
+                .filter(el => {
+                    const href = (el.getAttribute('href') || '').toLowerCase();
+                    const txt = (el.innerText || '').trim().toLowerCase();
+                    return href.includes('cetak_checklist') || href.includes('pdf') || txt.includes('lihat rincian') || txt.includes('cetak');
+                });
+
+            if (isProcessing || emptyLoading) {
+                return { status: 'loading', total: total || 0, info: infoText };
+            }
+            if (actionLinks.length > 0) {
+                return { status: 'ready', total: total || actionLinks.length, info: infoText };
+            }
+            if (emptyEl && !emptyLoading && (total === 0 || infoText.includes('0 ') || emptyText.length > 0)) {
+                return { status: 'empty', total: 0, info: infoText };
+            }
+            if (total === 0 && infoText) {
+                return { status: 'empty', total: 0, info: infoText };
+            }
+            return { status: 'loading', total: total || 0, info: infoText };
+        }""") or {"status": "loading", "total": 0, "info": ""}
+
+        status = st.get("status")
+        if status == "ready":
+            return st
+        if status == "empty" and (sec >= 2 or st.get("info")):
+            return st
+        if sec >= timeout_sec - 1:
+            return st
+    return {"status": "timeout", "total": 0, "info": ""}
+
+
+def _resolve_pdf_url_from_detail_page(context, detail_url, fid):
+    """Fallback jika endpoint export PDF langsung gagal: ambil link tombol Cetak dari halaman /cetak_checklist/report/{id}/false."""
+    if not detail_url:
+        return None
+    try:
+        dresp = context.request.get(detail_url, timeout=25000)
+        if dresp.status == 200:
+            html = dresp.text()
+            m = re.search(rf'href=["\']([^"\']*exports/pdf/{fid}[^"\']*)["\']', html, re.IGNORECASE)
+            if m:
+                found = m.group(1)
+                if found.startswith("/"):
+                    return f"https://p3-ste.kai.id{found}"
+                return found
+    except Exception:
+        pass
+    return None
+
+
+def _save_pdf_bytes_with_correction(body, target_folder, raw_fn, table_date, fid, checkpoint_data, checkpoint_file, session_filenames):
+    """Simpan buffer PDF ke disk setelah koreksi tanggal dari tabel & buat nama file unik + update checkpoint."""
+    corrected_fn, orig_date = _correct_filename_date(raw_fn, table_date)
+    if orig_date:
+        _add_p3ste_log("warn", f"⚠️ Koreksi Tanggal [{orig_date} → {table_date}]: Nama file server '{raw_fn}' disesuaikan dengan tanggal tabel web.")
+        raw_fn = corrected_fn
+
+    final_fn, out_path = _get_unique_p3ste_filename(target_folder, raw_fn, session_filenames)
+    with open(out_path, "wb") as pf:
+        pf.write(body)
+
+    file_size = len(body)
+    session_filenames.add(final_fn)
+    checkpoint_data[str(fid)] = {"name": final_fn, "size": file_size}
+    try:
+        with open(checkpoint_file, "w", encoding="utf-8") as cf:
+            json.dump(checkpoint_data, cf, indent=2)
+    except Exception:
+        pass
+
+    _p3ste_state["downloaded_files"].append({
+        "name": final_fn,
+        "path": out_path,
+        "size": file_size
+    })
+    return final_fn, file_size
+
+
+def _download_p3ste_pdf_item(context, target_folder, item, checkpoint_data, checkpoint_file, session_filenames, max_attempts=4, log_prefix="", is_retry_pass=False):
+    """Unduh satu item PDF checklist dengan retry otomatis dan fallback URL detail."""
+    fid = item["id"]
+    pdf_url = item["url"]
+    detail_url = item.get("detail_url")
+    default_fn = item.get("default_fn") or f"checklist_{fid}.pdf"
+    table_date = item.get("date")
+    fn = default_fn
+    last_err = ""
+    fallback_tried = False
+
+    for attempt in range(max_attempts):
+        if _p3ste_state["cancelled"]:
+            return False, "Dibatalkan"
+        try:
+            fresp = context.request.get(pdf_url, timeout=35000)
+            if fresp.status == 200:
+                body = fresp.body()
+                if body[:4] == b"%PDF":
+                    cd = fresp.headers.get("content-disposition", "")
+                    if "filename=" in cd:
+                        cd_fn = re.search(r'filename=["\']?([^"\';]+)["\']?', cd)
+                        if cd_fn:
+                            fn = cd_fn.group(1).strip().strip('"').strip("'")
+
+                    saved_fn, file_size = _save_pdf_bytes_with_correction(
+                        body, target_folder, fn, table_date, fid,
+                        checkpoint_data, checkpoint_file, session_filenames
+                    )
+                    if is_retry_pass:
+                        _add_p3ste_log("success", f"✓ Berhasil diunduh pada putaran ulang: {saved_fn} ({file_size // 1024} KB)")
+                    else:
+                        retry_tag = f" (setelah coba ulang ke-{attempt})" if attempt > 0 else ""
+                        _add_p3ste_log("success", f"✓ {log_prefix}Tersimpan: {saved_fn} ({file_size // 1024} KB){retry_tag}")
+                    return True, ""
+                else:
+                    last_err = "Bukan file PDF valid"
+                    if not fallback_tried:
+                        fallback_tried = True
+                        alt_url = _resolve_pdf_url_from_detail_page(context, detail_url, fid) or pdf_url.split("?")[0]
+                        if alt_url and alt_url != pdf_url:
+                            pdf_url = alt_url
+                            continue
+            elif fresp.status in (404, 400) and not fallback_tried:
+                fallback_tried = True
+                alt_url = _resolve_pdf_url_from_detail_page(context, detail_url, fid) or (pdf_url.split("?")[0] if "?" in pdf_url else None)
+                if alt_url and alt_url != pdf_url:
+                    pdf_url = alt_url
+                    last_err = f"HTTP {fresp.status}"
+                    continue
+                last_err = f"HTTP {fresp.status}"
+                break
+            elif fresp.status in (500, 502, 503, 504, 429, 408):
+                last_err = f"HTTP {fresp.status}"
+                if attempt < max_attempts - 1:
+                    sleep_sec = 2.0 if is_retry_pass else 2.0 * (attempt + 1)
+                    if not is_retry_pass:
+                        _add_p3ste_log("warn", f"⚠️ {log_prefix}{fn}: {last_err} - Server sibuk, mencoba ulang ({attempt + 1}/{max_attempts}) dalam {sleep_sec:.0f} detik...")
+                    time.sleep(sleep_sec)
+                    continue
+            else:
+                last_err = f"HTTP {fresp.status}"
+                if is_retry_pass and attempt < max_attempts - 1:
+                    time.sleep(2.0)
+                    continue
+                break
+        except Exception as fe:
+            last_err = str(fe)
+            if "has been closed" in last_err.lower() or "target closed" in last_err.lower():
+                raise Exception("Jendela browser Edge ditutup paksa saat pengunduhan berlangsung. Silakan klik Mulai Download kembali untuk melanjutkan dari checkpoint.")
+            if attempt < max_attempts - 1:
+                sleep_sec = 2.0 if is_retry_pass else 2.0 * (attempt + 1)
+                if not is_retry_pass:
+                    _add_p3ste_log("warn", f"⚠️ {log_prefix}{fn}: Error koneksi ({last_err}) - Mencoba ulang ({attempt + 1}/{max_attempts}) dalam {sleep_sec:.0f} detik...")
+                time.sleep(sleep_sec)
+                continue
+
+    return False, last_err
+
+
+def _advance_p3ste_next_page(page, old_first_id, page_index, total_downloaded):
+    """Pindah ke halaman DataTables berikutnya dan tunggu AJAX selesai memuat data baru."""
+    max_next_retries = 3
+    page_changed = False
+
+    for next_attempt in range(max_next_retries):
+        if _p3ste_state["cancelled"]:
+            break
+
+        can_go_next = _safe_evaluate(page, """() => {
+            try {
+                if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable) {
+                    const tables = Array.from(document.querySelectorAll('table'));
+                    for (const tbl of tables) {
+                        if ($.fn.DataTable.isDataTable(tbl)) {
+                            const dt = $(tbl).DataTable();
+                            const info = dt.page.info();
+                            if (info && info.pages > 1 && info.page < info.pages - 1) {
+                                dt.page('next').draw('page');
+                                return { hasNext: true, page: info.page + 2, totalPages: info.pages, method: 'api' };
+                            }
+                        }
+                    }
+                }
+            } catch (e) {}
+            const nextLi = document.querySelector('li#table_next, #table_next, li.paginate_button.next, #tblData_next');
+            if (nextLi && !nextLi.classList.contains('disabled') && nextLi.getAttribute('aria-disabled') !== 'true') {
+                const a = nextLi.querySelector('a') || nextLi;
+                a.click();
+                return { hasNext: true, method: 'dom' };
+            }
+            return { hasNext: false };
+        }""") or {}
+
+        if not can_go_next.get("hasNext"):
+            if _p3ste_state["total"] > 0 and total_downloaded < _p3ste_state["total"] and next_attempt < max_next_retries - 1:
+                _add_p3ste_log("warn", f"⏳ Memverifikasi status pagination ({total_downloaded}/{_p3ste_state['total']} data)...")
+                page.wait_for_timeout(2500)
+                continue
+            _add_p3ste_log("info", "Mencapai halaman terakhir.")
+            break
+
+        if next_attempt == 0:
+            _add_p3ste_log("info", f"Mengeklik 'Selanjutnya' ke Halaman {page_index + 1}...")
+        else:
+            _add_p3ste_log("warn", f"Mencoba ulang klik 'Selanjutnya' ke Halaman {page_index + 1} (Percobaan {next_attempt + 1}/{max_next_retries})...")
+
+        for wait_sec in range(90):
+            if _p3ste_state["cancelled"]:
+                break
+            page.wait_for_timeout(1000)
+
+            if wait_sec == 45:
+                _safe_evaluate(page, """() => {
+                    try {
+                        if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable) {
+                            const tables = Array.from(document.querySelectorAll('table'));
+                            for (const tbl of tables) {
+                                if ($.fn.DataTable.isDataTable(tbl)) {
+                                    $(tbl).DataTable().page('next').draw('page');
+                                    return;
+                                }
+                            }
+                        }
+                    } catch (e) {}
+                    const nextLi = document.querySelector('li#table_next, #table_next, li.paginate_button.next, #tblData_next');
+                    if (nextLi && !nextLi.classList.contains('disabled')) {
+                        const a = nextLi.querySelector('a') || nextLi;
+                        a.click();
+                    }
+                }""")
+
+            cur_first_id = _safe_evaluate(page, r"""() => {
+                const tr = document.querySelector('#table tbody tr, table tbody tr');
+                if (!tr || tr.querySelector('.dataTables_empty')) return null;
+                const m = (tr.innerHTML || '').match(/exports\/pdf\/(\d{4,8})|cetak_checklist\/report\/(\d{4,8})|['"](\d{5,8})['"]/i);
+                if (m) return m[1] || m[2] || m[3];
+                const txtMatch = (tr.innerText || '').match(/\b(\d{6,8})\b/);
+                return txtMatch ? txtMatch[1] : null;
+            }""")
+
+            if cur_first_id and cur_first_id != old_first_id:
+                page_changed = True
+                break
+
+        if page_changed:
+            break
+
+    return page_changed
+
+
+def _run_p3ste_failed_retry(context, target_folder, failed_queue, checkpoint_data, checkpoint_file, session_filenames):
+    """Putaran kedua: coba ulang file PDF yang sempat gagal pada putaran pertama."""
+    if not failed_queue or _p3ste_state["cancelled"]:
+        return
+
+    _add_p3ste_log("warn", f"🔄 Ditemukan {len(failed_queue)} file yang sempat gagal. Memulai putaran coba ulang otomatis...")
+    time.sleep(2.5)
+    still_failed = []
+    for idx, failed_item in enumerate(failed_queue, 1):
+        if _p3ste_state["cancelled"]:
+            break
+        ffid = failed_item["id"]
+        _add_p3ste_log("info", f"🔄 [Coba Ulang {idx}/{len(failed_queue)}] ID {ffid}...")
+        retry_ok, _ = _download_p3ste_pdf_item(
+            context, target_folder, failed_item, checkpoint_data, checkpoint_file,
+            session_filenames, max_attempts=3, is_retry_pass=True
+        )
+        if not retry_ok:
+            still_failed.append(failed_item)
+
+    if still_failed:
+        _add_p3ste_log("error", f"❌ {len(still_failed)} file tetap gagal diunduh setelah coba ulang: {', '.join(str(x['id']) for x in still_failed[:5])}")
+    else:
+        _add_p3ste_log("success", "🎉 Semua file yang sempat gagal berhasil diunduh 100% pada putaran ulang!")
+
+
+def _run_p3ste_asset_mode(
+    page, context, session, parsed_assets,
+    awal, akhir, type_val, type_name,
+    daop, resort, hasil,
+    target_folder, checkpoint_data, checkpoint_file,
+    downloaded_ids, session_filenames, failed_queue
+):
+    """Loop pemindaian /report_asset untuk daftar multi Nomor Aset dalam satu batch."""
+    total_processed = 0
+    total_assets = len(parsed_assets)
+
+    for asset_idx, asset_no in enumerate(parsed_assets, 1):
+        if _p3ste_state["cancelled"]:
+            _add_p3ste_log("warn", "Pengunduhan dibatalkan pengguna.")
+            break
+
+        asset_url = _build_p3ste_report_asset_url(
+            awal, akhir, type_val, asset_no,
+            daop=daop, resort=resort, hasil=hasil
+        )
+        _add_p3ste_log("info", f"━━━ [Aset {asset_idx}/{total_assets}] Memindai Nomor Aset: {asset_no} ━━━")
+
+        cur_page_url = ""
+        try:
+            cur_page_url = page.url or ""
+        except Exception:
+            cur_page_url = ""
+
+        if asset_idx > 1 or ("report_asset" not in cur_page_url):
+            page.goto(asset_url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1500)
+
+        table_state = _wait_report_asset_table_ready(page, timeout_sec=45)
+        if _p3ste_state["cancelled"] or table_state.get("status") == "cancelled":
+            break
+
+        if table_state.get("status") == "empty":
+            _add_p3ste_log("info", f"ℹ️ [{asset_no}] Tidak ada data checklist yang cocok untuk filter ini. Lanjut ke aset berikutnya.")
+            continue
+
+        asset_total = int(table_state.get("total") or 0)
+        if asset_total > 0:
+            _p3ste_state["total"] += asset_total
+            info_txt = table_state.get("info")
+            if info_txt:
+                _add_p3ste_log("info", f"Status Tabel [{asset_no}]: {info_txt}")
+
+        try:
+            cur_cookies = context.cookies(["https://p3-ste.kai.id"])
+            for cc in cur_cookies:
+                session.cookies.set(cc["name"], cc["value"], domain="p3-ste.kai.id")
+        except Exception:
+            pass
+
+        page_index = 1
+        while True:
+            if _p3ste_state["cancelled"]:
+                break
+
+            pdf_items = _extract_p3ste_table_items(page, type_name)
+            if not pdf_items:
+                page.wait_for_timeout(2000)
+                pdf_items = _extract_p3ste_table_items(page, type_name)
+
+            if not pdf_items:
+                _add_p3ste_log("info", f"ℹ️ [{asset_no}] Halaman {page_index}: Tidak ada item checklist yang ditemukan.")
+                break
+
+            dup_count = sum(1 for item in pdf_items if item["id"] in downloaded_ids)
+            new_page_pdfs = [item for item in pdf_items if item["id"] not in downloaded_ids]
+            if dup_count > 0:
+                _p3ste_state["total"] = max(total_processed, _p3ste_state["total"] - dup_count)
+                _add_p3ste_log("info", f"[{asset_no}] Hal. {page_index}: {len(new_page_pdfs)} checklist baru ({dup_count} sudah diunduh di aset sebelumnya pada batch ini, dilewati).")
+            else:
+                _add_p3ste_log("info", f"[{asset_no}] Hal. {page_index}: Ditemukan {len(new_page_pdfs)} checklist.")
+
+            for item in new_page_pdfs:
+                if _p3ste_state["cancelled"]:
+                    break
+                fid = item["id"]
+                downloaded_ids.add(fid)
+                total_processed += 1
+                _p3ste_state["current"] = total_processed
+
+                # 1. Cek checkpoint di folder tujuan
+                cached_entry = checkpoint_data.get(str(fid))
+                if cached_entry:
+                    c_name = cached_entry.get("name", f"checklist_{fid}.pdf")
+                    c_path = os.path.join(target_folder, c_name)
+                    if c_name not in session_filenames and os.path.isfile(c_path) and os.path.getsize(c_path) > 1000:
+                        fsize = os.path.getsize(c_path)
+                        _p3ste_state["downloaded_files"].append({
+                            "name": c_name,
+                            "path": c_path,
+                            "size": fsize
+                        })
+                        session_filenames.add(c_name)
+                        _add_p3ste_log("info", f"⏭️ [{asset_no}] {c_name} (Sudah ada, dilewati)")
+                        continue
+
+                # 2. Cek file fisik default checklist_{fid}.pdf
+                default_fn = f"checklist_{fid}.pdf"
+                default_path = os.path.join(target_folder, default_fn)
+                if default_fn not in session_filenames and os.path.isfile(default_path) and os.path.getsize(default_path) > 1000:
+                    fsize = os.path.getsize(default_path)
+                    checkpoint_data[str(fid)] = {"name": default_fn, "size": fsize}
+                    _p3ste_state["downloaded_files"].append({
+                        "name": default_fn,
+                        "path": default_path,
+                        "size": fsize
+                    })
+                    session_filenames.add(default_fn)
+                    _add_p3ste_log("info", f"⏭️ [{asset_no}] {default_fn} (Sudah ada di folder, dilewati)")
+                    continue
+
+                ok, last_err = _download_p3ste_pdf_item(
+                    context, target_folder, item, checkpoint_data, checkpoint_file,
+                    session_filenames, max_attempts=4, log_prefix=f"[{asset_no}] "
+                )
+                if not ok and not _p3ste_state["cancelled"]:
+                    _add_p3ste_log("error", f"✗ [{asset_no}] ID {fid}: {last_err} (Gagal putaran pertama, akan dicoba ulang di akhir)")
+                    failed_queue.append({
+                        "id": fid,
+                        "url": item["url"],
+                        "detail_url": item.get("detail_url"),
+                        "default_fn": default_fn,
+                        "last_err": last_err,
+                        "date": item.get("date")
+                    })
+
+                if total_processed > _p3ste_state["total"]:
+                    _p3ste_state["total"] = total_processed
+
+            old_first_id = pdf_items[0]["id"] if pdf_items else None
+            page_changed = _advance_p3ste_next_page(page, old_first_id, page_index, total_processed)
+            if not page_changed:
+                break
+
+            page_index += 1
+            page.wait_for_timeout(1200)
+
+    return total_processed
+
+
+def _run_p3ste_download_task(
+    nipp, password, awal, akhir, type_val, target_folder,
+    start_id=None, end_id=None, show_browser=False, curl_cmd="",
+    mode="rekap", asset_numbers=None, hasil="baik", resort="170", daop="1"
+):
     global _p3ste_state
     _p3ste_state["running"] = True
     _p3ste_state["cancelled"] = False
@@ -574,10 +1216,15 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
         session.headers.update(headers)
         session.cookies.update(cookies)
 
-        type_name = "pemeriksaan" if str(type_val) == "1" else "perawatan"
+        type_name = _resolve_p3ste_type_slug(type_val)
+        is_asset_mode = (str(mode or "rekap").strip().lower() == "report_asset")
+        parsed_assets = _parse_p3ste_asset_numbers(asset_numbers) if is_asset_mode else []
 
-        # Check for Direct ID Range Download Mode
-        if start_id and end_id:
+        if is_asset_mode and not parsed_assets:
+            raise Exception("Daftar Nomor Aset tidak boleh kosong pada mode Download per Aset.")
+
+        # Check for Direct ID Range Download Mode (khusus mode rekap)
+        if not is_asset_mode and start_id and end_id:
             try:
                 s_id = int(str(start_id).strip())
                 e_id = int(str(end_id).strip())
@@ -720,9 +1367,16 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
 
             page = context.pages[0] if len(context.pages) > 0 else context.new_page()
 
-            # 1. Buka halaman rekap_checklist dengan query filter langsung
-            query_url = f"https://p3-ste.kai.id/rekap_checklist?awal={awal.replace('/', '%2F')}&akhir={akhir.replace('/', '%2F')}&type={type_val}&asset=0&category=0&daop=1&resort=170&nipp=0&noasset=0&hasil=baik&status=done"
-            _add_p3ste_log("info", f"Membuka portal P3-STE ({type_name.upper()})...")
+            # 1. Buka halaman portal P3-STE sesuai mode
+            if is_asset_mode:
+                query_url = _build_p3ste_report_asset_url(
+                    awal, akhir, type_val, parsed_assets[0],
+                    daop=daop, resort=resort, hasil=hasil
+                )
+                _add_p3ste_log("info", f"Membuka portal P3-STE Mode Per Aset ({len(parsed_assets)} aset, {type_name.upper()})...")
+            else:
+                query_url = f"https://p3-ste.kai.id/rekap_checklist?awal={awal.replace('/', '%2F')}&akhir={akhir.replace('/', '%2F')}&type={type_val}&asset=0&category=0&daop=1&resort=170&nipp=0&noasset=0&hasil=baik&status=done"
+                _add_p3ste_log("info", f"Membuka portal P3-STE ({type_name.upper()})...")
             
             page.goto(query_url, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(2500)
@@ -747,7 +1401,7 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                 _add_p3ste_log("info", f"🔐 Sesi belum aktif. Melakukan login otomatis untuk NIPP: {nipp}...")
                 
                 # Pastikan berada di URL login jika sempat terlempar
-                if "rekap_checklist" not in page.url and "/auth" not in page.url and page.url.rstrip("/") != "https://p3-ste.kai.id":
+                if "rekap_checklist" not in page.url and "report_asset" not in page.url and "/auth" not in page.url and page.url.rstrip("/") != "https://p3-ste.kai.id":
                     page.goto("https://p3-ste.kai.id/", wait_until="domcontentloaded", timeout=30000)
                     page.wait_for_timeout(1500)
 
@@ -856,6 +1510,51 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                     session.cookies.set(lc["name"], lc["value"], domain="p3-ste.kai.id")
             except Exception as se_err:
                 _add_p3ste_log("warn", f"Sinkronisasi cookie session notice: {se_err}")
+
+            if is_asset_mode:
+                os.makedirs(target_folder, exist_ok=True)
+                checkpoint_file = os.path.join(target_folder, ".p3ste_checkpoint.json")
+                checkpoint_data = {}
+                if os.path.isfile(checkpoint_file):
+                    try:
+                        with open(checkpoint_file, "r", encoding="utf-8") as cf:
+                            checkpoint_data = json.load(cf)
+                    except Exception:
+                        checkpoint_data = {}
+
+                if checkpoint_data:
+                    _add_p3ste_log("info", f"📌 Ditemukan checkpoint {len(checkpoint_data)} file. Fitur Resume otomatis aktif.")
+
+                downloaded_ids = set()
+                session_filenames = set()
+                failed_queue = []
+
+                _run_p3ste_asset_mode(
+                    page, context, session, parsed_assets,
+                    awal, akhir, type_val, type_name,
+                    daop, resort, hasil,
+                    target_folder, checkpoint_data, checkpoint_file,
+                    downloaded_ids, session_filenames, failed_queue
+                )
+
+                _run_p3ste_failed_retry(
+                    context, target_folder, failed_queue,
+                    checkpoint_data, checkpoint_file, session_filenames
+                )
+
+                if _p3ste_state["cancelled"]:
+                    _add_p3ste_log("warn", "🛑 Pengunduhan dihentikan oleh pengguna.")
+                else:
+                    success_count = len(_p3ste_state["downloaded_files"])
+                    _p3ste_state["total"] = success_count if _p3ste_state["total"] < success_count else _p3ste_state["total"]
+                    _add_p3ste_log("success", f"🎉 Selesai! Berhasil memproses {success_count} file PDF dari {len(parsed_assets)} Nomor Aset.")
+
+                try:
+                    context.close()
+                except Exception:
+                    pass
+                _current_playwright_context = None
+                return
 
             # 1. Terapkan nilai filter pada form dan klik tombol filter
             _add_p3ste_log("info", "Memasukkan filter tanggal & jenis laporan...")
@@ -1437,74 +2136,10 @@ def _run_p3ste_download_task(nipp, password, awal, akhir, type_val, target_folde
                 page.wait_for_timeout(1500)
 
             # Putaran Kedua: Coba ulang file yang sempat gagal pada putaran pertama
-            if failed_queue and not _p3ste_state["cancelled"]:
-                _add_p3ste_log("warn", f"🔄 Ditemukan {len(failed_queue)} file yang sempat gagal. Memulai putaran coba ulang otomatis...")
-                time.sleep(2.5)
-                still_failed = []
-                for idx, failed_item in enumerate(failed_queue, 1):
-                    if _p3ste_state["cancelled"]: break
-                    ffid = failed_item["id"]
-                    furl = failed_item["url"]
-                    ffn = failed_item["default_fn"]
-                    _add_p3ste_log("info", f"🔄 [Coba Ulang {idx}/{len(failed_queue)}] ID {ffid}...")
-
-                    retry_ok = False
-                    for r_att in range(3):
-                        if _p3ste_state["cancelled"]: break
-                        try:
-                            fresp = context.request.get(furl, timeout=35000)
-                            if fresp.status == 200:
-                                body = fresp.body()
-                                if body[:4] == b"%PDF":
-                                    cd = fresp.headers.get("content-disposition", "")
-                                    if "filename=" in cd:
-                                        cd_fn = re.search(r'filename=["\']?([^"\';]+)["\']?', cd)
-                                        if cd_fn:
-                                            ffn = cd_fn.group(1).strip().strip('"').strip("'")
-
-                                    # Koreksi tanggal filename jika berbeda dari kolom Tanggal tabel web
-                                    table_date = failed_item.get("date")
-                                    corrected_ffn, orig_date = _correct_filename_date(ffn, table_date)
-                                    if orig_date:
-                                        _add_p3ste_log("warn", f"⚠️ Koreksi Tanggal [{orig_date} → {table_date}]: Nama file server '{ffn}' disesuaikan dengan tanggal tabel web.")
-                                        ffn = corrected_ffn
-
-                                    ffn, out_path = _get_unique_p3ste_filename(target_folder, ffn, session_filenames)
-
-                                    with open(out_path, "wb") as pf:
-                                        pf.write(body)
-
-                                    file_size = len(body)
-                                    session_filenames.add(ffn)
-                                    checkpoint_data[str(ffid)] = {"name": ffn, "size": file_size}
-                                    try:
-                                        with open(checkpoint_file, "w", encoding="utf-8") as cf:
-                                            json.dump(checkpoint_data, cf, indent=2)
-                                    except Exception:
-                                        pass
-
-                                    _p3ste_state["downloaded_files"].append({
-                                        "name": ffn,
-                                        "path": out_path,
-                                        "size": file_size
-                                    })
-                                    _add_p3ste_log("success", f"✓ Berhasil diunduh pada putaran ulang: {ffn} ({file_size // 1024} KB)")
-                                    retry_ok = True
-                                    break
-                                else:
-                                    time.sleep(2.0)
-                            else:
-                                time.sleep(2.0)
-                        except Exception:
-                            time.sleep(2.0)
-
-                    if not retry_ok:
-                        still_failed.append(failed_item)
-
-                if still_failed:
-                    _add_p3ste_log("error", f"❌ {len(still_failed)} file tetap gagal diunduh setelah coba ulang: {', '.join(str(x['id']) for x in still_failed[:5])}")
-                else:
-                    _add_p3ste_log("success", "🎉 Semua file yang sempat gagal berhasil diunduh 100% pada putaran ulang!")
+            _run_p3ste_failed_retry(
+                context, target_folder, failed_queue,
+                checkpoint_data, checkpoint_file, session_filenames
+            )
 
             if _p3ste_state["cancelled"]:
                 _add_p3ste_log("warn", "🛑 Pengunduhan dihentikan oleh pengguna.")
@@ -2009,15 +2644,24 @@ def scan_deep_photo_subfolders(folder_path: str, target_dir: str = ""):
 
             tim = ""
             source_type = "export"
+            period_parts = []
             clean_parts = []
+            month_dir_re = re.compile(r"^\d{2}\.\s+(?:JANUARI|FEBRUARI|FEBUARI|MARET|APRIL|MEI|JUNI|JULI|AGUSTUS|SEPTEMBER|OKTOBER|NOVEMBER|DESEMBER)$", re.IGNORECASE)
+            year_dir_re = re.compile(r"^(?:19|20)\d{2}$")
+            seen_photo_root = False
             for p in parts:
                 if re.match(r"^tim[_\s]\d+$", p, re.IGNORECASE):
                     tim = p.replace("_", " ").title()
                     source_type = "timemark"
+                    seen_photo_root = True
                 elif p.lower() in ("04_photos_edited", "04_foto_edited", "04_time", "04_koordinat"):
                     source_type = "timemark"
+                    seen_photo_root = True
                 elif p.lower() in ("03_export_foto", "03_photos_export", "03_photos_cropped_temp"):
                     source_type = "export"
+                    seen_photo_root = True
+                elif not seen_photo_root and (month_dir_re.match(p) or year_dir_re.match(p)):
+                    period_parts.append(p)
                 else:
                     clean_parts.append(p)
 
@@ -2491,6 +3135,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             split_multi = data.get("splitMultiAssetRows", data.get("splitMultiAsset", False))
             inc_time = data.get("includeTime", True)
             custom_sched = data.get("customScheduleFile")
+            _invalidate_timemark_photos_cache()
             res = pipeline_runner.start_pipeline(
                 data.get("sourceDir"),
                 data.get("targetDir"),
@@ -2519,6 +3164,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sched_path = (data.get("schedulePath") or "").strip()
             include_time = data.get("includeTime", True)
             force = data.get("force", True)
+            detector = (data.get("detector") or "auto").strip()
 
             if not sched_path or not os.path.isfile(sched_path):
                 self._json({"ok": False, "error": f"Berkas schedule.json tidak ditemukan: {sched_path}"}, 400)
@@ -2547,11 +3193,12 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 temp_dir=Path(temp_dir),
                 edited_dir=Path(output_dir),
                 force=force,
-                include_time=include_time
+                include_time=include_time,
+                detector=detector
             )
 
             # Invalidate cache foto agar data segar langsung tampil
-            _TIMEMARK_PHOTOS_CACHE.clear()
+            _invalidate_timemark_photos_cache()
 
             if res_code == 0:
                 self._json({
@@ -2574,11 +3221,13 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
         try:
             qs = urllib.parse.parse_qs(parsed.query)
             folder = qs.get("folder", [""])[0]
+            target_dir_param = qs.get("targetDir", [""])[0].strip()
             deep_mode = qs.get("deep", ["0"])[0] in ("1", "true")
             force_refresh = qs.get("refresh", ["0"])[0] in ("1", "true")
             schedule_param = qs.get("schedule", [""])[0].strip()
 
-            cache_key = f"{folder}::{deep_mode}::{schedule_param}"
+            pipe_rev = pipeline_runner.state.get("revision", 0)
+            cache_key = f"{folder}::{target_dir_param}::{deep_mode}::{schedule_param}::{pipe_rev}"
             if not force_refresh and _TIMEMARK_PHOTOS_CACHE.get("key") == cache_key:
                 if (time.time() - _TIMEMARK_PHOTOS_CACHE.get("time", 0)) < 120:
                     self._json(_TIMEMARK_PHOTOS_CACHE["data"])
@@ -2618,9 +3267,12 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             export_root, dir_raw, dir_edited = _resolve_photo_directories(folder)
 
             # Indeks berkas target, tanggal, dan jam per foto dari schedule.json
+            cat_target_files_map = {}
             target_files_map = {}
             target_files_list = []
+            cat_schedule_date_map = {}
             schedule_date_map = {}
+            cat_schedule_photos_map = {}
             schedule_photos_map = {}
             seen_target_files = set()
             loaded_schedule_path = None
@@ -2643,60 +3295,24 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     pass
                 return str(ts_str).strip()
 
-            sched_candidates = []
-            if schedule_param and os.path.isfile(schedule_param):
-                sched_candidates.append(os.path.abspath(schedule_param))
-
-            # Auto-discovery cepat: hanya cek direktori saat ini dan 1 level subfolder
-            def _gather_sched_candidates(bases):
-                found = []
-                for b in bases:
-                    if not b or not os.path.isdir(b):
-                        continue
-                    b_abs = os.path.abspath(b)
-                    d_f = os.path.join(b_abs, "schedule.json")
-                    if os.path.isfile(d_f) and d_f not in found:
-                        found.append(d_f)
-                    try:
-                        for entry in os.scandir(b_abs):
-                            if entry.is_dir() and not entry.name.startswith((".", "$", "backups", "_temp")):
-                                sf = os.path.join(entry.path, "schedule.json")
-                                if os.path.isfile(sf) and sf not in found:
-                                    found.append(sf)
-                    except Exception:
-                        pass
-                return found
-
-            for cand_p in _gather_sched_candidates([folder, export_root, dir_raw, dir_edited]):
-                if cand_p not in sched_candidates:
-                    sched_candidates.append(cand_p)
-
-            for cand in [
-                os.path.join(BASE_DIR, "schedule.json"),
-                os.path.join(os.getcwd(), "schedule.json"),
-            ]:
-                if cand and os.path.isfile(cand):
-                    cand_abs = os.path.abspath(cand)
-                    if cand_abs not in sched_candidates:
-                        sched_candidates.append(cand_abs)
-
             best_schedule_data = None
-            best_schedule_path = None
-            for sc_path in sched_candidates:
-                if os.path.isfile(sc_path):
-                    try:
-                        with open(sc_path, "r", encoding="utf-8") as sf:
-                            sdata = json.load(sf)
-                        s_list = sdata.get("schedules", []) if isinstance(sdata, dict) else (sdata if isinstance(sdata, list) else [])
-                        if not isinstance(sdata, dict):
-                            sdata = {"schedules": s_list}
-                        if best_schedule_data is None or len(s_list) > len(best_schedule_data.get("schedules", [])):
-                            best_schedule_data = sdata
-                            best_schedule_path = sc_path
-                            if schedule_param and os.path.abspath(schedule_param) == sc_path and len(s_list) > 0:
-                                break
-                    except Exception as e:
-                        _log(f"Error checking schedule candidate {sc_path}: {e}")
+            best_schedule_path = _resolve_target_schedule_file(
+                target_dir=target_dir_param,
+                export_root=export_root,
+                schedule_param=schedule_param,
+                folder=folder,
+            )
+            if best_schedule_path and os.path.isfile(best_schedule_path):
+                try:
+                    with open(best_schedule_path, "r", encoding="utf-8") as sf:
+                        sdata = json.load(sf)
+                    s_list = sdata.get("schedules", []) if isinstance(sdata, dict) else (sdata if isinstance(sdata, list) else [])
+                    if not isinstance(sdata, dict):
+                        sdata = {"schedules": s_list}
+                    if s_list:
+                        best_schedule_data = sdata
+                except Exception as e:
+                    _log(f"Error checking schedule candidate {best_schedule_path}: {e}")
 
             if best_schedule_data and best_schedule_path:
                 loaded_schedule_path = best_schedule_path
@@ -2740,48 +3356,89 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             if m_otb and m_otb.group(1) not in keys_to_index:
                                 keys_to_index.append(m_otb.group(1))
 
+                    item_cat_u = (item.get("category") or "").strip().upper()
+                    allow_bare_fallback = item_cat_u in ("", "UNKNOWN", "PTLS")
                     for ident_raw in keys_to_index:
                         norm_id = " ".join(re.sub(r'_\d{2}-\d{2}$', '', ident_raw.strip().upper()).split())
                         raw_id = ident_raw.strip().upper()
                         for idx_k in set([norm_id, raw_id]):
-                            if fn:
-                                if idx_k not in target_files_map:
-                                    target_files_map[idx_k] = []
-                                if fn not in target_files_map[idx_k]:
-                                    target_files_map[idx_k].append(fn)
-                            if d_text:
-                                if idx_k not in schedule_date_map or (":" not in schedule_date_map[idx_k] and ":" in d_text):
-                                    schedule_date_map[idx_k] = d_text
-                            if item_photo_timemarks:
-                                if idx_k not in schedule_photos_map:
+                            if item_cat_u:
+                                cat_k = (item_cat_u, idx_k)
+                                if fn:
+                                    cat_target_files_map.setdefault(cat_k, [])
+                                    if fn not in cat_target_files_map[cat_k]:
+                                        cat_target_files_map[cat_k].append(fn)
+                                if d_text:
+                                    if cat_k not in cat_schedule_date_map or (":" not in cat_schedule_date_map[cat_k] and ":" in d_text):
+                                        cat_schedule_date_map[cat_k] = d_text
+                                if item_photo_timemarks and cat_k not in cat_schedule_photos_map:
+                                    cat_schedule_photos_map[cat_k] = item_photo_timemarks
+                            if allow_bare_fallback:
+                                if fn:
+                                    target_files_map.setdefault(idx_k, [])
+                                    if fn not in target_files_map[idx_k]:
+                                        target_files_map[idx_k].append(fn)
+                                if d_text:
+                                    if idx_k not in schedule_date_map or (":" not in schedule_date_map[idx_k] and ":" in d_text):
+                                        schedule_date_map[idx_k] = d_text
+                                if item_photo_timemarks and idx_k not in schedule_photos_map:
                                     schedule_photos_map[idx_k] = item_photo_timemarks
 
-            # Indeks berkas sumber dari pdf_photo_export_log.csv
+            # Indeks berkas sumber dari pdf_photo_export_log.csv (khusus scope folder aktif)
+            cat_source_files_map = {}
             source_files_map = {}
             source_files_list = []
             seen_source_files = set()
-            csv_candidates = [
+            scope_roots = [
+                os.path.normcase(os.path.abspath(p))
+                for p in (dir_raw, export_root, folder)
+                if p and os.path.isdir(p)
+            ]
+            local_csvs = [
                 os.path.join(folder, "logs", "pdf_photo_export_log.csv"),
                 os.path.join(export_root, "logs", "pdf_photo_export_log.csv"),
-                os.path.join(BASE_DIR, "logs", "pdf_photo_export_log.csv"),
             ]
-            for c_path in csv_candidates:
+            global_csv = os.path.join(BASE_DIR, "logs", "pdf_photo_export_log.csv")
+            csv_candidates = [(p, False) for p in local_csvs] + [(global_csv, True)]
+            for c_path, require_scope in csv_candidates:
                 if os.path.isfile(c_path):
                     try:
                         import csv
+                        matched_rows = 0
                         with open(c_path, "r", encoding="utf-8", errors="ignore") as cf:
                             reader = csv.DictReader(cf)
                             for row in reader:
-                                p_pdf = row.get("pdf")
-                                p_name = row.get("asset_name")
-                                if p_pdf and p_name:
-                                    if p_pdf not in seen_source_files:
-                                        seen_source_files.add(p_pdf)
-                                        source_files_list.append(p_pdf)
-                                    norm_p = " ".join(p_name.strip().upper().split())
-                                    if norm_p not in source_files_map:
-                                        source_files_map[norm_p] = p_pdf
-                        break
+                                p_pdf = (row.get("pdf") or "").strip()
+                                p_name = (row.get("asset_name") or "").strip()
+                                p_out = (row.get("output_file") or "").strip()
+                                if not p_pdf:
+                                    continue
+                                if require_scope:
+                                    if not p_out:
+                                        continue
+                                    norm_out = os.path.normcase(os.path.abspath(p_out))
+                                    if not any(norm_out.startswith(sr + os.sep) or norm_out == sr for sr in scope_roots):
+                                        continue
+
+                                matched_rows += 1
+                                if p_pdf not in seen_source_files:
+                                    seen_source_files.add(p_pdf)
+                                    source_files_list.append(p_pdf)
+
+                                out_norm = p_out.replace("\\", "/")
+                                m_seg = re.search(r"/(?:03_export_foto|03_photos_export)/([^/]+)/([^/]+)/([^/]+)/[^/]+$", out_norm, re.IGNORECASE)
+                                if m_seg:
+                                    o_cat = " ".join(m_seg.group(2).strip().upper().split())
+                                    o_det = " ".join(re.sub(r'_\d{2}-\d{2}$', '', m_seg.group(3).strip().upper()).split())
+                                    if o_cat and o_det:
+                                        cat_source_files_map[(o_cat, o_det)] = p_pdf
+                                    if o_det:
+                                        source_files_map[o_det] = p_pdf
+                                if p_name:
+                                    norm_p = " ".join(re.sub(r'_\d{2}-\d{2}$', '', p_name.strip().upper()).split())
+                                    source_files_map[norm_p] = p_pdf
+                        if matched_rows > 0:
+                            break
                     except Exception as e:
                         _log(f"Error reading csv candidate {c_path}: {e}")
 
@@ -2927,12 +3584,31 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 norm_detail = " ".join(re.sub(r'_\d{2}-\d{2}$', '', detail.strip().upper()).split())
                 raw_detail = detail.strip().upper()
 
-                matching_targets = target_files_map.get(norm_detail) or target_files_map.get(raw_detail) or []
-                matching_source = source_files_map.get(norm_detail) or source_files_map.get(raw_detail) or ""
+                cat_u_lookup = " ".join(category.strip().upper().split())
+                matching_targets = (
+                    cat_target_files_map.get((cat_u_lookup, norm_detail))
+                    or cat_target_files_map.get((cat_u_lookup, raw_detail))
+                    or target_files_map.get(norm_detail)
+                    or target_files_map.get(raw_detail)
+                    or []
+                )
+                matching_source = (
+                    cat_source_files_map.get((cat_u_lookup, norm_detail))
+                    or cat_source_files_map.get((cat_u_lookup, raw_detail))
+                    or source_files_map.get(norm_detail)
+                    or source_files_map.get(raw_detail)
+                    or ""
+                )
 
                 sched_photo_map = {}
                 sched_asset_date = ""
-                for k_c in [norm_detail, raw_detail, f"{station.strip().upper()} {norm_detail}", f"{category.strip().upper()} {norm_detail}"]:
+                key_cands = [norm_detail, raw_detail, f"{station.strip().upper()} {norm_detail}", f"{category.strip().upper()} {norm_detail}"]
+                for k_c in key_cands:
+                    if not sched_photo_map and (cat_u_lookup, k_c) in cat_schedule_photos_map:
+                        sched_photo_map = cat_schedule_photos_map[(cat_u_lookup, k_c)]
+                    if not sched_asset_date and (cat_u_lookup, k_c) in cat_schedule_date_map:
+                        sched_asset_date = cat_schedule_date_map[(cat_u_lookup, k_c)]
+                for k_c in key_cands:
                     if not sched_photo_map and k_c in schedule_photos_map:
                         sched_photo_map = schedule_photos_map[k_c]
                     if not sched_asset_date and k_c in schedule_date_map:
@@ -3351,11 +4027,12 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             os.makedirs(photos_edited, exist_ok=True)
 
             custom_sched = data.get("schedulePath") or data.get("schedule") or ""
-            schedule_file = custom_sched if (custom_sched and os.path.isfile(custom_sched)) else os.path.join(export_root, "schedule.json")
-            if not os.path.isfile(schedule_file):
-                cand_sched = os.path.join(os.path.dirname(export_root), "schedule.json")
-                if os.path.isfile(cand_sched):
-                    schedule_file = cand_sched
+            target_dir_req = data.get("targetDir") or ""
+            schedule_file = _resolve_target_schedule_file(
+                target_dir=target_dir_req,
+                export_root=export_root,
+                schedule_param=custom_sched,
+            ) or ""
 
             # Cari tanggal dari date.txt jika custom_date tidak diberikan
             date_to_use = custom_date
@@ -3686,12 +4363,14 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             else:
                                 continue
 
-                        cmd = make_script_cmd("edit_timemark_ide1.py", [
+                        cmd_args = [
                             "--input", in_cand,
                             "--single-out", out_target,
                             "--detector", detector,
-                            "--no-time"
-                        ])
+                        ]
+                        if data.get("includeTime") is False:
+                            cmd_args.append("--no-time")
+                        cmd = make_script_cmd("edit_timemark_ide1.py", cmd_args)
                         if date_text:
                             cmd.extend(["--date", date_text])
                         if y_pos is not None and str(y_pos) != "":
@@ -4499,9 +5178,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         "--input", in_photo,
                         "--single-out", out_photo,
                         "--date", date_text,
-                        "--no-time",
                         "--detector", detector
                     ]
+                    if data.get("includeTime") is False:
+                        cmd_args.append("--no-time")
 
                     photo_x = None
                     photo_y = None
@@ -4676,17 +5356,25 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 ident = parts[-2] if len(parts) >= 2 and parts[-1].lower().endswith(".jpg") else parts[-1]
                 norm_ident = " ".join(re.sub(r'_\d{2}-\d{2}$', '', ident.strip().upper()).split())
 
-                sched_path = os.path.join(export_root, "schedule.json")
-                if os.path.isfile(sched_path):
+                norm_cat = parts[-3].strip().upper() if len(parts) >= 3 and parts[-1].lower().endswith(".jpg") else (parts[-2].strip().upper() if len(parts) >= 2 and not parts[-1].lower().endswith(".jpg") else "")
+                sched_path = _resolve_target_schedule_file(target_dir=target_dir, export_root=export_root)
+                if sched_path and os.path.isfile(sched_path):
                     try:
                         with open(sched_path, "r", encoding="utf-8") as sf:
                             sched = json.load(sf)
+                        fallback_pdf = None
                         for item in sched.get("schedules", []):
                             i_id = " ".join(re.sub(r'_\d{2}-\d{2}$', '', (item.get("identifier") or "").strip().upper()).split())
                             b_id = " ".join(re.sub(r'_\d{2}-\d{2}$', '', (item.get("base_identifier") or "").strip().upper()).split())
+                            i_cat = (item.get("category") or "").strip().upper()
                             if norm_ident == i_id or norm_ident == b_id:
-                                pdf_name = item.get("file")
-                                break
+                                if norm_cat and i_cat == norm_cat:
+                                    pdf_name = item.get("file")
+                                    break
+                                if i_cat in ("", "UNKNOWN", "PTLS") and not fallback_pdf:
+                                    fallback_pdf = item.get("file")
+                        if not pdf_name and fallback_pdf:
+                            pdf_name = fallback_pdf
                     except Exception:
                         pass
 
@@ -5207,6 +5895,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     if os.path.isfile(sch_cand):
                         with open(sch_cand, "r", encoding="utf-8") as f:
                             sched_data = json.load(f)
+                    else:
                         cand_p = os.path.join(BASE_DIR, "03_export_foto")
                         photos_dir = cand_p if os.path.isdir(cand_p) else os.path.join(BASE_DIR, "03_photos_export")
                         sched_data = build_schedule(
@@ -5221,9 +5910,6 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         temp_sch = os.path.join(str(out_dir), "temp_custom_schedule.json")
                         with open(temp_sch, "w", encoding="utf-8") as f:
                             json.dump(sched_data, f, indent=2, ensure_ascii=False)
-            elif export_dir and os.path.isfile(os.path.join(export_dir, "schedule.json")):
-                with open(os.path.join(export_dir, "schedule.json"), "r", encoding="utf-8") as f:
-                    sched_data = json.load(f)
 
             if not sched_data or not sched_data.get("schedules"):
                 err_msg = "Tidak ditemukan jadwal atau berkas PDF valid untuk diekspor ke Tablo."
@@ -5594,60 +6280,13 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
         try:
             qs = urllib.parse.parse_qs(parsed.query)
             folder = qs.get("folder", [""])[0].strip().strip('"\'')
-            export_dir = qs.get("exportDir", [""])[0].strip().strip('"\'')
             schedule_param = qs.get("schedule", [""])[0].strip().strip('"\'')
 
-            # 1. Kumpulkan seluruh lokasi kandidat schedule.json
-            search_candidates = []
-            if schedule_param:
-                if os.path.isfile(schedule_param):
-                    search_candidates.append(schedule_param)
-                elif os.path.isdir(schedule_param):
-                    c_in_dir = os.path.join(schedule_param, "schedule.json")
-                    if os.path.isfile(c_in_dir):
-                        search_candidates.append(c_in_dir)
-            if folder and os.path.exists(folder):
-                if os.path.isfile(folder) and folder.lower().endswith(".json"):
-                    search_candidates.append(folder)
-                elif os.path.isdir(folder):
-                    search_candidates.extend([
-                        os.path.join(folder, "schedule.json"),
-                        os.path.join(os.path.dirname(folder), "schedule.json"),
-                        os.path.join(os.path.dirname(os.path.dirname(folder)), "schedule.json")
-                    ])
-                    try:
-                        exp_r, _, _ = _resolve_photo_directories(folder)
-                        search_candidates.append(os.path.join(exp_r, "schedule.json"))
-                    except Exception:
-                        pass
-
-            if export_dir and os.path.isdir(export_dir):
-                search_candidates.extend([
-                    os.path.join(export_dir, "schedule.json"),
-                    os.path.join(os.path.dirname(export_dir), "schedule.json"),
-                    os.path.join(os.path.dirname(os.path.dirname(export_dir)), "schedule.json")
-                ])
-                try:
-                    exp_r2, _, _ = _resolve_photo_directories(export_dir)
-                    search_candidates.append(os.path.join(exp_r2, "schedule.json"))
-                except Exception:
-                    pass
-
-            default_docs = os.path.join(os.path.expanduser("~"), "Documents", "Sintelis")
-            search_candidates.extend([
-                os.path.join(default_docs, "schedule.json"),
-                os.path.join(BASE_DIR, "schedule.json"),
-                os.path.join(ENGINE_DIR, "schedule.json"),
-                os.path.join(BASE_DIR, "logs", "schedule.json"),
-                os.path.join(APP_DATA_DIR, "schedule.json"),
-                os.path.join(os.getcwd(), "schedule.json")
-            ])
-
-            sched_path = None
-            for cand in search_candidates:
-                if cand and os.path.isfile(cand):
-                    sched_path = cand
-                    break
+            # Cari schedule.json secara ketat dari pilihan eksplisit atau DIR PDF Target saja
+            sched_path = _resolve_target_schedule_file(
+                target_dir=folder,
+                schedule_param=schedule_param,
+            )
 
             if sched_path and os.path.isfile(sched_path):
                 with open(sched_path, "r", encoding="utf-8") as f:
@@ -5655,20 +6294,9 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 self._json({"ok": True, "source": sched_path, "data": s_data})
                 return
 
-            # 2. Fallback ke file_personnel_cache.json jika schedule.json belum ada
-            for cand in [
-                os.path.join(BASE_DIR, "logs", "file_personnel_cache.json"),
-                os.path.join(APP_DATA_DIR, "file_personnel_cache.json")
-            ]:
-                if os.path.isfile(cand):
-                    with open(cand, "r", encoding="utf-8") as f:
-                        c_data = json.load(f)
-                    self._json({"ok": True, "source": cand, "data": c_data})
-                    return
-
             self._json({
                 "ok": False,
-                "error": "Berkas schedule.json belum ditemukan. Silakan klik tombol '⚡ Generate Jadwal Sekarang' atau jalankan Step 3 Penjadwalan pada Pipeline."
+                "error": "Belum ada schedule.json di DIR PDF Target yang dipilih. Jalankan Step 2 & Step 3 atau klik '⚡ Buat Schedule Otomatis' untuk membuatnya."
             })
         except Exception as e:
             _log(f"Schedule list error: {e}")
@@ -5687,8 +6315,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 self._json({"ok": False, "error": "Folder PDF Target belum dipilih atau tidak valid."}, 400)
                 return
 
-            export_root, photos_dir, _ = _resolve_photo_directories(export_dir or pdf_dir)
-            schedule_file = os.path.join(export_root, "schedule.json")
+            _, photos_dir, _ = _resolve_photo_directories(export_dir or pdf_dir)
+            schedule_file = os.path.join(pdf_dir, "schedule.json")
 
             time_mapping = os.path.join(APP_DATA_DIR, "asset_waktu_mapping.json")
             if not os.path.isfile(time_mapping):
@@ -5726,24 +6354,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             with open(schedule_file, "w", encoding="utf-8") as f:
                 json.dump(sched, f, indent=2, ensure_ascii=False)
 
-            # Salin juga ke folder pdf jika berbeda
-            try:
-                alt_file = os.path.join(pdf_dir, "schedule.json")
-                if os.path.abspath(alt_file) != os.path.abspath(schedule_file):
-                    with open(alt_file, "w", encoding="utf-8") as f:
-                        json.dump(sched, f, indent=2, ensure_ascii=False)
-            except Exception:
-                pass
-
-            # Salin juga ke photos_dir jika ada dan berbeda
-            try:
-                if photos_dir and os.path.isdir(photos_dir):
-                    p_file = os.path.join(photos_dir, "schedule.json")
-                    if os.path.abspath(p_file) != os.path.abspath(schedule_file):
-                        with open(p_file, "w", encoding="utf-8") as f:
-                            json.dump(sched, f, indent=2, ensure_ascii=False)
-            except Exception:
-                pass
+            _invalidate_timemark_photos_cache()
 
             total_assets = len(sched.get("schedules", []))
             self._json({
@@ -6018,6 +6629,11 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             start_id = data.get("start_id")
             end_id = data.get("end_id")
             show_browser = data.get("show_browser", False)
+            mode = str(data.get("mode", "rekap")).strip().lower()
+            asset_numbers = data.get("asset_numbers", [])
+            hasil = str(data.get("hasil", "baik")).strip() or "baik"
+            resort = str(data.get("resort", "170") or "").strip()
+            daop = str(data.get("daop", "1")).strip() or "1"
 
             if not target_folder:
                 self._json({"error": "Folder Penyimpanan wajib dipilih"}, 400)
@@ -6028,9 +6644,20 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     self._json({"error": "NIPP dan Kata Sandi akun login wajib diisi"}, 400)
                     return
 
+            if mode == "report_asset" and not _parse_p3ste_asset_numbers(asset_numbers):
+                self._json({"error": "Harap masukkan minimal satu Nomor Aset pada mode Download per Aset"}, 400)
+                return
+
             threading.Thread(
                 target=_run_p3ste_download_task,
                 args=(nipp, password, awal, akhir, type_val, target_folder, start_id, end_id, show_browser, curl_cmd),
+                kwargs={
+                    "mode": mode,
+                    "asset_numbers": asset_numbers,
+                    "hasil": hasil,
+                    "resort": resort,
+                    "daop": daop,
+                },
                 daemon=True
             ).start()
 

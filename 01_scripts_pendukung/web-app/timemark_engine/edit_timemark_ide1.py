@@ -1115,7 +1115,7 @@ def normalize_schedule_identifier(identifier: str) -> str:
 
 
 def _strip_date_suffix(ident: str) -> str:
-    return re.sub(r'_\d{2}-\d{2}(?:_part\d+)?$', '', ident.strip())
+    return re.sub(r'_\d{2}-\d{2}(?:-\d{4})?(?:_part\d+)?$', '', ident.strip())
 
 
 def build_schedule_lookup(schedule_data: dict, tim_filter: int | None = None, include_time: bool = True):
@@ -2009,24 +2009,48 @@ def _collect_folder_consensus(input_dir: Path, all_jpgs: list[Path]) -> dict[tup
     return consensus
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Edit timemark on photos (Fixed-offset + Folder Consensus)")
-    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT, help="Input photos folder")
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="Output photos folder")
-    parser.add_argument("--date", type=str, help="Global date text (e.g. 'Sabtu, Apr 29 2026 08:00')")
-    parser.add_argument("--schedule", type=Path, default=DEFAULT_SCHEDULE, help="schedule.json for per-photo timestamps")
-    parser.add_argument("--y-override", type=int, help="Force Y position for textbox")
-    parser.add_argument("--x-override", type=int, help="Force X position for textbox")
-    parser.add_argument("--single-out", type=Path, help="Force specific single output file path")
-    parser.add_argument("--clear-output", action="store_true", help="Clear output folder first")
-    parser.add_argument("--tim-filter", type=int, help="Process only schedule entries for this Tim number")
-    parser.add_argument("--red-mask", action="store_true", help="Run with Red Mask HSV priority")
-    parser.add_argument("--cyan-mask", action="store_true", help="Run with Cyan Mask HSV priority")
-    parser.add_argument("--custom-mask", action="store_true", help="Run with Custom Mask HSV priority")
-    parser.add_argument("--detector", choices=["paddle_ocr", "lama_ai", "google_vision", "guide"], default="paddle_ocr", help="Detection method: paddle_ocr/lama_ai (default), google_vision, or guide")
-    parser.add_argument("--no-time", action="store_true", help="Format watermark tanggal saja tanpa jam (HH:MM)")
-    parser.add_argument("--ignore-manual", action="store_true", help="Abaikan koreksi manual sebelumnya dan deteksi ulang posisi via detektor")
-    args = parser.parse_args()
+def main(override_args=None):
+    if override_args is None:
+        parser = argparse.ArgumentParser(description="Edit timemark on photos (Fixed-offset + Folder Consensus)")
+        parser.add_argument("--input", type=Path, default=DEFAULT_INPUT, help="Input photos folder")
+        parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="Output photos folder")
+        parser.add_argument("--date", type=str, help="Global date text (e.g. 'Sabtu, Apr 29 2026 08:00')")
+        parser.add_argument("--schedule", type=Path, default=DEFAULT_SCHEDULE, help="schedule.json for per-photo timestamps")
+        parser.add_argument("--y-override", type=int, help="Force Y position for textbox")
+        parser.add_argument("--x-override", type=int, help="Force X position for textbox")
+        parser.add_argument("--single-out", type=Path, help="Force specific single output file path")
+        parser.add_argument("--clear-output", action="store_true", help="Clear output folder first")
+        parser.add_argument("--tim-filter", type=int, help="Process only schedule entries for this Tim number")
+        parser.add_argument("--red-mask", action="store_true", help="Run with Red Mask HSV priority")
+        parser.add_argument("--cyan-mask", action="store_true", help="Run with Cyan Mask HSV priority")
+        parser.add_argument("--custom-mask", action="store_true", help="Run with Custom Mask HSV priority")
+        parser.add_argument("--detector", choices=["paddle_ocr", "lama_ai", "google_vision", "guide"], default="paddle_ocr", help="Detection method: paddle_ocr/lama_ai (default), google_vision, or guide")
+        parser.add_argument("--no-time", action="store_true", help="Format watermark tanggal saja tanpa jam (HH:MM)")
+        parser.add_argument("--ignore-manual", action="store_true", help="Abaikan koreksi manual sebelumnya dan deteksi ulang posisi via detektor")
+        args = parser.parse_args()
+
+        if not args.single_out and args.input.is_dir():
+            from export_pdf_foto import discover_period_workspaces, split_export_base_and_subdir
+            inp = args.input.resolve()
+            export_base, _ = split_export_base_and_subdir(inp, "03_export_foto")
+            has_direct_btp = any(d.is_dir() and d.name.upper().startswith("BTP") for d in inp.iterdir())
+            sched_explicit = bool(args.schedule and args.schedule != DEFAULT_SCHEDULE and args.schedule.is_file())
+            workspaces = [] if (has_direct_btp or sched_explicit) else discover_period_workspaces(export_base, "03_export_foto")
+            if workspaces:
+                print(f"[PERIODE] Terdeteksi {len(workspaces)} folder periode untuk Edit Timemark.", flush=True)
+                for pref, m_root in workspaces:
+                    m_in = m_root / "03_export_foto"
+                    if not m_in.is_dir():
+                        m_in = m_root / "03_photos_export"
+                    print(f"\n── Periode: {pref} ──", flush=True)
+                    sub_args = argparse.Namespace(**vars(args))
+                    sub_args.input = m_in
+                    sub_args.output = m_root / "04_photos_edited"
+                    sub_args.schedule = m_root / "schedule.json"
+                    main(override_args=sub_args)
+                return
+    else:
+        args = override_args
 
     global CURRENT_DETECTOR
     CURRENT_DETECTOR = args.detector
@@ -2040,7 +2064,7 @@ def main():
     schedule_lookup = None
     if args.schedule and args.schedule.exists():
         schedule_data = load_schedule(args.schedule)
-        schedule_lookup = build_schedule_lookup(schedule_data, args.tim_filter, include_time=getattr(args, 'include_time', True))
+        schedule_lookup = build_schedule_lookup(schedule_data, args.tim_filter, include_time=(not getattr(args, 'no_time', False)))
 
     date_text = args.date or ""  # empty if not provided; schedule_lookup handles dates
 
@@ -2049,7 +2073,9 @@ def main():
     else:
         all_jpgs = list(input_dir.rglob("*.jpg"))
 
-    cropped_collages_set = load_cropped_collages_manifest(logs_dir="logs")
+    cand_logs_dir = (input_dir.parent / "logs") if input_dir.is_dir() else Path("logs")
+    logs_for_collages = cand_logs_dir if (cand_logs_dir / "cropped_collages.json").exists() else Path("logs")
+    cropped_collages_set = load_cropped_collages_manifest(logs_dir=str(logs_for_collages))
     if cropped_collages_set:
         print(f"[INFO] Loaded collage manifest ({len(cropped_collages_set)} cropped collage photos registered)")
     folder_consensus = _collect_folder_consensus(input_dir, all_jpgs) if input_dir.is_dir() else {}

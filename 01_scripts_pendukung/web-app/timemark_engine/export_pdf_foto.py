@@ -253,6 +253,203 @@ class AssetRow:
 
 # ── Category Detection from Filename ────────────────────────────
 
+def _detect_ws_bs_category(text: str) -> str | None:
+    """Deteksi kategori folder mandiri untuk Waystation & Basestation beserta periodenya."""
+    up = str(text or "").upper()
+    if "WAYSTATION" in up or "WAY STATION" in up:
+        if "3 BULANAN" in up or "3BL" in up:
+            return "WAYSTATION 3 BULANAN"
+        if "6 BULANAN" in up or "6BL" in up:
+            return "WAYSTATION 6 BULANAN"
+        if "1 TAHUNAN" in up or "TAHUNAN" in up:
+            return "WAYSTATION 1 TAHUNAN"
+        return "WAYSTATION 3 BULANAN"
+    if "BASESTATION" in up or "BASE STATION" in up:
+        if "6 BULANAN" in up or "6BL" in up:
+            return "BASESTATION 6 BULANAN"
+        if "3 BULANAN" in up or "3BL" in up:
+            return "BASESTATION 3 BULANAN"
+        if "1 TAHUNAN" in up or "TAHUNAN" in up:
+            return "BASESTATION 1 TAHUNAN"
+        return "BASESTATION 6 BULANAN"
+    return None
+
+
+def _extract_pdf_date_ymd(pdf_name: str, page1_text: str = "") -> tuple[str, str, str] | None:
+    """Ekstrak (dd, mm, yyyy) dari nama file PDF atau fallback teks halaman 1."""
+    m = re.search(r'(\d{2})[-_](\d{2})[-_](\d{4})', pdf_name or "")
+    if m:
+        return m.group(1), m.group(2), m.group(3)
+    m_iso = re.search(r'(\d{4})[-_](\d{2})[-_](\d{2})', pdf_name or "")
+    if m_iso:
+        return m_iso.group(3), m_iso.group(2), m_iso.group(1)
+    if page1_text:
+        m_p1_iso = re.search(r'Tanggal\s*[:\n\s]+(\d{4})-(\d{2})-(\d{2})', page1_text, re.I)
+        if m_p1_iso:
+            return m_p1_iso.group(3), m_p1_iso.group(2), m_p1_iso.group(1)
+        m_p1_dmy = re.search(r'Tanggal\s*[:\n\s]+(\d{2})[/-](\d{2})[/-](\d{4})', page1_text, re.I)
+        if m_p1_dmy:
+            return m_p1_dmy.group(1), m_p1_dmy.group(2), m_p1_dmy.group(3)
+    return None
+
+
+INDONESIAN_MONTHS_FOLDER = {
+    1: "01. JANUARI",
+    2: "02. FEBRUARI",
+    3: "03. MARET",
+    4: "04. APRIL",
+    5: "05. MEI",
+    6: "06. JUNI",
+    7: "07. JULI",
+    8: "08. AGUSTUS",
+    9: "09. SEPTEMBER",
+    10: "10. OKTOBER",
+    11: "11. NOVEMBER",
+    12: "12. DESEMBER",
+}
+
+
+def split_export_base_and_subdir(root_path: Path, default_subdir: str = "03_export_foto") -> tuple[Path, str]:
+    """Pisahkan parent root workspace dan nama subfolder foto (03_export_foto / 04_photos_edited)."""
+    bname = root_path.name.lower()
+    if bname in (
+        "03_export_foto",
+        "03_photos_export",
+        "04_photos_edited",
+        "04_foto_edited",
+        "03_photos_cropped_temp",
+        "05_pdf_merged",
+    ):
+        return root_path.parent, root_path.name
+    return root_path, default_subdir
+
+
+def resolve_pdf_period_map(pdf_paths: list[Path]) -> tuple[dict[Path, str], bool, bool]:
+    """Petakan tiap PDF ke subfolder periode relatif ('' bila 1 bulan/tahun, 'MM. BULAN' bila >1 bulan, 'YYYY/MM. BULAN' bila lintas tahun)."""
+    if not pdf_paths:
+        return {}, False, False
+
+    def _scan_one(p: Path):
+        ymd = _extract_pdf_date_ymd(p.name, "")
+        if not ymd:
+            try:
+                rdr = PdfReader(str(p))
+                if rdr.pages:
+                    p1 = rdr.pages[0].extract_text() or ""
+                    ymd = _extract_pdf_date_ymd(p.name, p1)
+            except Exception:
+                ymd = None
+        return p, ymd
+
+    import concurrent.futures
+    if len(pdf_paths) <= 4:
+        scanned = [_scan_one(p) for p in pdf_paths]
+    else:
+        max_w = min(8, len(pdf_paths))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as ex:
+            scanned = list(ex.map(_scan_one, pdf_paths))
+
+    valid_yms: set[tuple[str, int]] = set()
+    distinct_years: set[str] = set()
+    per_pdf_ym: dict[Path, tuple[str, int] | None] = {}
+
+    for p, ymd in scanned:
+        if ymd:
+            _, mm_s, yyyy_s = ymd
+            try:
+                mm_i = int(mm_s)
+                if 1 <= mm_i <= 12:
+                    per_pdf_ym[p] = (yyyy_s, mm_i)
+                    valid_yms.add((yyyy_s, mm_i))
+                    distinct_years.add(yyyy_s)
+                    continue
+            except ValueError:
+                pass
+        per_pdf_ym[p] = None
+
+    cross_year = len(distinct_years) > 1
+    multi_month = len(valid_yms) > 1 or cross_year
+
+    if not multi_month:
+        return {p: "" for p in pdf_paths}, False, False
+
+    pdf_to_prefix: dict[Path, str] = {}
+    for p in pdf_paths:
+        ym = per_pdf_ym.get(p)
+        if not ym:
+            pdf_to_prefix[p] = "TANPA_TANGGAL"
+            continue
+        yyyy_s, mm_i = ym
+        month_dir = INDONESIAN_MONTHS_FOLDER.get(mm_i, f"{mm_i:02d}")
+        pdf_to_prefix[p] = f"{yyyy_s}/{month_dir}" if cross_year else month_dir
+
+    return pdf_to_prefix, True, cross_year
+
+
+def discover_period_workspaces(base_root: Path, expected_subdir: str = "03_export_foto") -> list[tuple[str, Path]]:
+    """Temukan workspace bulanan/tahunan (MM. BULAN atau YYYY/MM. BULAN) di bawah base_root bila ada."""
+    month_pat = re.compile(r"^\d{2}\.\s+(?:JANUARI|FEBRUARI|FEBUARI|MARET|APRIL|MEI|JUNI|JULI|AGUSTUS|SEPTEMBER|OKTOBER|NOVEMBER|DESEMBER)$", re.I)
+    year_pat = re.compile(r"^(?:19|20)\d{2}$")
+    found: list[tuple[str, Path]] = []
+    if not base_root.is_dir():
+        return found
+
+    for ent in sorted(base_root.iterdir(), key=lambda x: x.name):
+        if not ent.is_dir():
+            continue
+        if month_pat.match(ent.name):
+            sub_cand = ent / expected_subdir
+            if sub_cand.is_dir() or expected_subdir == "03_export_foto" and (ent / "03_photos_export").is_dir():
+                found.append((ent.name, ent))
+        elif year_pat.match(ent.name):
+            for sub in sorted(ent.iterdir(), key=lambda x: x.name):
+                if sub.is_dir() and month_pat.match(sub.name):
+                    sub_cand = sub / expected_subdir
+                    if sub_cand.is_dir() or (expected_subdir == "03_export_foto" and (sub / "03_photos_export").is_dir()):
+                        found.append((f"{ent.name}/{sub.name}", sub))
+    return found
+
+
+def _resolve_dated_identifier(
+    base_ident: str | None,
+    category: str,
+    pdf_name: str,
+    page1_text: str = "",
+    multi_date_lookup: dict | None = None,
+    period_prefix: str = "",
+) -> str | None:
+    """Tambahkan suffix tanggal (_DD-MM atau _DD-MM-YYYY jika lintas tahun) bila terdeteksi multi-tanggal."""
+    if not base_ident or not multi_date_lookup:
+        return base_ident
+
+    if isinstance(multi_date_lookup, dict) and "counts" in multi_date_lookup:
+        counts = multi_date_lookup.get("counts") or {}
+        years_map = multi_date_lookup.get("years") or {}
+    else:
+        counts = multi_date_lookup
+        years_map = {}
+
+    cnt = counts.get((period_prefix, category, base_ident), 0)
+    yrs = years_map.get((period_prefix, category, base_ident))
+    if not cnt:
+        cnt = counts.get((category, base_ident), 0)
+        yrs = years_map.get((category, base_ident), set())
+
+    if cnt <= 1:
+        return base_ident
+
+    ymd = _extract_pdf_date_ymd(pdf_name, page1_text)
+    if not ymd:
+        return base_ident
+
+    dd, mm, yyyy = ymd
+    suffix = f"_{dd}-{mm}-{yyyy}" if (yrs and len(yrs) > 1) else f"_{dd}-{mm}"
+    part_m = re.search(r'\((2|3|4)\)', pdf_name or "")
+    if part_m:
+        suffix = f"{suffix}_part{part_m.group(1)}"
+    return f"{base_ident}{suffix}"
+
+
 def detect_category_from_filename(pdf_name: str) -> str:
     """Detect asset category folder name from PDF filename.
 
@@ -269,6 +466,11 @@ def detect_category_from_filename(pdf_name: str) -> str:
     10. "BANGUNAN" / "DATA LOGGER" → PDSE
     """
     name = pdf_name.upper()
+
+    # ── Explicit Waystation & Basestation categories (sebelum PTLS/DI STASIUN) ──
+    ws_bs_cat = _detect_ws_bs_category(name)
+    if ws_bs_cat:
+        return ws_bs_cat
 
     # ── Explicit code in filename (most reliable) ──
     if "PTPP" in name:
@@ -368,6 +570,8 @@ def parse_args() -> argparse.Namespace:
                         help="Mode mapping multi asset per lokasi.")
     parser.add_argument("--render-crop", action="store_true",
                         help="Mode crop render halaman PDF (300 DPI) agar teks/watermark yang melayang di atas foto ikut terbawa.")
+    parser.add_argument("--period-filter", default="",
+                        help="Filter pemrosesan hanya untuk subfolder periode tertentu (misal '01. JANUARI' atau '2025/01. JANUARI').")
     return parser.parse_args()
 
 
@@ -789,6 +993,16 @@ def extract_identifier(funcloc_text: str, category: str, split_multi_asset: bool
             return f"{sig_code} {station}"
         return None
 
+    if category.startswith("WAYSTATION") or category.startswith("BASESTATION"):
+        desc = re.sub(
+            r'^(?:TRA|TLK|TWR|INB|CDA|JPL|CTC|OTB|GEN|BNR|SIN|WSL|AXL)[0-9OIlBS\d]{3,}\s*:\s*',
+            '',
+            funcloc_text.strip(),
+            flags=re.I,
+        )
+        desc = re.sub(r'\s+', ' ', desc).strip()
+        return desc or None
+
     # All others: extract station code + RADIO prefix
     codes = re.findall(r'\b(BOO|CLT|BJD|BOP|BTT|CGB|CS|COS|MSG|CCR)\b', funcloc_text, re.I)
     if not codes:
@@ -991,7 +1205,8 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                      pdf_name: str, funcloc_offset: int = 0,
                      wesel_target_lookup: dict | None = None,
                      render_crop: bool = False, resolution: int = 300,
-                     multi_date_lookup: dict | None = None) -> int:
+                     multi_date_lookup: dict | None = None,
+                     period_prefix: str = "") -> int:
     """Export photos from multi-row photo page: 3 photos per asset row.
 
     WESEL/SINYAL/AXC PDFs have a single photo page with multiple rows.
@@ -1088,6 +1303,8 @@ def export_multi_row(pdf, reader, photo_page_idx: int, category: str,
                 date_suffix = _extract_date_suffix(pdf_name, wesel_target_lookup, identifier)
                 if date_suffix:
                     identifier = f"{identifier}{date_suffix}"
+            else:
+                identifier = _resolve_dated_identifier(identifier, category, pdf_name, "", multi_date_lookup, period_prefix=period_prefix)
 
             out_dir = identifier_output_dir(output_root, btp, category, identifier)
             ensure_dir(out_dir)
@@ -1180,7 +1397,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                render_crop: bool = False,
                wesel_target_lookup: dict | None = None,
                multi_date_lookup: dict | None = None,
-               split_multi_asset: bool = False) -> int:
+               split_multi_asset: bool = False,
+               period_prefix: str = "") -> int:
     """Unified export: detect category from filename, find photos, output to flat identifier structure.
 
     Output: {output_root}/{btp}/{category}/{identifier}/{0,50,100}.jpg
@@ -1218,6 +1436,12 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                         all_funclocs = fcs_plumb
         except Exception:
             pass
+
+    # Fallback kategori Waystation / Basestation dari judul halaman 1 bila nama file belum eksplisit
+    if category in ("UNKNOWN", "PTLS") and page1_text:
+        ws_bs_p1 = _detect_ws_bs_category(page1_text)
+        if ws_bs_p1:
+            category = ws_bs_p1
 
     # Multiple funclocs → force per-row export (each asset row gets own folder)
     # Jika split_multi_asset aktif dan ada lebih dari 1 funcloc: aktifkan force_per_row!
@@ -1273,6 +1497,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
         date_suffix = _extract_date_suffix(pdf_path.name, wesel_target_lookup, identifier)
         if date_suffix:
             identifier = f"{identifier}{date_suffix}"
+    else:
+        identifier = _resolve_dated_identifier(identifier, category, pdf_path.name, page1_text, multi_date_lookup, period_prefix=period_prefix)
 
     # ── Build primary output directory (only for single-row / shared photo categories) ──
     out_dir = None
@@ -1335,7 +1561,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                                           funcloc_offset=funcloc_offset,
                                           wesel_target_lookup=wesel_target_lookup,
                                           render_crop=render_crop, resolution=_resolution,
-                                          multi_date_lookup=multi_date_lookup)
+                                          multi_date_lookup=multi_date_lookup,
+                                          period_prefix=period_prefix)
                 total += count
                 # Advance offset by number of rows on this page
                 funcloc_offset += len(_multi_pdf.pages[page_idx].images) // 3
@@ -1483,7 +1710,8 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                                 targets.append((row_id, determine_btp(row_id), all_photo_rows[0]))
 
                         for tid, t_btp, target_photos in targets:
-                            row_out_dir = identifier_output_dir(output_root, t_btp, category, tid)
+                            dated_tid = _resolve_dated_identifier(tid, category, pdf_path.name, page1_text, multi_date_lookup, period_prefix=period_prefix)
+                            row_out_dir = identifier_output_dir(output_root, t_btp, category, dated_tid)
                             ensure_dir(row_out_dir)
 
                             for stem, suffix, data in target_photos:
@@ -1555,6 +1783,7 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
 
                     # ── Determine BTP for this row ──
                     row_btp = determine_btp(row_identifier)
+                    row_identifier = _resolve_dated_identifier(row_identifier, category, pdf_path.name, page1_text, multi_date_lookup, period_prefix=period_prefix)
 
                     # ── Create output folder for this row ──
                     row_out_dir = identifier_output_dir(output_root, row_btp, category, row_identifier)
@@ -1652,7 +1881,7 @@ def resolve_inputs(args: argparse.Namespace) -> list[Path]:
 
 
 def _export_worker_job(args_tuple):
-    pdf_path, output_root, log_dir, start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup, split_multi_asset = args_tuple
+    pdf_path, output_root, log_dir, start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup, split_multi_asset, period_prefix = args_tuple
     if not pdf_path.exists():
         return pdf_path, 0, "", None, True
 
@@ -1664,12 +1893,93 @@ def _export_worker_job(args_tuple):
                                   start_page, resolution, input_root, sap_mapping,
                                   render_crop=render_crop, wesel_target_lookup=wesel_target_lookup,
                                   multi_date_lookup=multi_date_lookup,
-                                  split_multi_asset=split_multi_asset)
+                                  split_multi_asset=split_multi_asset,
+                                  period_prefix=period_prefix)
             err_info = None
         except Exception as exc:
             exported = 0
             err_info = (type(exc).__name__, str(exc), traceback.format_exc())
     return pdf_path, exported, buf.getvalue(), err_info, False
+
+
+def _scan_pdf_batch_keys(pdf_path: Path, split_multi_asset: bool = False):
+    """Baca cepat halaman 1 PDF untuk mendeteksi (category, identifier_keys, yyyy) agar multi-tanggal aman."""
+    cat = detect_category_from_filename(pdf_path.name)
+    page1_text = ""
+    try:
+        reader = PdfReader(str(pdf_path))
+        if reader.pages:
+            page1_text = reader.pages[0].extract_text() or ""
+    except Exception:
+        pass
+
+    if cat in ("UNKNOWN", "PTLS") and page1_text:
+        ws_bs = _detect_ws_bs_category(page1_text)
+        if ws_bs:
+            cat = ws_bs
+
+    all_fcs = extract_all_funclocs(page1_text) if page1_text else []
+    CATEGORY_FROM_FUNCLOC = {"WSL": "WESEL", "SIN": "SINYAL", "AXL": "AXC"}
+    if cat == "UNKNOWN" and all_fcs:
+        for fc in all_fcs:
+            for prefix, mapped in CATEGORY_FROM_FUNCLOC.items():
+                if fc.strip().startswith(prefix):
+                    cat = mapped
+                    break
+            if cat != "UNKNOWN":
+                break
+
+    ymd = _extract_pdf_date_ymd(pdf_path.name, page1_text)
+    yyyy = ymd[2] if ymd else ""
+
+    keys: set[str] = set()
+    if all_fcs:
+        primary_id = extract_identifier(all_fcs[0], cat)
+        if primary_id:
+            keys.add(primary_id)
+        for fc in all_fcs:
+            rid = extract_identifier(fc, cat)
+            if rid:
+                keys.add(rid)
+            if split_multi_asset:
+                parts = fc.strip().split(":", 1)
+                aname = re.sub(r'\s+', ' ', parts[1].strip() if len(parts) > 1 else fc.strip())
+                if aname:
+                    keys.add(aname)
+    if not keys:
+        st = extract_station_from_filename(pdf_path.name)
+        if st:
+            keys.add("RADIO_BOO" if ("RADIO" in page1_text.upper() and st == "BOO") else st)
+        else:
+            keys.add(pdf_path.stem)
+
+    return cat, keys, yyyy
+
+
+def _build_batch_date_info(pdf_paths: list[Path], split_multi_asset: bool = False, pdf_to_prefix: dict | None = None) -> dict:
+    """Bangun peta frekuensi & tahun per (period_prefix, category, identifier) dari seluruh batch PDF."""
+    from collections import Counter, defaultdict
+    import concurrent.futures
+
+    counts = Counter()
+    years = defaultdict(set)
+    if len(pdf_paths) <= 1:
+        return {"counts": counts, "years": dict(years)}
+
+    max_w = min(8, max(2, len(pdf_paths)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as ex:
+        results = list(ex.map(lambda p: (p, _scan_pdf_batch_keys(p, split_multi_asset)), pdf_paths))
+
+    for p, (cat, keys, yyyy) in results:
+        pref = pdf_to_prefix.get(p, "") if pdf_to_prefix else ""
+        for k in keys:
+            counts[(cat, k)] += 1
+            counts[(pref, cat, k)] += 1
+            if yyyy:
+                years[(cat, k)].add(yyyy)
+                years[(pref, cat, k)].add(yyyy)
+
+    return {"counts": counts, "years": dict(years)}
 
 
 def main() -> int:
@@ -1681,6 +1991,14 @@ def main() -> int:
     if not pdf_paths:
         print("[WARNING] Tidak ada file PDF untuk diproses di folder input.")
         return 0
+
+    pdf_to_prefix, multi_month, cross_year = resolve_pdf_period_map(pdf_paths)
+    period_filter = (args.period_filter or "").strip().replace("\\", "/")
+    if period_filter:
+        pdf_paths = [p for p in pdf_paths if pdf_to_prefix.get(p, "").replace("\\", "/") == period_filter]
+        if not pdf_paths:
+            print(f"[INFO] Tidak ada file PDF untuk periode '{period_filter}'.")
+            return 0
 
     sap_mapping = load_sap_mapping(args.sap_mapping)
     if sap_mapping:
@@ -1694,8 +2012,15 @@ def main() -> int:
     input_root = Path(args.input)
     output_root = Path(args.output)
     log_dir = Path(args.log_dir)
-    ensure_dir(output_root)
-    ensure_dir(log_dir)
+    export_base, raw_subdir = split_export_base_and_subdir(output_root, "03_export_foto")
+    use_default_log = str(args.log_dir) == DEFAULT_LOG_DIR
+
+    if not multi_month or period_filter:
+        ensure_dir(output_root)
+        ensure_dir(log_dir)
+    else:
+        kind_label = "Lintas Tahun -> Tahun/Bulan" if cross_year else "Multi-Bulan -> Per Bulan"
+        print(f"[PERIODE] Terdeteksi batch {kind_label}; foto dipisah ke subfolder periode.", flush=True)
 
     total_exported = 0
     success_files = []
@@ -1708,15 +2033,29 @@ def main() -> int:
 
     # Pre-build WESEL target lookup once from 2025 target folder to avoid repetitive disk scans
     wesel_target_lookup = _build_wesel_target_lookup(args.target_dir)
-    multi_date_lookup = {}
+    multi_date_lookup = _build_batch_date_info(pdf_paths, split_multi_asset=bool(args.split_multi_asset), pdf_to_prefix=pdf_to_prefix)
 
     import concurrent.futures
 
+    def _target_dirs_for_pdf(pdf_p: Path) -> tuple[Path, Path, str]:
+        p_prefix = pdf_to_prefix.get(pdf_p, "")
+        if not p_prefix:
+            return output_root, log_dir, ""
+        base_norm = str(export_base).replace("\\", "/").rstrip("/").upper()
+        pref_norm = p_prefix.replace("\\", "/").strip("/").upper()
+        if period_filter and (base_norm.endswith("/" + pref_norm) or base_norm == pref_norm):
+            return output_root, log_dir, p_prefix
+        p_out = export_base / p_prefix / raw_subdir
+        p_log = (export_base / p_prefix / "logs") if use_default_log else log_dir
+        ensure_dir(p_out)
+        ensure_dir(p_log)
+        return p_out, p_log, p_prefix
+
     max_workers = min(12, max(4, (os.cpu_count() or 4)))
-    tasks = [
-        (p, output_root, log_dir, args.start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup, bool(args.split_multi_asset))
-        for p in pdf_paths
-    ]
+    tasks = []
+    for p in pdf_paths:
+        p_out, p_log, p_pref = _target_dirs_for_pdf(p)
+        tasks.append((p, p_out, p_log, args.start_page, resolution, input_root, sap_mapping, render_crop, wesel_target_lookup, multi_date_lookup, bool(args.split_multi_asset), p_pref))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_task = {executor.submit(_export_worker_job, t): t[0] for t in tasks}

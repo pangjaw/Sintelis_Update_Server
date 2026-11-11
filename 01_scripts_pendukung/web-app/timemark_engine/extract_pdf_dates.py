@@ -439,6 +439,8 @@ def main() -> int:
                         help="Dukung pencocokan tanggal untuk folder aset yang dipecah per baris.")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_ROOT,
                         help=f"Folder root foto export. Default: {DEFAULT_OUTPUT_ROOT}")
+    parser.add_argument("--period-filter", default="",
+                        help="Filter periode (misal '01. JANUARI' atau '2025/01. JANUARI').")
     args = parser.parse_args()
 
     pdf_dir = Path(args.pdf_dir).resolve()
@@ -463,10 +465,58 @@ def main() -> int:
         print(f"Tidak ada PDF di '{pdf_dir}'.")
         return 0
 
-    # ── Multi-date folder management ──
+    from export_pdf_foto import resolve_pdf_period_map, split_export_base_and_subdir
+    pdf_to_prefix, multi_month, _ = resolve_pdf_period_map(pdf_files)
+    period_filter = (getattr(args, "period_filter", "") or "").strip().replace("\\", "/")
+
+    if period_filter:
+        pdf_files = [p for p in pdf_files if pdf_to_prefix.get(p, "").replace("\\", "/") == period_filter]
+        if not pdf_files:
+            print(f"Tidak ada PDF untuk periode '{period_filter}'.")
+            return 0
+        period_batches = [("", pdf_files, output_root)]
+    elif multi_month:
+        export_base, raw_subdir = split_export_base_and_subdir(output_root, "03_export_foto")
+        grouped: dict[str, list[Path]] = {}
+        for p in pdf_files:
+            grouped.setdefault(pdf_to_prefix.get(p, ""), []).append(p)
+        period_batches = [
+            (pref, p_list, (export_base / pref / raw_subdir) if pref else output_root)
+            for pref, p_list in sorted(grouped.items(), key=lambda x: x[0])
+        ]
+    else:
+        period_batches = [("", pdf_files, output_root)]
+
+    updated = 0
+    unchanged = 0
+    skipped = 0
+    missed = 0
+    errors = 0
+    fallback_used = 0
+
+    for pref_label, batch_pdfs, batch_out_root in period_batches:
+        if pref_label:
+            print(f"\n── Periode: {pref_label} ({len(batch_pdfs)} PDF) ──", flush=True)
+        u, uc, sk, ms, er, fb = _extract_dates_for_batch(batch_pdfs, pdf_dir, batch_out_root, split_multi_asset)
+        updated += u
+        unchanged += uc
+        skipped += sk
+        missed += ms
+        errors += er
+        fallback_used += fb
+
+    print(
+        f"\nSelesai: {updated} ditulis, {unchanged} tidak berubah, "
+        f"{missed} miss, {skipped} skip, {errors} error, "
+        f"{fallback_used} fallback pdfplumber."
+    )
+    return 0
+
+
+def _extract_dates_for_batch(pdf_files: list[Path], pdf_dir: Path, output_root: Path, split_multi_asset: bool) -> tuple[int, int, int, int, int, int]:
+    """Ekstrak date.txt untuk satu batch PDF ke output_root."""
     prepare_multi_date_folders(output_root, pdf_files)
 
-    # ── Pre-scan folder lookup ──
     print(f"Pre-scan folder lookup dari '{output_root.name}'...")
     folder_lookup = build_folder_lookup(output_root)
     total_folders = sum(len(v) for v in folder_lookup.values())
@@ -652,12 +702,7 @@ def main() -> int:
                     print(f"[ERROR] {fname}: {date_file}: {e}", flush=True)
                     errors += 1
 
-    print(
-        f"\nSelesai: {updated} ditulis, {unchanged} tidak berubah, "
-        f"{missed} miss, {skipped} skip, {errors} error, "
-        f"{fallback_used} fallback pdfplumber."
-    )
-    return 0
+    return updated, unchanged, skipped, missed, errors, fallback_used
 
 
 if __name__ == "__main__":

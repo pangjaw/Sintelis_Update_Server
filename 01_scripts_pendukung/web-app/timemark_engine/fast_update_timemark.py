@@ -14,6 +14,8 @@ import os
 import time
 import json
 import re
+import shutil
+import urllib.request
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -82,6 +84,66 @@ def find_source_photo(export_dir: Path, temp_dir: Path, btp: str, category: str,
     return None
 
 
+def _find_existing_clean_photo(
+    edited_dir: Path,
+    dest_file: Path,
+    cached_meta: dict,
+    btp: str,
+    category: str,
+    identifier: str,
+    pname: str
+) -> Path | None:
+    """Locate existing LaMa .clean.jpg across target folder, cached meta folder, and Tim_1..4."""
+    clean_name = f"{Path(pname).stem}.clean.jpg"
+    candidates = [dest_file.parent / clean_name]
+
+    meta_path = cached_meta.get("_meta_path")
+    if meta_path:
+        candidates.append(Path(meta_path).parent / clean_name)
+
+    base_ident = _strip_date_suffix(identifier)
+    ident_cands = [identifier]
+    if base_ident and base_ident != identifier:
+        ident_cands.append(base_ident)
+
+    for tim_sub in ("", "Tim_1", "Tim_2", "Tim_3", "Tim_4"):
+        for ic in ident_cands:
+            base = (edited_dir / tim_sub / btp / category / ic) if tim_sub else (edited_dir / btp / category / ic)
+            candidates.append(base / clean_name)
+
+    for cand in candidates:
+        try:
+            if cand.is_file():
+                return cand
+        except OSError:
+            pass
+    return None
+
+
+def _try_resident_lama(src_photo: Path, dest_file: Path, target_text: str, port: int = 58253) -> bool:
+    """Ask resident LaMa AI daemon to generate clean base if .clean.jpg does not exist yet."""
+    try:
+        payload = {
+            "image_path": str(src_photo),
+            "output_path": str(dest_file),
+            "date": target_text,
+            "detector": "paddle_ocr",
+            "ignore_manual": True
+        }
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/process_image",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=25.0) as resp:
+            if resp.status == 200:
+                res = json.loads(resp.read().decode("utf-8"))
+                return bool(res.get("ok"))
+    except Exception:
+        pass
+    return False
+
+
 def fast_update(
     schedule_path: Path,
     export_dir: Path,
@@ -89,14 +151,16 @@ def fast_update(
     edited_dir: Path,
     force: bool = False,
     asset_filter: str | None = None,
-    include_time: bool = True
+    include_time: bool = True,
+    detector: str = "auto"
 ) -> int:
     start_time = time.time()
     print("=" * 60, flush=True)
-    print("⚡ FAST UPDATE TIMEMARK (UPDATE TEXTBOX DARI META.JSON & SCHEDULER)", flush=True)
+    print("⚡ FAST UPDATE TIMEMARK (UPDATE TEXTBOX / VIRTUAL LAYER DARI META.JSON & SCHEDULER)", flush=True)
     print(f"Jadwal Acuan    : {schedule_path}", flush=True)
     print(f"Foto Sumber (03): {export_dir}", flush=True)
     print(f"Foto Editan (04): {edited_dir}", flush=True)
+    print(f"Mode Detektor   : {detector}", flush=True)
     print("=" * 60, flush=True)
 
     if not schedule_path.is_file():
@@ -210,64 +274,98 @@ def fast_update(
                     skipped_count += 1
                     continue
 
-            # Find source photo
+            # Locate existing clean base (.clean.jpg) & determine mode (LaMa AI vs legacy HSV)
+            found_clean = _find_existing_clean_photo(edited_dir, dest_file, cached_meta, btp, cat, ident, pname)
+            req_det = (detector or "auto").strip().lower()
+            meta_det = (cached_meta.get("detector") or "").strip().lower()
+            if req_det in ("paddle_ocr", "lama_ai"):
+                is_lama_mode = True
+            elif req_det in ("guide", "hsv", "google_vision"):
+                is_lama_mode = False
+            else:
+                is_lama_mode = (meta_det in ("paddle_ocr", "lama_ai")) or (found_clean is not None)
+
+            # Find source photo (needed if no clean base exists or non-LaMa mode)
             src_photo = find_source_photo(export_dir, temp_dir, btp, cat, ident, pname)
-            if not src_photo or not src_photo.is_file():
+            if not is_lama_mode and (not src_photo or not src_photo.is_file()):
                 print(f"[SKIP] Foto sumber tidak ditemukan untuk: {btp}/{cat}/{ident}/{pname}", flush=True)
                 error_count += 1
                 continue
 
             try:
-                img = Image.open(src_photo).convert("RGB")
-                w, h = img.size
-
                 raw_x = cached_meta.get("xPos", 14)
-                raw_y = cached_meta.get("yPos", int(h * 0.733))
-                # Skalakan jika ukuran gambar bukan 300x300
-                x1 = int(round((raw_x / 300.0) * w)) if (raw_x <= 300 and w > 300) else int(raw_x)
-                y1 = int(round((raw_y / 300.0) * h)) if (raw_y <= 300 and h > 300) else int(raw_y)
+                raw_y = cached_meta.get("yPos", 220)
+                old_tim = cached_meta.get("_tim")
+                old_ident = cached_meta.get("_ident", ident)
 
-                box_h = max(18, int(h * BOX_HEIGHT_RATIO))
-                y2 = min(h, y1 + box_h)
+                target_dir.mkdir(parents=True, exist_ok=True)
 
-                font_size = max(9, min(160, int(w * 0.038)))
-                font = get_font(font_size)
-                dummy = ImageDraw.Draw(Image.new("L", (1, 1)))
-                fit_stroke = 1 if font_size >= 28 else 0
-                bbox = dummy.textbbox((0, 0), target_text, font=font, stroke_width=fit_stroke)
-                tw = bbox[2] - bbox[0]
-                pad_x = max(4, int(w * 0.010))
-                fit_w = tw + (2 * pad_x)
-                x2 = min(w, x1 + fit_w)
-                box = (x1, y1, x2, y2)
-
-                # Fast update: jika clean base ada, gunakan langsung tanpa diffuse fill
-                clean_f = dest_file.parent / (dest_file.stem + ".clean.jpg")
-                if clean_f.is_file():
-                    img_erased = Image.open(clean_f).convert("RGB")
-                    img_out = draw_textbox(img_erased, box, target_text, no_bg=True)
+                if is_lama_mode:
+                    # Mode LaMa AI (Virtual Layer): foto tetap bersih tanpa box HSV, hanya perbarui tanggal di meta.json
+                    clean_dest = dest_file.parent / f"{dest_file.stem}.clean.jpg"
+                    if found_clean and found_clean.is_file():
+                        if found_clean.resolve() != clean_dest.resolve():
+                            shutil.copy2(found_clean, clean_dest)
+                        shutil.copy2(clean_dest, dest_file)
+                    else:
+                        # Clean base belum ada: coba via Resident LaMa Daemon jika foto sumber tersedia
+                        daemon_ok = False
+                        if src_photo and src_photo.is_file():
+                            daemon_ok = _try_resident_lama(src_photo, dest_file, target_text)
+                        if not daemon_ok:
+                            # Jangan buat box HSV saat mode LaMa! Pindahkan/pertahankan foto yang ada atau salin mentah bila perlu
+                            old_existing = (edited_dir / old_tim / btp / cat / old_ident / pname) if (old_tim and old_tim != tim_n) else None
+                            if old_existing and old_existing.is_file():
+                                shutil.copy2(old_existing, dest_file)
+                            elif not dest_file.is_file() and src_photo and src_photo.is_file():
+                                shutil.copy2(src_photo, dest_file)
+                            elif not dest_file.is_file():
+                                print(f"[SKIP] Foto sumber & .clean.jpg tidak ditemukan untuk: {btp}/{cat}/{ident}/{pname}", flush=True)
+                                error_count += 1
+                                continue
                 else:
+                    # Mode Non-LaMa (HSV / Vision): inpaint lokal + box timemark standar
+                    img = Image.open(src_photo).convert("RGB")
+                    w, h = img.size
+
+                    raw_x = cached_meta.get("xPos", 14)
+                    raw_y = cached_meta.get("yPos", int(h * 0.733))
+                    x1 = int(round((raw_x / 300.0) * w)) if (raw_x <= 300 and w > 300) else int(raw_x)
+                    y1 = int(round((raw_y / 300.0) * h)) if (raw_y <= 300 and h > 300) else int(raw_y)
+
+                    box_h = max(18, int(h * BOX_HEIGHT_RATIO))
+                    y2 = min(h, y1 + box_h)
+
+                    font_size = max(9, min(160, int(w * 0.038)))
+                    font = get_font(font_size)
+                    dummy = ImageDraw.Draw(Image.new("L", (1, 1)))
+                    fit_stroke = 1 if font_size >= 28 else 0
+                    bbox = dummy.textbbox((0, 0), target_text, font=font, stroke_width=fit_stroke)
+                    tw = bbox[2] - bbox[0]
+                    pad_x = max(4, int(w * 0.010))
+                    fit_w = tw + (2 * pad_x)
+                    x2 = min(w, x1 + fit_w)
+                    box = (x1, y1, x2, y2)
+
                     arr = np.array(img)
                     crop = arr[y1:y2, x1:x2]
                     mask = np.ones((y2 - y1, x2 - x1), dtype=bool)
                     arr[y1:y2, x1:x2] = diffuse_fill(crop, mask, steps=25)
                     img_erased = Image.fromarray(arr)
-                    img_out = draw_textbox(img_erased, box, target_text)
+                    img_out = draw_textbox(img_erased, box, target_text, no_bg=False)
+                    img_out.save(dest_file, quality=95, subsampling=0)
 
-                # Save to destination
-                target_dir.mkdir(parents=True, exist_ok=True)
-                img_out.save(dest_file, quality=95, subsampling=0)
-
-                # Clean up old location if Tim group changed
-                old_tim = cached_meta.get("_tim")
-                old_ident = cached_meta.get("_ident", ident)
+                # Clean up old location (including .clean.jpg) if Tim group changed
                 if old_tim and old_tim != tim_n:
-                    old_file = edited_dir / old_tim / btp / cat / old_ident / pname
-                    if old_file.is_file():
-                        try:
-                            old_file.unlink()
-                        except Exception:
-                            pass
+                    for old_cand in (
+                        edited_dir / old_tim / btp / cat / old_ident / pname,
+                        edited_dir / old_tim / btp / cat / old_ident / f"{Path(pname).stem}.clean.jpg"
+                    ):
+                        if old_cand.is_file():
+                            try:
+                                old_cand.unlink()
+                            except Exception:
+                                pass
 
                 # Update target meta.json
                 folder_meta = {}
@@ -279,8 +377,14 @@ def fast_update(
                         folder_meta = {}
 
                 meta_item = folder_meta.get(pname, {}) if isinstance(folder_meta.get(pname), dict) else {}
-                meta_item["stage"] = cached_meta.get("stage", "stage_fast_update")
-                meta_item["detector"] = cached_meta.get("detector", "cache")
+                if is_lama_mode:
+                    meta_item["stage"] = meta_item.get("stage") or cached_meta.get("stage") or "stage_paddle_ocr"
+                    meta_item["detector"] = meta_item.get("detector") if meta_item.get("detector") in ("paddle_ocr", "lama_ai") else (meta_det if meta_det in ("paddle_ocr", "lama_ai") else "paddle_ocr")
+                    raw_x = meta_item.get("xPos", raw_x)
+                    raw_y = meta_item.get("yPos", raw_y)
+                else:
+                    meta_item["stage"] = cached_meta.get("stage", "stage_fast_update")
+                    meta_item["detector"] = req_det if req_det in ("guide", "google_vision") else cached_meta.get("detector", "cache")
                 meta_item["dateText"] = target_text
                 meta_item["updatedAt"] = datetime.now().isoformat()
                 meta_item["xPos"] = raw_x
@@ -332,9 +436,38 @@ def main():
     parser.add_argument("--force", action="store_true", help="Force re-rendering even if date matches")
     parser.add_argument("--filter", type=str, default=None, help="Filter specific asset name")
     parser.add_argument("--no-time", dest="include_time", action="store_false", default=True, help="Jangan sertakan jam (HH:MM)")
+    parser.add_argument("--detector", type=str, default="auto", help="Detector mode (paddle_ocr, guide, google_vision, auto)")
     args = parser.parse_args()
 
-    return fast_update(args.schedule, args.input, args.temp, args.output, args.force, args.filter, include_time=args.include_time)
+    from export_pdf_foto import discover_period_workspaces, split_export_base_and_subdir
+    inp = args.input.resolve()
+    export_base, _ = split_export_base_and_subdir(inp, "03_export_foto")
+    has_direct_btp = inp.is_dir() and any(d.is_dir() and d.name.upper().startswith("BTP") for d in inp.iterdir())
+    workspaces = [] if (has_direct_btp or args.schedule.is_file()) else discover_period_workspaces(export_base, "03_export_foto")
+
+    if workspaces:
+        print(f"[PERIODE] Terdeteksi {len(workspaces)} folder periode untuk Fast Update Timemark.", flush=True)
+        rc = 0
+        for pref, m_root in workspaces:
+            m_in = m_root / "03_export_foto"
+            if not m_in.is_dir():
+                m_in = m_root / "03_photos_export"
+            print(f"\n── Periode: {pref} ──", flush=True)
+            res = fast_update(
+                m_root / "schedule.json",
+                m_in,
+                m_root / "03_photos_cropped_temp",
+                m_root / "04_photos_edited",
+                args.force,
+                args.filter,
+                include_time=args.include_time,
+                detector=args.detector,
+            )
+            if res != 0:
+                rc = res
+        return rc
+
+    return fast_update(args.schedule, args.input, args.temp, args.output, args.force, args.filter, include_time=args.include_time, detector=args.detector)
 
 
 if __name__ == "__main__":

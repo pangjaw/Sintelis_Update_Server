@@ -38,14 +38,17 @@ DEFAULT_CROPPED_SET = Path("logs/cropped_collages.json")
 # Kategori yang diizinkan untuk pemeriksaan kolase
 COLLAGE_ELIGIBLE_CATEGORIES = {
     "CATUDAYA", "CATU DAYA", "CATU DAYA ER RADIO", "CATU DAYA ER SINYAL",
-    "PDSE", "PTDS", "PTLS"
+    "PDSE", "PTDS", "PTLS",
+    "WAYSTATION 3 BULANAN", "WAYSTATION 6 BULANAN", "WAYSTATION 1 TAHUNAN",
+    "BASESTATION 6 BULANAN", "BASESTATION 3 BULANAN", "BASESTATION 1 TAHUNAN",
 }
 
 
 def detect_white_seam_collage(img_path: Path, requested_quadrant: str | None = None) -> tuple[str, tuple[int, int, int, int] | None, dict]:
     """
     Mendeteksi apakah gambar memiliki garis pembatas putih/netral khas kolase 2x2 atau 3-in-1.
-    Memilih kuadran terbaik berdasarkan deteksi guideline timemark (atau default ke Bottom-Left 'BL').
+    Memilih kuadran terbaik berdasarkan deteksi garis vertikal guideline timemark di kiri-bawah
+    (atau default ke Bottom-Left 'BL').
     Returns: (layout_type, crop_box, stats)
     """
     try:
@@ -57,62 +60,79 @@ def detect_white_seam_collage(img_path: Path, requested_quadrant: str | None = N
         g = arr[:, :, 1]
         b = arr[:, :, 2]
 
-        # 1. Filter Garis Pembatas Putih/Netral (Saturation < 18% dan Brightness > 90)
+        # 1. Mask garis pembatas putih sejati (bukan tembok abu-abu/lemari gelap)
         max_c = np.maximum(np.maximum(r, g), b)
         min_c = np.minimum(np.minimum(r, g), b)
         delta = max_c - min_c
-        sat = np.where(max_c > 0, (delta / max_c) * 100.0, 0.0)
+        sat = np.divide(delta * 100.0, max_c, out=np.zeros_like(delta), where=max_c > 0)
 
-        is_neutral_line = (sat < 18.0) & (max_c > 90.0)
+        is_white_seam = (sat < 15.0) & (min_c >= 195.0)
+        is_soft_white_seam = (sat < 12.0) & (min_c >= 175.0)
 
-        # 2. Pindai Garis Putih Vertikal di Sumbu Tengah (45%..55%)
+        # Hindari gambar putih polos / dinding putih masif tanpa pembatas kolase
+        overall_white_ratio = float(np.mean(is_white_seam))
+
+        # 2. Pindai garis putih vertikal 1-piksel tepat pada sumbu tengah (45%..55%)
         best_v_col = w // 2
         max_v_pct = 0.0
+        soft_v_pct = 0.0
         for x in range(int(w * 0.45), int(w * 0.55)):
-            strip = is_neutral_line[:, max(0, x - 1):min(w, x + 2)]
-            col_hits = np.sum(np.any(strip, axis=1)) / h
+            col_hits = float(np.mean(is_white_seam[:, x]))
+            soft_hits = float(np.mean(is_soft_white_seam[:, x]))
             if col_hits > max_v_pct:
-                max_v_pct = float(col_hits)
+                max_v_pct = col_hits
                 best_v_col = x
+            if soft_hits > soft_v_pct:
+                soft_v_pct = soft_hits
 
-        # 3. Pindai Garis Putih Horizontal di Sumbu Tengah (45%..55%)
+        # 3. Pindai garis putih horizontal 1-piksel tepat pada sumbu tengah (45%..55%)
         best_h_row = h // 2
         max_h_pct = 0.0
+        soft_h_pct = 0.0
         for y in range(int(h * 0.45), int(h * 0.55)):
-            strip = is_neutral_line[max(0, y - 1):min(h, y + 2), :]
-            row_hits = np.sum(np.any(strip, axis=0)) / w
+            row_hits = float(np.mean(is_white_seam[y, :]))
+            soft_hits = float(np.mean(is_soft_white_seam[y, :]))
             if row_hits > max_h_pct:
-                max_h_pct = float(row_hits)
+                max_h_pct = row_hits
                 best_h_row = y
+            if soft_hits > soft_h_pct:
+                soft_h_pct = soft_hits
 
-        # 4. Pindai Garis Putih Vertikal pada Paruh Bawah Saja (Layout 3-in-1)
+        # 4. Pindai garis putih vertikal pada paruh bawah saja (Layout 3-in-1)
         max_bottom_v_pct = 0.0
+        bot_start = int(h * 0.52)
         for x in range(int(w * 0.45), int(w * 0.55)):
-            strip = is_neutral_line[int(h * 0.55):, max(0, x - 1):min(w, x + 2)]
-            bottom_hits = np.sum(np.any(strip, axis=1)) / (h * 0.45)
+            bottom_hits = float(np.mean(is_white_seam[bot_start:, x]))
             if bottom_hits > max_bottom_v_pct:
-                max_bottom_v_pct = float(bottom_hits)
+                max_bottom_v_pct = bottom_hits
 
         # Gunakan pembagian simetris sempurna jika offset kecil (standar kolase 150x150)
         split_x = w // 2 if abs(best_v_col - w // 2) <= 12 else best_v_col
         split_y = h // 2 if abs(best_h_row - h // 2) <= 12 else best_h_row
+
+        center_patch = min_c[max(0, best_h_row - 1):min(h, best_h_row + 2), max(0, best_v_col - 1):min(w, best_v_col + 2)]
+        center_bright = float(np.mean(center_patch)) if center_patch.size > 0 else 0.0
 
         stats = {
             "v_pct": round(max_v_pct, 3),
             "h_pct": round(max_h_pct, 3),
             "bottom_v_pct": round(max_bottom_v_pct, 3),
             "split_x": split_x,
-            "split_y": split_y
+            "split_y": split_y,
+            "center_bright": round(center_bright, 1),
         }
 
-        # Klasifikasi 2x2: Garis vertikal & horizontal saling membelah di sumbu tengah
-        is_2x2 = (
-            (max_v_pct >= 0.40 and max_h_pct >= 0.40) or
-            (max_v_pct >= 0.35 and max_h_pct >= 0.50) or
-            (max_v_pct >= 0.50 and max_h_pct >= 0.35)
+        not_blank_white = overall_white_ratio < 0.72
+
+        # Klasifikasi 2x2: Harus berupa garis putih menerus di KEDUA sumbu tengah (>=80% panjang)
+        is_2x2 = not_blank_white and (
+            (max_v_pct >= 0.80 and max_h_pct >= 0.80) or
+            (soft_v_pct >= 0.90 and soft_h_pct >= 0.90 and center_bright >= 200.0)
         )
-        # Klasifikasi 3-in-1: Garis horizontal penuh dan paruh bawah vertikal
-        is_3in1 = (max_h_pct >= 0.55 and max_bottom_v_pct >= 0.45)
+        # Klasifikasi 3-in-1: Garis horizontal putih utuh & paruh bawah vertikal utuh
+        is_3in1 = (not is_2x2) and not_blank_white and (
+            max_h_pct >= 0.85 and max_bottom_v_pct >= 0.85
+        )
 
         if is_2x2:
             quads = {
@@ -126,21 +146,39 @@ def detect_white_seam_collage(img_path: Path, requested_quadrant: str | None = N
                 stats["chosen_quadrant"] = chosen
                 return "2x2", quads[chosen], stats
 
-            # Pemilihan kuadran otomatis: Pindai guideline merah/cyan timemark
-            chosen = "BL"  # Default ke Bottom-Left untuk checklist kolase
-            max_guide_hits = 0
+            # Pemilihan kuadran otomatis: cari batang vertikal guideline sempit di zona kiri-bawah kuadran
+            # (mengabaikan baju seragam oranye KAI atau objek berwarna lebar)
+            chosen = "BL"
+            best_score = 0
             arr_int = np.array(img)
             for qn, (x1, y1, x2, y2) in quads.items():
                 qarr = arr_int[y1:y2, x1:x2]
-                qr, qg, qb = qarr[:, :, 0].astype(int), qarr[:, :, 1].astype(int), qarr[:, :, 2].astype(int)
-                guide_mask = ((qr > 140) & (qg < 90) & (qb < 90)) | ((qg > 140) & (qb > 140) & (qr < 90))
-                ghits = int(np.sum(guide_mask))
-                if ghits > max_guide_hits and ghits >= 300:
-                    max_guide_hits = ghits
+                qh, qw = qarr.shape[:2]
+                if qh < 20 or qw < 20:
+                    continue
+                zone = qarr[int(qh * 0.45):int(qh * 0.97), 0:max(6, int(qw * 0.25))]
+                zr = zone[:, :, 0].astype(int)
+                zg = zone[:, :, 1].astype(int)
+                zb = zone[:, :, 2].astype(int)
+                is_red_bar = (zr > 155) & ((zr - zb) > 65) & (zg < 145)
+                is_cyan_bar = (zg > 140) & (zb > 140) & (zr < 95)
+                bar_mask = is_red_bar | is_cyan_bar
+
+                # Hitung kolom yang membentuk garis vertikal tipis kontinu (lebar baris <= 6 px)
+                thin_rows = np.sum(bar_mask, axis=1)
+                valid_row_mask = (thin_rows >= 1) & (thin_rows <= 6)
+                if np.any(valid_row_mask):
+                    col_counts = np.sum(bar_mask[valid_row_mask, :], axis=0)
+                    score = int(np.max(col_counts))
+                else:
+                    score = 0
+
+                if score > best_score and score >= 10:
+                    best_score = score
                     chosen = qn
 
             stats["chosen_quadrant"] = chosen
-            stats["guide_hits"] = max_guide_hits
+            stats["guide_hits"] = best_score
             return "2x2", quads[chosen], stats
 
         if is_3in1:
@@ -153,7 +191,81 @@ def detect_white_seam_collage(img_path: Path, requested_quadrant: str | None = N
         return "single_photo", None, {"error": str(e)}
 
 
+def _load_previous_crop_state(manifest_path: Path, cropped_set_path: Path) -> tuple[dict[str, str], dict[str, list]]:
+    """Baca daftar kolase & crop_box sebelumnya untuk deteksi item yang batal/berubah crop."""
+    prev_rel_map: dict[str, str] = {}
+    prev_box_map: dict[str, list] = {}
+    if cropped_set_path.is_file():
+        try:
+            raw = json.loads(cropped_set_path.read_text(encoding="utf-8"))
+            if isinstance(raw, list):
+                for item in raw:
+                    norm = str(item).replace("\\", "/").strip("/")
+                    if norm:
+                        prev_rel_map[norm.lower()] = norm
+        except Exception:
+            pass
+    if manifest_path.is_file():
+        try:
+            mdata = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for c in mdata.get("collages", []):
+                rp = str(c.get("rel_path") or "").replace("\\", "/").strip("/")
+                if rp:
+                    prev_rel_map[rp.lower()] = rp
+                    if c.get("crop_box"):
+                        prev_box_map[rp.lower()] = list(c["crop_box"])
+        except Exception:
+            pass
+    return prev_rel_map, prev_box_map
+
+
+def _cleanup_stale_edited_crops(export_root: Path, invalidated_rels: list[str]) -> int:
+    """Hapus file hasil edit lama di 04_photos_edited untuk foto yang batal/berubah crop-nya."""
+    if not invalidated_rels:
+        return 0
+    edited_candidates = [export_root / "04_photos_edited", export_root / "04_foto_edited"]
+    removed = 0
+    for ed_root in edited_candidates:
+        if not ed_root.is_dir():
+            continue
+        search_bases = [ed_root] + [d for d in ed_root.iterdir() if d.is_dir() and d.name.lower().startswith("tim_")]
+        for base in search_bases:
+            meta_dirty: dict[Path, list[str]] = {}
+            for rel_str in invalidated_rels:
+                rel_p = Path(rel_str)
+                asset_dir = base / rel_p.parent
+                if not asset_dir.is_dir():
+                    continue
+                fname = rel_p.name
+                stem = rel_p.stem
+                for cand in (asset_dir / fname, asset_dir / f"{stem}.clean.jpg", asset_dir / f"{fname}.unedited"):
+                    if cand.is_file():
+                        try:
+                            cand.unlink()
+                            removed += 1
+                        except Exception:
+                            pass
+                meta_path = asset_dir / "meta.json"
+                if meta_path.is_file():
+                    meta_dirty.setdefault(meta_path, []).append(fname)
+            for mpath, fnames in meta_dirty.items():
+                try:
+                    mdata = json.loads(mpath.read_text(encoding="utf-8"))
+                    changed = False
+                    for fn in fnames:
+                        if fn in mdata:
+                            mdata.pop(fn, None)
+                            changed = True
+                    if changed:
+                        mpath.write_text(json.dumps(mdata, indent=2, ensure_ascii=False), encoding="utf-8")
+                except Exception:
+                    pass
+    return removed
+
+
 def process_all_collages(input_dir: Path, output_dir: Path, manifest_path: Path, cropped_set_path: Path) -> dict:
+    prev_rel_map, prev_box_map = _load_previous_crop_state(manifest_path, cropped_set_path)
+
     # 1. Bersihkan folder output cropped sebelumnya
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -170,6 +282,7 @@ def process_all_collages(input_dir: Path, output_dir: Path, manifest_path: Path,
     }
 
     cropped_rel_set = set()
+    new_box_map: dict[str, list] = {}
 
     total_jpgs = len(all_jpgs)
     for idx_jpg, p in enumerate(all_jpgs, 1):
@@ -182,7 +295,7 @@ def process_all_collages(input_dir: Path, output_dir: Path, manifest_path: Path,
 
             # Filter kategori (kategori di luar ini dijamin 100% single photo)
             cat = parts[1].upper() if len(parts) >= 2 else ""
-            if cat not in COLLAGE_ELIGIBLE_CATEGORIES and not any(k in cat for k in ("CATUDAYA", "CATU DAYA", "PDSE", "PTDS", "PTLS")):
+            if cat not in COLLAGE_ELIGIBLE_CATEGORIES and not any(k in cat for k in ("CATUDAYA", "CATU DAYA", "PDSE", "PTDS", "PTLS", "WAYSTATION", "BASESTATION")):
                 continue
 
             layout, crop_box, stats = detect_white_seam_collage(p)
@@ -201,6 +314,7 @@ def process_all_collages(input_dir: Path, output_dir: Path, manifest_path: Path,
                 resized_img.save(dst_path, quality=95, subsampling=0)
 
                 cropped_rel_set.add(rel_str.lower())
+                new_box_map[rel_str.lower()] = list(crop_box)
                 manifest["total_collages_cropped"] += 1
                 manifest["collages"].append({
                     "rel_path": rel_str,
@@ -218,6 +332,14 @@ def process_all_collages(input_dir: Path, output_dir: Path, manifest_path: Path,
         except Exception as e:
             print(f"[ERROR] Gagal memproses {p}: {e}", file=sys.stderr)
 
+    # Bersihkan sisa file editan lama di 04_photos_edited jika status/ukuran crop foto berubah atau batal
+    invalidated_rels = [
+        orig_rel for rel_low, orig_rel in prev_rel_map.items()
+        if (rel_low not in cropped_rel_set)
+        or (rel_low in prev_box_map and new_box_map.get(rel_low) != prev_box_map[rel_low])
+    ]
+    cleaned_edited = _cleanup_stale_edited_crops(input_dir.parent, invalidated_rels)
+
     # Simpan manifest dan update cropped_collages.json
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     cropped_set_path.write_text(json.dumps(sorted(list(cropped_rel_set)), indent=2, ensure_ascii=False), encoding="utf-8")
@@ -226,6 +348,8 @@ def process_all_collages(input_dir: Path, output_dir: Path, manifest_path: Path,
     print(f"AUTO-CROP WHITE-SEAM SELESAI:")
     print(f"  Total Foto Dipindai : {manifest['total_scanned']}")
     print(f"  Total Kolase Dipotong: {manifest['total_collages_cropped']}")
+    if cleaned_edited > 0:
+        print(f"  File Edit Lama Dibersihkan: {cleaned_edited} berkas (batal/ubah crop)")
     print(f"  Manifest Disimpan di : {manifest_path}")
     print(f"==========================================")
 
@@ -240,7 +364,27 @@ def main():
     parser.add_argument("--cropped-set", type=Path, default=DEFAULT_CROPPED_SET, help="Cropped rel paths json")
     args = parser.parse_args()
 
-    process_all_collages(args.input, args.output, args.manifest, args.cropped_set)
+    from export_pdf_foto import discover_period_workspaces, split_export_base_and_subdir
+    inp = args.input.resolve()
+    export_base, _ = split_export_base_and_subdir(inp, "03_export_foto")
+    has_direct_btp = inp.is_dir() and any(d.is_dir() and d.name.upper().startswith("BTP") for d in inp.iterdir())
+    workspaces = [] if has_direct_btp else discover_period_workspaces(export_base, "03_export_foto")
+
+    if workspaces:
+        print(f"[PERIODE] Terdeteksi {len(workspaces)} folder periode untuk Auto-Crop Kolase.", flush=True)
+        for pref, m_root in workspaces:
+            m_in = m_root / "03_export_foto"
+            if not m_in.is_dir():
+                m_in = m_root / "03_photos_export"
+            print(f"\n── Periode: {pref} ──", flush=True)
+            process_all_collages(
+                m_in,
+                m_root / "03_photos_cropped_temp",
+                m_root / "logs" / "auto_crop_manifest.json",
+                m_root / "logs" / "cropped_collages.json",
+            )
+    else:
+        process_all_collages(args.input, args.output, args.manifest, args.cropped_set)
 
 
 if __name__ == "__main__":

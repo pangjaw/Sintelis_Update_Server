@@ -26,7 +26,8 @@ from export_pdf_foto import (
     sanitize_segment, ensure_dir, load_sap_mapping, SAP_MAPPING_PATH,
     detect_category_from_filename, extract_station_from_filename, STATION_TO_BTP,
     extract_identifier, extract_funcloc_from_text, extract_all_funclocs,
-    determine_btp,
+    determine_btp, _detect_ws_bs_category, _build_batch_date_info,
+    resolve_pdf_period_map, split_export_base_and_subdir,
 )
 from extract_pdf_dates import extract_date_from_pdf, format_date_target
 try:
@@ -56,6 +57,9 @@ MONTH_MAP = {
 # Default waktu (minutes) per category
 CATEGORY_DEFAULT_WAKTU = {
     "AXC": 45,
+    "BASESTATION 1 TAHUNAN": 45,
+    "BASESTATION 3 BULANAN": 45,
+    "BASESTATION 6 BULANAN": 45,
     "CATUDAYA": 45,
     "CTS": 45,
     "JPL": 45,
@@ -65,6 +69,9 @@ CATEGORY_DEFAULT_WAKTU = {
     "PTPP": 45,
     "SERAT OPTIK": 60,
     "SINYAL": 30,
+    "WAYSTATION 1 TAHUNAN": 45,
+    "WAYSTATION 3 BULANAN": 45,
+    "WAYSTATION 6 BULANAN": 45,
     "WESEL": 30,
 }
 
@@ -278,6 +285,17 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
         category = detect_category_from_filename(pdf_path.parent.name)
     if not category and pdf_path.parent.parent.name:
         category = detect_category_from_filename(pdf_path.parent.parent.name)
+    if category in ("UNKNOWN", "PTLS") and page1_text:
+        ws_bs_p1 = _detect_ws_bs_category(page1_text)
+        if ws_bs_p1:
+            category = ws_bs_p1
+
+    if not pdf_date:
+        m_fn_dt = re.search(r'(\d{2}-\d{2}-\d{4})', pdf_path.name)
+        if m_fn_dt:
+            pdf_date = parse_date_from_filename(m_fn_dt.group(1))
+            if pdf_date:
+                date_str = format_date_target(pdf_date)
 
     if not pdf_date and page1_text:
         pdf_date = parse_date_indonesian(page1_text)
@@ -289,10 +307,43 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
         return None
 
     date_suffix = pdf_date.strftime("_%d-%m") if pdf_date else ""
+    date_suffix_full = pdf_date.strftime("_%d-%m-%Y") if pdf_date else ""
     if date_suffix:
         part_match = re.search(r'\((2|3|4)\)', pdf_path.name)
         if part_match:
-            date_suffix = f"{date_suffix}_part{part_match.group(1)}"
+            part_s = f"_part{part_match.group(1)}"
+            date_suffix = f"{date_suffix}{part_s}"
+            date_suffix_full = f"{date_suffix_full}{part_s}"
+
+    def _apply_sched_date_suffix(base_ident: str, btp_val: str) -> str:
+        if not base_ident or not date_suffix:
+            return base_ident
+        if category == "WESEL":
+            return f"{base_ident}{date_suffix}"
+        if existing_photo_dirs:
+            cat_up = category.upper()
+            if (cat_up, f"{base_ident}{date_suffix_full}".upper()) in existing_photo_dirs:
+                return f"{base_ident}{date_suffix_full}"
+            if (cat_up, f"{base_ident}{date_suffix}".upper()) in existing_photo_dirs:
+                return f"{base_ident}{date_suffix}"
+        elif photos_dir:
+            if (photos_dir / btp_val / category / f"{base_ident}{date_suffix_full}").is_dir():
+                return f"{base_ident}{date_suffix_full}"
+            if (photos_dir / btp_val / category / f"{base_ident}{date_suffix}").is_dir():
+                return f"{base_ident}{date_suffix}"
+        if multi_date_lookup:
+            if isinstance(multi_date_lookup, dict) and "counts" in multi_date_lookup:
+                counts = multi_date_lookup.get("counts") or {}
+                years_map = multi_date_lookup.get("years") or {}
+                if counts.get((category, base_ident), 0) > 1:
+                    yrs = years_map.get((category, base_ident), set())
+                    return f"{base_ident}{date_suffix_full}" if len(yrs) > 1 else f"{base_ident}{date_suffix}"
+            elif (
+                multi_date_lookup.get((category, base_ident), 0) > 1 or
+                multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
+            ):
+                return f"{base_ident}{date_suffix}"
+        return base_ident
 
     # Extract funclocs on page 1 (in order from top to bottom)
     all_funclocs = extract_all_funclocs(page1_text) if page1_text else []
@@ -315,19 +366,7 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
                 seen.add(ident)
                 w = get_waktu(category, mapping, acuan)
                 btp = _determine_btp(ident, pdf_path)
-                
-                target_ident = ident
-                should_suffix = (
-                    category == "WESEL" or
-                    (existing_photo_dirs and date_suffix and f"{ident}{date_suffix}".upper() in existing_photo_dirs) or
-                    (photos_dir and date_suffix and not existing_photo_dirs and (photos_dir / btp / category / f"{ident}{date_suffix}").is_dir()) or
-                    (multi_date_lookup and (
-                        multi_date_lookup.get((category, ident), 0) > 1 or
-                        multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
-                    ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
-                )
-                if should_suffix and date_suffix:
-                    target_ident = f"{ident}{date_suffix}" 
+                target_ident = _apply_sched_date_suffix(ident, btp)
 
                 asset_items.append({
                     "identifier": target_ident,
@@ -373,11 +412,12 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
                 else:
                     asset_w = per_asset_w
 
+                dated_asset_name = _apply_sched_date_suffix(asset_name, btp_cur)
                 asset_items.append({
-                    "identifier": asset_name,
+                    "identifier": dated_asset_name,
                     "location_identifier": loc_ident,
-                    "folder": asset_name,
-                    "base_identifier": loc_ident,
+                    "folder": dated_asset_name,
+                    "base_identifier": asset_name,
                     "btp": btp_cur,
                     "waktu_menit": asset_w,
                     "funcloc": fl_clean
@@ -405,17 +445,7 @@ def _process_pdf_pass1(pdf_path: Path, mapping: dict, acuan: dict, k_map: dict, 
                 w = core_val * 6
 
             btp = _determine_btp(identifier, pdf_path)
-            target_ident = identifier
-            should_suffix = (
-                category == "WESEL" or
-                (photos_dir and date_suffix and (photos_dir / btp / category / f"{identifier}{date_suffix}").is_dir()) or
-                (multi_date_lookup and (
-                    multi_date_lookup.get((category, identifier), 0) > 1 or
-                    multi_date_lookup.get((category, extract_station_from_filename(pdf_path.name)), 0) > 1
-                ) and category in ("PDSE", "PTDS", "PTLS", "SINYAL", "AXC"))
-            )
-            if should_suffix and date_suffix:
-                target_ident = f"{identifier}{date_suffix}"
+            target_ident = _apply_sched_date_suffix(identifier, btp)
 
             asset_items.append({
                 "identifier": target_ident,
@@ -457,9 +487,12 @@ def is_subfolder_excluded(p: Path, base: Path, exclude_set: set | None = None) -
 def build_schedule(pdf_dir: Path, photos_dir: Path,
                    mapping: dict, acuan: dict,
                    jam_mulai: int, jam_selesai: int, tim_max: int,
-                   split_multi_asset: bool = False) -> dict:
-    files = sorted(p for p in pdf_dir.rglob("*.pdf")
-                   if not is_subfolder_excluded(p, pdf_dir) and p.is_file())
+                   split_multi_asset: bool = False,
+                   pdf_files_override: list[Path] | None = None) -> dict:
+    files = list(pdf_files_override) if pdf_files_override is not None else sorted(
+        p for p in pdf_dir.rglob("*.pdf")
+        if not is_subfolder_excluded(p, pdf_dir) and p.is_file()
+    )
     if not files:
         return {"version": 1, "schedules": []}
 
@@ -475,36 +508,25 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
     except Exception:
         pass
 
-    # Pre-scan PDF files to detect multi-inspection assets (e.g. WESEL, PDSE, PTDS, PTLS, SINYAL, AXC)
-    from collections import Counter
-    multi_date_lookup = Counter()
-    for p in files:
-        cat = detect_category_from_filename(p.name)
-        st = extract_station_from_filename(p.name)
-        if st and cat:
-            multi_date_lookup[(cat, st)] += 1
+    # Pre-scan PDF files to detect multi-inspection assets across all categories
+    multi_date_lookup = _build_batch_date_info(files, split_multi_asset=split_multi_asset)
 
     # Pre-scan subfolder foto satu kali saja ke RAM untuk menghindari ribuan pengecekan jaringan SMB
+    # Simpan pasangan (PARENT_CATEGORY, IDENTIFIER_DIR) agar kategori berbeda tidak saling tertukar
     existing_photo_dirs = set()
     if photos_dir and photos_dir.is_dir():
-        try:
-            for entry in os.scandir(str(photos_dir)):
-                if entry.is_dir() and not entry.name.startswith(('.', '$')):
-                    existing_photo_dirs.add(entry.name.upper())
-                    try:
-                        for sub_entry in os.scandir(entry.path):
-                            if sub_entry.is_dir():
-                                existing_photo_dirs.add(sub_entry.name.upper())
-                                try:
-                                    for sub2 in os.scandir(sub_entry.path):
-                                        if sub2.is_dir():
-                                            existing_photo_dirs.add(sub2.name.upper())
-                                except Exception:
-                                    pass
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+        def _scan_dirs(cur_path: str, parent_name: str, depth: int):
+            if depth > 4:
+                return
+            try:
+                for ent in os.scandir(cur_path):
+                    if ent.is_dir() and not ent.name.startswith(('.', '$')):
+                        if parent_name:
+                            existing_photo_dirs.add((parent_name.upper(), ent.name.upper()))
+                        _scan_dirs(ent.path, ent.name, depth + 1)
+            except Exception:
+                pass
+        _scan_dirs(str(photos_dir), "", 0)
 
     # Nonaktifkan OCR fallback selama proses penjadwalan agar tidak membekukan worker thread
     orig_ocr = os.environ.get("ENABLE_OCR_FALLBACK")
@@ -659,6 +681,7 @@ def main() -> int:
     p.add_argument("--tim-max", type=int, default=3)
     p.add_argument("--split-multi-asset", action="store_true", help="Bagi foto dan jam sesuai jumlah baris aset")
     p.add_argument("--output", default="schedule.json")
+    p.add_argument("--period-filter", default="", help="Filter periode tertentu (misal '01. JANUARI' atau '2025/01. JANUARI')")
     args = p.parse_args()
 
     pdf_dir = Path(args.pdf_dir).resolve()
@@ -693,9 +716,47 @@ def main() -> int:
     jm = int(round(max(0, min(23 * 60, args.jam_mulai * 60))))
     js = int(round(max(0, min(24 * 60, args.jam_selesai * 60))))
 
-    sched = build_schedule(pdf_dir, photos_dir, mapping, acuan, jm, js, max(1, args.tim_max), args.split_multi_asset)
+    all_files = sorted(
+        p for p in pdf_dir.rglob("*.pdf")
+        if not is_subfolder_excluded(p, pdf_dir) and p.is_file()
+    )
+    pdf_to_prefix, multi_month, _ = resolve_pdf_period_map(all_files)
+    period_filter = (getattr(args, "period_filter", "") or "").strip().replace("\\", "/")
 
-    out = Path(args.output)
+    resolved_out = (pdf_dir / "schedule.json") if str(args.output) == "schedule.json" else Path(args.output)
+
+    if period_filter:
+        filtered = [p for p in all_files if pdf_to_prefix.get(p, "").replace("\\", "/") == period_filter]
+        jobs = [(period_filter, filtered, photos_dir, resolved_out)]
+    elif multi_month:
+        photos_base, raw_sub = split_export_base_and_subdir(photos_dir, "03_export_foto")
+        grouped: dict[str, list[Path]] = {}
+        for f in all_files:
+            grouped.setdefault(pdf_to_prefix.get(f, ""), []).append(f)
+        jobs = []
+        for pref, flist in sorted(grouped.items(), key=lambda x: x[0]):
+            if pref:
+                m_root = photos_base / pref
+                jobs.append((pref, flist, m_root / raw_sub, resolved_out))
+            else:
+                jobs.append(("", flist, photos_dir, resolved_out))
+    else:
+        jobs = [("", all_files, photos_dir, resolved_out)]
+
+    combined_schedules = []
+    out = resolved_out
+    for pref_label, job_files, job_photos_dir, job_out in jobs:
+        if pref_label:
+            print(f"\n── Jadwal Periode: {pref_label} ({len(job_files)} PDF) ──", flush=True)
+        sched = build_schedule(
+            pdf_dir, job_photos_dir, mapping, acuan, jm, js,
+            max(1, args.tim_max), args.split_multi_asset,
+            pdf_files_override=job_files,
+        )
+        combined_schedules.extend(sched.get("schedules", []))
+        out = job_out
+
+    sched = {"version": 3, "schedules": combined_schedules}
     out.parent.mkdir(parents=True, exist_ok=True)
 
     if os.environ.get("OVERWRITE", "1") == "0" and out.exists():
@@ -705,61 +766,62 @@ def main() -> int:
     with open(out, "w", encoding="utf-8") as f:
         json.dump(sched, f, indent=2, ensure_ascii=False)
 
-    # ── Generate photo_target_mapping.json ──
-    from collections import defaultdict
-    photo_target_map = defaultdict(lambda: {"category": "", "btp": "", "identifier": "", "target_files": []})
-    for s in sched.get("schedules", []):
-        btp = s.get("btp", "UNKNOWN")
-        cat = s.get("category", "UNKNOWN")
-        ident = s.get("identifier", "UNKNOWN")
-        fn = s.get("file", "")
-        if not fn or not ident:
-            continue
-        rel_key = f"{btp}/{cat}/{ident}"
-        entry = photo_target_map[rel_key]
-        entry["category"] = cat
-        entry["btp"] = btp
-        entry["identifier"] = ident
-        if fn not in entry["target_files"]:
-            entry["target_files"].append(fn)
+    if True:
 
-    mapping_payload = {
-        "generated_at": datetime.now().isoformat(),
-        "total_assets": len(photo_target_map),
-        "mapping": dict(photo_target_map)
-    }
+        from collections import defaultdict
+        photo_target_map = defaultdict(lambda: {"category": "", "btp": "", "identifier": "", "target_files": []})
+        for s in sched.get("schedules", []):
+            btp = s.get("btp", "UNKNOWN")
+            cat = s.get("category", "UNKNOWN")
+            ident = s.get("identifier", "UNKNOWN")
+            fn = s.get("file", "")
+            if not fn or not ident:
+                continue
+            rel_key = f"{btp}/{cat}/{ident}"
+            entry = photo_target_map[rel_key]
+            entry["category"] = cat
+            entry["btp"] = btp
+            entry["identifier"] = ident
+            if fn not in entry["target_files"]:
+                entry["target_files"].append(fn)
 
-    mapping_out = out.parent / "photo_target_mapping.json"
-    with open(mapping_out, "w", encoding="utf-8") as f:
-        json.dump(mapping_payload, f, indent=2, ensure_ascii=False)
+        mapping_payload = {
+            "generated_at": datetime.now().isoformat(),
+            "total_assets": len(photo_target_map),
+            "mapping": dict(photo_target_map)
+        }
 
-    print(f"\n✅ Penjadwalan Berhasil! Disimpan ke -> {out}", flush=True)
-    print(f"  • Total Jadwal Aset: {len(sched['schedules'])} entri", flush=True)
-    print(f"  • Mapping Foto -> Target PDF: {len(photo_target_map)} aset dipetakan ke -> {mapping_out}\n", flush=True)
+        mapping_out = out.parent / "photo_target_mapping.json"
+        with open(mapping_out, "w", encoding="utf-8") as f:
+            json.dump(mapping_payload, f, indent=2, ensure_ascii=False)
 
-    from collections import OrderedDict
-    tree = OrderedDict()
-    for s in sched["schedules"]:
-        d = s.get("iso_date", s.get("date", "UNKNOWN"))
-        t = s.get("tim", 1)
-        tree.setdefault(d, {}).setdefault(t, []).append(s)
+        print(f"\n✅ Penjadwalan Berhasil! Disimpan ke -> {out}", flush=True)
+        print(f"  • Total Jadwal Aset: {len(sched['schedules'])} entri", flush=True)
+        print(f"  • Mapping Foto -> Target PDF: {len(photo_target_map)} aset dipetakan ke -> {mapping_out}\n", flush=True)
 
-    for d_idx, (d_str, tims) in enumerate(tree.items(), 1):
-        print(f"[{d_idx}/{len(tree)}] 📅 Tanggal: {d_str}", flush=True)
-        tim_keys = sorted(tims.keys())
-        for t_idx, t_num in enumerate(tim_keys):
-            is_last_tim = (t_idx == len(tim_keys) - 1)
-            t_branch = "└──" if is_last_tim else "├──"
-            t_pipe = "   " if is_last_tim else "│  "
-            assets = tims[t_num]
-            print(f"  {t_branch} 👥 Tim {t_num} ({len(assets)} aset):", flush=True)
-            for a_idx, a in enumerate(assets):
-                is_last_asset = (a_idx == len(assets) - 1)
-                a_branch = "└──" if is_last_asset else "├──"
-                start_iso = a.get("photos", {}).get("0.jpg", "")
-                time_str = start_iso.split("T")[1][:5] if "T" in start_iso else "08:00"
-                print(f"  {t_pipe}  {a_branch} [{time_str}] {a['category']}/{a['identifier']} ({a['waktu_menit']}m)", flush=True)
-        print("", flush=True)
+        from collections import OrderedDict
+        tree = OrderedDict()
+        for s in sched["schedules"]:
+            d = s.get("iso_date", s.get("date", "UNKNOWN"))
+            t = s.get("tim", 1)
+            tree.setdefault(d, {}).setdefault(t, []).append(s)
+
+        for d_idx, (d_str, tims) in enumerate(tree.items(), 1):
+            print(f"[{d_idx}/{len(tree)}] 📅 Tanggal: {d_str}", flush=True)
+            tim_keys = sorted(tims.keys())
+            for t_idx, t_num in enumerate(tim_keys):
+                is_last_tim = (t_idx == len(tim_keys) - 1)
+                t_branch = "└──" if is_last_tim else "├──"
+                t_pipe = "   " if is_last_tim else "│  "
+                assets = tims[t_num]
+                print(f"  {t_branch} 👥 Tim {t_num} ({len(assets)} aset):", flush=True)
+                for a_idx, a in enumerate(assets):
+                    is_last_asset = (a_idx == len(assets) - 1)
+                    a_branch = "└──" if is_last_asset else "├──"
+                    start_iso = a.get("photos", {}).get("0.jpg", "")
+                    time_str = start_iso.split("T")[1][:5] if "T" in start_iso else "08:00"
+                    print(f"  {t_pipe}  {a_branch} [{time_str}] {a['category']}/{a['identifier']} ({a['waktu_menit']}m)", flush=True)
+            print("", flush=True)
 
     return 0
 

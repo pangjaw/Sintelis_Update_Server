@@ -323,14 +323,54 @@ function extractWeselIds(text, allowGeneric = false) {
   return getUniqueList(result);
 }
 
+// ---------- Radio Basestation / Waystation helpers ----------
+function extractChecklistHeaderSection(textFlat) {
+  const upper = (textFlat || "").toUpperCase();
+  const stopMarkers = ["ITEM PERAWATAN", "REFERENSI STANDAR", "HASIL PENILAIAN", "LSE/ICOM"];
+  let cutIdx = upper.length;
+  for (const marker of stopMarkers) {
+    const idx = upper.indexOf(marker);
+    if (idx > 0 && idx < cutIdx) cutIdx = idx;
+  }
+  return upper.slice(0, cutIdx);
+}
+
+function extractRadioPeriodeLabel(textFlat, fallbackText = "") {
+  for (const source of [textFlat, fallbackText]) {
+    const upper = (source || "").toUpperCase();
+    if (!upper) continue;
+    const mNumTahun = upper.match(/\b(\d+)\s*TAHUNAN\b/);
+    if (mNumTahun) return `${mNumTahun[1]} TAHUNAN`;
+    const mNumBulan = upper.match(/\b(\d+)\s*BULANAN\b/);
+    if (mNumBulan) return `${mNumBulan[1]} BULANAN`;
+    if (/\bTAHUNAN\b/.test(upper)) return "1 TAHUNAN";
+    const mNumMinggu = upper.match(/\b(\d+)\s*MINGGUAN\b/);
+    if (mNumMinggu) return `${mNumMinggu[1]} MINGGUAN`;
+    if (/\bMINGGUAN\b/.test(upper)) return "MINGGUAN";
+  }
+  return "";
+}
+
+function extractBasestationDeviceCode(headerText, fallbackText = "") {
+  for (const source of [headerText, fallbackText]) {
+    const upper = (source || "").toUpperCase();
+    if (!upper) continue;
+    const funclocMatch = upper.match(/\b(?:TLK|TRA)\d+\s*:\s*BASE\s*STATION[^\n:]*?\b(S\d{2,3}[A-Z]?)\b/);
+    if (funclocMatch) return funclocMatch[1];
+    const genericMatch = upper.match(/\b(S\d{2,3})\b/);
+    if (genericMatch) return genericMatch[1];
+  }
+  return "";
+}
+
 // ---------- Radio Waystation ----------
-function extractRadioWaystationAssets(text) {
+function extractRadioWaystationAssets(text, periode = "") {
   const result = [];
   const stopWords = new Set(["LOKASI","DISETUJUI","DISETUJUL","PISETUJUI","DIKETAHUI","TANGGAL","PERIODE","PERAWATAN","DILAKSANAKAN","OLEH","NO","SC"]);
   const locCodes = new Set([...BTP_JAK_LOCS, ...BTP_BD_LOCS]);
   const longNames = new Set(["BOGOR","CILEBUT","BATUTULIS","BOGORPALEDANG","PALEDANG","CIOMAS","MASENG","CIGOMBONG"]);
 
-  const rx = /\bTLK\d+\s*:\s*(WS\b[^:]+)/g;
+  const rx = /\b(?:TLK|TRA)\d+\s*:\s*(WS\b[^:]+)/g;
   let m;
   while ((m = rx.exec(text)) !== null) {
     const tokens = m[1].match(/[A-Z0-9]+/g) || [];
@@ -347,11 +387,12 @@ function extractRadioWaystationAssets(text) {
     if (aidParts.length && aidParts[0] === "WS") {
       if (!loc) loc = getStandardLoc(text.slice(m.index + m[0].length));
       if (loc === "LOKASI") loc = getStandardLoc(text);
-      const aid = aidParts.join(" ");
+      const baseAid = aidParts.join(" ");
+      const aid = [periode, baseAid].filter(Boolean).join(" ");
       if (!result.some(a => a.id === aid && a.loc === loc)) result.push({ id: aid, loc });
     }
   }
-  if (!result.length) result.push({ id: "WS", loc: getStandardLoc(text) });
+  if (!result.length) result.push({ id: [periode, "WS"].filter(Boolean).join(" "), loc: getStandardLoc(text) });
   return result;
 }
 
@@ -551,22 +592,27 @@ export function detectDoc(textFlat, textCrop, filenameUpper, formatBd) {
 
   // RADIO BASESTATION
   else if (textFlat.includes("RADIO BASESTATION")) {
+    const headerText = extractChecklistHeaderSection(textFlat);
     const loc = extractFuncloc(textCrop) || getStandardLoc(textFlat);
-    if (textFlat.includes("TAIT")) { kode = "BPBKF3"; kategori = "RADIO BASESTATION TAIT"; }
-    else if (textFlat.includes("DIGITAL")) { kode = "BPBKF2"; kategori = "RADIO BASESTATION DIGITAL"; }
+    if (headerText.includes("TAIT")) { kode = "BPBKF3"; kategori = "RADIO BASESTATION TAIT"; }
+    else if (headerText.includes("DIGITAL")) { kode = "BPBKF2"; kategori = "RADIO BASESTATION DIGITAL"; }
     else { kode = "BPBKF1"; kategori = "RADIO BASESTATION"; }
-    assets.push({ id: "", loc });
+    const periode = extractRadioPeriodeLabel(headerText || textFlat, filenameUpper);
+    const devCode = extractBasestationDeviceCode(headerText || textFlat, filenameUpper);
+    assets.push({ id: [periode, devCode].filter(Boolean).join(" "), loc });
   }
 
   // WAYSTATION / RADIO WAYSTATION
   else if (textFlat.includes("SISTEM WAYSTATION") || textFlat.includes("RADIO WAYSTATION") || textFlat.includes("RADIO WAY STATION")) {
+    const headerText = extractChecklistHeaderSection(textFlat);
+    const periode = extractRadioPeriodeLabel(headerText || textFlat, filenameUpper);
     if (textFlat.includes("SISTEM WAYSTATION")) {
       kode = "BPBKS5"; kategori = "SISTEM WAYSTATION";
       const loc = extractFuncloc(textCrop) || getStandardLoc(textFlat);
-      assets.push({ id: "", loc });
+      assets.push({ id: periode, loc });
     } else {
       kode = "BPBKS16"; kategori = "RADIO WAYSTATION";
-      assets = extractRadioWaystationAssets(textFlat);
+      assets = extractRadioWaystationAssets(textFlat, periode);
     }
   }
 
@@ -880,15 +926,19 @@ export function detectDoc(textFlat, textCrop, filenameUpper, formatBd) {
     } else if (filenameUpper.includes("CTC") && filenameUpper.includes("CTS")) {
       kode = "BPBYE4"; kategori = "CTC-CTS";
       assets = [{ id: "", loc }];
-    } else if (filenameUpper.includes("RADIO BASESTATION")) {
+    } else if (filenameUpper.includes("RADIO BASESTATION") || filenameUpper.includes("RADIO BASE STATION")) {
       if (filenameUpper.includes("TAIT")) { kode = "BPBKF3"; kategori = "RADIO BASESTATION TAIT"; }
       else if (filenameUpper.includes("DIGITAL")) { kode = "BPBKF2"; kategori = "RADIO BASESTATION DIGITAL"; }
       else { kode = "BPBKF1"; kategori = "RADIO BASESTATION"; }
-      assets = [{ id: "", loc }];
+      const periode = extractRadioPeriodeLabel(filenameUpper);
+      const devCode = extractBasestationDeviceCode("", filenameUpper);
+      assets = [{ id: [periode, devCode].filter(Boolean).join(" "), loc }];
     } else if (filenameUpper.includes("SISTEM WAYSTATION")) {
-      kode = "BPBKS5"; kategori = "SISTEM WAYSTATION"; assets = [{ id: "", loc }];
+      const periode = extractRadioPeriodeLabel(filenameUpper);
+      kode = "BPBKS5"; kategori = "SISTEM WAYSTATION"; assets = [{ id: periode, loc }];
     } else if (filenameUpper.includes("RADIO WAYSTATION") || filenameUpper.includes("RADIO WAY STATION")) {
-      kode = "BPBKS16"; kategori = "RADIO WAYSTATION"; assets = [{ id: "WS", loc }];
+      const periode = extractRadioPeriodeLabel(filenameUpper);
+      kode = "BPBKS16"; kategori = "RADIO WAYSTATION"; assets = [{ id: [periode, "WS"].filter(Boolean).join(" "), loc }];
     } else if (filenameUpper.includes("PTPP") || filenameUpper.includes("PINTU PERLINTASAN")) {
       kode = "BPBKS17"; kategori = "PTPP";
       const fnJpls = extractJplsFromFilename(filenameUpper);

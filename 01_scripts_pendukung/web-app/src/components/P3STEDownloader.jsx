@@ -9,6 +9,24 @@ const INITIAL_ACCOUNTS = [
   }
 ];
 
+const PRESETS_STORAGE_KEY = 'sintelis_p3ste_asset_presets_v1';
+const LAST_ASSETS_STORAGE_KEY = 'sintelis_p3ste_last_assets_v1';
+
+function parseAssetNumbers(rawText) {
+  if (!rawText) return [];
+  const tokens = rawText.split(/[\s,;]+/);
+  const seen = new Set();
+  const result = [];
+  for (const tok of tokens) {
+    const clean = tok.trim().toUpperCase();
+    if (clean && !seen.has(clean)) {
+      seen.add(clean);
+      result.push(clean);
+    }
+  }
+  return result;
+}
+
 function InfoTooltip({ text }) {
   return (
     <span className="info-tooltip-wrap">
@@ -71,6 +89,31 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
     const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   });
+
+  // Download Submenu Mode: 'rekap' (Download per Tanggal) | 'report_asset' (Download per Aset)
+  const [downloadMode, setDownloadMode] = useState('rekap');
+  const [rawAssetText, setRawAssetText] = useState(() => {
+    try {
+      return localStorage.getItem(LAST_ASSETS_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [assetPresets, setAssetPresets] = useState(() => {
+    try {
+      const saved = localStorage.getItem(PRESETS_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [filterHasil, setFilterHasil] = useState('baik'); // 'baik' | 'tidak_baik' | 'semua'
+  const [filterResort, setFilterResort] = useState('170'); // '170' = UPT STL 1.21 BOO | '' = Semua Resor
+
+  const parsedAssetList = parseAssetNumbers(rawAssetText);
 
   // Manual ID Range state & Dev options
   const [startId, setStartId] = useState('');
@@ -253,6 +296,76 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
     }
   };
 
+  // Persist last asset text & presets
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAST_ASSETS_STORAGE_KEY, rawAssetText);
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [rawAssetText]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(assetPresets));
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [assetPresets]);
+
+  const handleSwitchMode = (nextMode) => {
+    if (isDownloading) return;
+    setDownloadMode(nextMode);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    if (nextMode === 'rekap' && tipeChecklist === '3') {
+      setTipeChecklist('2');
+    }
+  };
+
+  const handleSelectPreset = (presetId) => {
+    setSelectedPresetId(presetId);
+    const found = assetPresets.find(p => p.id === presetId);
+    if (found) {
+      setRawAssetText(found.assets.join('\n'));
+    }
+  };
+
+  const handleConfirmSavePreset = () => {
+    const cleanName = newPresetName.trim();
+    if (!cleanName || parsedAssetList.length === 0) return;
+
+    const existingIdx = assetPresets.findIndex(p => p.name.toLowerCase() === cleanName.toLowerCase());
+    if (existingIdx >= 0) {
+      const updated = assetPresets.map((p, idx) =>
+        idx === existingIdx ? { ...p, name: cleanName, assets: parsedAssetList } : p
+      );
+      setAssetPresets(updated);
+      setSelectedPresetId(updated[existingIdx].id);
+    } else {
+      const newPreset = {
+        id: 'preset_' + Date.now(),
+        name: cleanName,
+        assets: parsedAssetList
+      };
+      setAssetPresets(prev => [...prev, newPreset]);
+      setSelectedPresetId(newPreset.id);
+    }
+    setNewPresetName('');
+    setIsSavingPreset(false);
+  };
+
+  const handleDeletePreset = () => {
+    if (!selectedPresetId) return;
+    setAssetPresets(prev => prev.filter(p => p.id !== selectedPresetId));
+    setSelectedPresetId('');
+  };
+
+  const handleRemoveAssetChip = (codeToRemove) => {
+    const remaining = parsedAssetList.filter(c => c !== codeToRemove);
+    setRawAssetText(remaining.join('\n'));
+  };
+
   // Start download batch
   const handleStartDownload = async () => {
     setErrorMsg(null);
@@ -260,6 +373,11 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
 
     if (!activeAccount || !activeAccount.nipp?.trim() || !activeAccount.password?.trim()) {
       setErrorMsg('Akun yang dipilih belum memiliki NIPP / Kata Sandi. Harap klik tombol "✏️ Edit" untuk mengisi NIPP dan Kata Sandi.');
+      return;
+    }
+
+    if (downloadMode === 'report_asset' && parsedAssetList.length === 0) {
+      setErrorMsg('Harap masukkan minimal satu Nomor Aset (contoh: TLK10305, TLK10667, TLK11003).');
       return;
     }
 
@@ -280,7 +398,10 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
     setProgress({ current: 0, total: 0, percentage: 0 });
     setLogs([]);
     setDownloadedFiles([]);
-    addLog('info', `Memulai sesi login & unduh menggunakan ${activeAccount.name} (NIPP: ${activeAccount.nipp})...`);
+    const modeLabel = downloadMode === 'report_asset'
+      ? `Download per Aset (${parsedAssetList.length} aset)`
+      : 'Download per Tanggal (Rekap)';
+    addLog('info', `Memulai sesi login & unduh [${modeLabel}] menggunakan ${activeAccount.name} (NIPP: ${activeAccount.nipp})...`);
 
     try {
       const res = await fetch('/api/p3ste/download', {
@@ -293,9 +414,14 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
           akhir: finalAkhir,
           type: tipeChecklist,
           folder: targetFolder,
-          start_id: startId ? parseInt(startId) : null,
-          end_id: endId ? parseInt(endId) : null,
-          show_browser: showBrowser
+          start_id: downloadMode === 'rekap' && startId ? parseInt(startId) : null,
+          end_id: downloadMode === 'rekap' && endId ? parseInt(endId) : null,
+          show_browser: showBrowser,
+          mode: downloadMode,
+          asset_numbers: downloadMode === 'report_asset' ? parsedAssetList : [],
+          hasil: filterHasil,
+          resort: filterResort,
+          daop: '1'
         })
       });
 
@@ -391,11 +517,35 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
       <div className="banner info-banner">
         <div className="banner-icon">📥</div>
         <div className="banner-text">
-          <h3>Downloader Rekap Checklist P3-STE</h3>
+          <h3>Downloader Checklist P3-STE</h3>
           <p>
-            Unduh file PDF ceklis langsung dari portal P3-STE secara otomatis per halaman. Sesi login tersimpan permanen di aplikasi.
+            Unduh file PDF ceklis langsung dari portal P3-STE secara otomatis berdasarkan periode tanggal atau banyak Nomor Aset sekaligus.
           </p>
         </div>
+      </div>
+
+      {/* Submenu Mode Switcher */}
+      <div className="p3ste-submode-bar" role="tablist" aria-label="Mode Downloader P3-STE">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={downloadMode === 'rekap'}
+          className={`p3ste-submode-tab ${downloadMode === 'rekap' ? 'active' : ''}`}
+          onClick={() => handleSwitchMode('rekap')}
+          disabled={isDownloading}
+        >
+          📅 Download per Tanggal
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={downloadMode === 'report_asset'}
+          className={`p3ste-submode-tab ${downloadMode === 'report_asset' ? 'active' : ''}`}
+          onClick={() => handleSwitchMode('report_asset')}
+          disabled={isDownloading}
+        >
+          🔍 Download per Aset
+        </button>
       </div>
 
       {errorMsg && (
@@ -507,7 +657,9 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
           <div className="field-group" style={{ marginTop: '10px' }}>
             <label className="field-label">
               Jenis Checklist:
-              <InfoTooltip text="Pilih jenis laporan yang ingin ditarik dari P3-STE: Tipe 2 untuk Perawatan atau Tipe 1 untuk Pemeriksaan." />
+              <InfoTooltip text={downloadMode === 'report_asset'
+                ? "Pilih jenis laporan di report_asset: Perawatan (2), Pemeriksaan (1), atau Gangguan (3)."
+                : "Pilih jenis laporan yang ingin ditarik dari P3-STE: Tipe 2 untuk Perawatan atau Tipe 1 untuk Pemeriksaan."} />
             </label>
             <div className="radio-segmented">
               <label className={`segmented-option ${tipeChecklist === '2' ? 'active' : ''}`}>
@@ -532,8 +684,187 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
                 />
                 🔵 Pemeriksaan (Tipe 1)
               </label>
+              {downloadMode === 'report_asset' && (
+                <label className={`segmented-option ${tipeChecklist === '3' ? 'active' : ''}`}>
+                  <input
+                    type="radio"
+                    name="tipeChecklist"
+                    value="3"
+                    checked={tipeChecklist === '3'}
+                    onChange={() => setTipeChecklist('3')}
+                    disabled={isDownloading}
+                  />
+                  🔧 Gangguan (Tipe 3)
+                </label>
+              )}
             </div>
           </div>
+
+          {downloadMode === 'report_asset' && (
+            <>
+              <div className="form-row" style={{ marginTop: '10px' }}>
+                <div className="field-group">
+                  <label htmlFor="filterHasilSelect" className="field-label">
+                    Hasil Penilaian:
+                    <InfoTooltip text="Filter status hasil checklist pada halaman report_asset P3-STE." />
+                  </label>
+                  <select
+                    id="filterHasilSelect"
+                    className="select-input"
+                    value={filterHasil}
+                    onChange={(e) => setFilterHasil(e.target.value)}
+                    disabled={isDownloading}
+                  >
+                    <option value="baik">✅ Baik</option>
+                    <option value="semua">📋 Semua Hasil</option>
+                    <option value="tidak_baik">⚠️ Tidak Baik</option>
+                  </select>
+                </div>
+
+                <div className="field-group">
+                  <label htmlFor="filterResortSelect" className="field-label">
+                    UPT Resor Sintelis:
+                    <InfoTooltip text="Default UPT STL 1.21 BOO (170), atau pilih Semua Resor jika aset berada di luar resor BOO." />
+                  </label>
+                  <select
+                    id="filterResortSelect"
+                    className="select-input"
+                    value={filterResort}
+                    onChange={(e) => setFilterResort(e.target.value)}
+                    disabled={isDownloading}
+                  >
+                    <option value="170">UPT STL 1.21 BOO (170)</option>
+                    <option value="">Semua Resor (DAOP 1)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="field-group" style={{ marginTop: '12px' }}>
+                <label htmlFor="assetNumbersInput" className="field-label">
+                  Daftar Nomor Aset (Multi-Aset):
+                  <InfoTooltip text="Tempel (paste) daftar Nomor Aset langsung dari Excel, dipisah baris baru, koma, titik koma, atau spasi. Satu ID checklist gabungan tetap hanya diunduh 1x." />
+                </label>
+
+                {/* Preset Bar */}
+                <div className="asset-preset-bar">
+                  <select
+                    className="select-input"
+                    value={selectedPresetId}
+                    onChange={(e) => handleSelectPreset(e.target.value)}
+                    disabled={isDownloading}
+                  >
+                    <option value="">-- Muat Preset Daftar Aset ({assetPresets.length}) --</option>
+                    {assetPresets.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.assets.length} aset)
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setIsSavingPreset(prev => !prev)}
+                    disabled={isDownloading || parsedAssetList.length === 0}
+                    title="Simpan daftar Nomor Aset saat ini sebagai Preset lokal"
+                  >
+                    💾 Simpan Preset
+                  </button>
+                  {selectedPresetId && (
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={handleDeletePreset}
+                      disabled={isDownloading}
+                      title="Hapus preset terpilih"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </div>
+
+                {isSavingPreset && (
+                  <div className="asset-preset-save-row">
+                    <input
+                      type="text"
+                      className="text-input"
+                      placeholder="Nama Preset (misal: WS 3 & 6 Bulanan BOO)"
+                      value={newPresetName}
+                      onChange={(e) => setNewPresetName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConfirmSavePreset();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={handleConfirmSavePreset}
+                      disabled={!newPresetName.trim()}
+                    >
+                      Simpan
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setIsSavingPreset(false);
+                        setNewPresetName('');
+                      }}
+                    >
+                      Batal
+                    </button>
+                  </div>
+                )}
+
+                <textarea
+                  id="assetNumbersInput"
+                  className="curl-textarea"
+                  rows={3}
+                  placeholder={"Tempel langsung dari Excel atau ketik dipisah koma/baris baru:\nTLK10305\nTLK10667\nTLK11003"}
+                  value={rawAssetText}
+                  onChange={(e) => setRawAssetText(e.target.value)}
+                  disabled={isDownloading}
+                />
+
+                <div className="asset-chips-header">
+                  <span className="asset-count-badge">
+                    {parsedAssetList.length} Nomor Aset unik terdeteksi
+                  </span>
+                  {parsedAssetList.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-secondary"
+                      onClick={() => setRawAssetText('')}
+                      disabled={isDownloading}
+                    >
+                      🗑️ Kosongkan
+                    </button>
+                  )}
+                </div>
+
+                {parsedAssetList.length > 0 && (
+                  <div className="asset-chips-wrap">
+                    {parsedAssetList.map(code => (
+                      <span key={code} className="asset-chip">
+                        {code}
+                        <button
+                          type="button"
+                          className="asset-chip-remove"
+                          onClick={() => handleRemoveAssetChip(code)}
+                          disabled={isDownloading}
+                          title={`Hapus ${code}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           <h4 className="card-title" style={{ marginTop: '18px' }}>
             3. Folder Penyimpanan
@@ -571,43 +902,45 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
               className="dev-options-toggle"
               onClick={() => setShowDevOptions(!showDevOptions)}
             >
-              <span>⚙️ Opsi Pengembang & Filter ID Khusus</span>
+              <span>⚙️ {downloadMode === 'rekap' ? 'Opsi Pengembang & Filter ID Khusus' : 'Opsi Pengembang'}</span>
               <span>{showDevOptions ? '▲ Tutup' : '▼ Buka'}</span>
             </button>
             {showDevOptions && (
               <div className="dev-options-content">
-                <div className="form-row" style={{ marginBottom: '10px' }}>
-                  <div className="field-group">
-                    <label htmlFor="startIdInput" className="field-label" style={{ fontSize: '0.78rem' }}>
-                      ID Awal (Manual):
-                      <InfoTooltip text="Kosongkan untuk otomatis mengunduh semua. Isi hanya jika ingin menyaring rentang ID tertentu." />
-                    </label>
-                    <input
-                      id="startIdInput"
-                      type="number"
-                      className="text-input"
-                      placeholder="Misal: 778961"
-                      value={startId}
-                      onChange={(e) => setStartId(e.target.value)}
-                      disabled={isDownloading}
-                    />
+                {downloadMode === 'rekap' && (
+                  <div className="form-row" style={{ marginBottom: '10px' }}>
+                    <div className="field-group">
+                      <label htmlFor="startIdInput" className="field-label" style={{ fontSize: '0.78rem' }}>
+                        ID Awal (Manual):
+                        <InfoTooltip text="Kosongkan untuk otomatis mengunduh semua. Isi hanya jika ingin menyaring rentang ID tertentu." />
+                      </label>
+                      <input
+                        id="startIdInput"
+                        type="number"
+                        className="text-input"
+                        placeholder="Misal: 778961"
+                        value={startId}
+                        onChange={(e) => setStartId(e.target.value)}
+                        disabled={isDownloading}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label htmlFor="endIdInput" className="field-label" style={{ fontSize: '0.78rem' }}>
+                        ID Akhir (Manual):
+                        <InfoTooltip text="Batas atas nomor ID checklist untuk penyaringan rentang ID manual." />
+                      </label>
+                      <input
+                        id="endIdInput"
+                        type="number"
+                        className="text-input"
+                        placeholder="Misal: 780000"
+                        value={endId}
+                        onChange={(e) => setEndId(e.target.value)}
+                        disabled={isDownloading}
+                      />
+                    </div>
                   </div>
-                  <div className="field-group">
-                    <label htmlFor="endIdInput" className="field-label" style={{ fontSize: '0.78rem' }}>
-                      ID Akhir (Manual):
-                      <InfoTooltip text="Batas atas nomor ID checklist untuk penyaringan rentang ID manual." />
-                    </label>
-                    <input
-                      id="endIdInput"
-                      type="number"
-                      className="text-input"
-                      placeholder="Misal: 780000"
-                      value={endId}
-                      onChange={(e) => setEndId(e.target.value)}
-                      disabled={isDownloading}
-                    />
-                  </div>
-                </div>
+                )}
 
                 <label className="dev-checkbox-row">
                   <input
@@ -630,7 +963,9 @@ export default function P3STEDownloader({ onSendToOCR, onStopAllProcesses }) {
                 className="btn btn-primary btn-large"
                 onClick={handleStartDownload}
               >
-                ▶ Mulai Download PDF Rekap
+                {downloadMode === 'report_asset'
+                  ? `▶ Mulai Download (${parsedAssetList.length} Aset)`
+                  : '▶ Mulai Download per Tanggal'}
               </button>
             ) : (
               <button

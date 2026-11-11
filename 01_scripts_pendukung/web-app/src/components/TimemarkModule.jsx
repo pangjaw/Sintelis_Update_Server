@@ -26,6 +26,8 @@ export default function TimemarkModule() {
   const [useCustomSchedule, setUseCustomSchedule] = useState(false);
   const [customSchedulePath, setCustomSchedulePath] = useState('');
   const [scheduleInfo, setScheduleInfo] = useState(null);
+  const [syncVersion, setSyncVersion] = useState(0);
+  const wasRunningRef = useRef(false);
   const isPickingFolderRef = useRef(false);
 
   const fetchScheduleInfo = async (path) => {
@@ -98,6 +100,14 @@ export default function TimemarkModule() {
         const res = await fetch('/api/timemark/status');
         if (res.ok) {
           const data = await res.json();
+          if (wasRunningRef.current && !data.running) {
+            setSyncVersion(v => v + 1);
+            if (!useCustomSchedule) {
+              setCustomSchedulePath('');
+              setScheduleInfo(null);
+            }
+          }
+          wasRunningRef.current = Boolean(data.running);
           setPipelineState(data);
         }
       } catch (err) {
@@ -111,7 +121,15 @@ export default function TimemarkModule() {
       checkStatus();
     }
     return () => { if (interval) clearInterval(interval); };
-  }, [pipelineState.running]);
+  }, [pipelineState.running, useCustomSchedule]);
+
+  // Reset jadwal manual saat folder PDF target berubah (kecuali user sengaja mengunci Jadwal Eksternal)
+  useEffect(() => {
+    if (!useCustomSchedule) {
+      setCustomSchedulePath('');
+      setScheduleInfo(null);
+    }
+  }, [singleDir, targetDir, folderMode, useCustomSchedule]);
 
   // Auto-scroll log
   useEffect(() => {
@@ -902,8 +920,9 @@ export default function TimemarkModule() {
         <ScheduleSheetPanel
           targetDir={currentActiveTarget}
           exportDir={currentActiveExport}
-          schedulePath={customSchedulePath}
-          onScheduleChange={handleCustomScheduleChange}
+          schedulePath={useCustomSchedule ? customSchedulePath : ''}
+          syncVersion={syncVersion}
+          onScheduleGenerated={() => setSyncVersion(v => v + 1)}
           onTargetDirChange={(newTarget) => {
             if (folderMode === 'single') setSingleDir(newTarget);
             else setTargetDir(newTarget);
@@ -916,10 +935,10 @@ export default function TimemarkModule() {
       <div style={{ display: activeSubTab === 'gallery' ? 'flex' : 'none', flexDirection: 'column', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
         <GalleryPanel
           exportDir={currentActiveExport}
+          targetDir={currentActiveTarget}
           onPickFolder={() => handlePickFolder(setExportDir, 'export')}
-          schedulePath={customSchedulePath}
-          onPickSchedule={handlePickCustomSchedule}
-          onScheduleChange={handleCustomScheduleChange}
+          schedulePath={useCustomSchedule ? customSchedulePath : ''}
+          syncVersion={syncVersion}
         />
       </div>
 

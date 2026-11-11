@@ -36,12 +36,20 @@ from export_pdf_foto import (
     extract_station_from_description, load_sap_mapping, SAP_MAPPING_PATH,
     detect_category_from_filename, extract_station_from_filename, STATION_TO_BTP,
     extract_identifier, extract_funcloc_from_text, extract_all_funclocs,
-    sanitize_segment, determine_btp,
+    sanitize_segment, determine_btp, _detect_ws_bs_category,
 )
 from employee_manager import (
     load_pegawai_config, extract_page1_tim1_personnel,
     get_tim2_roster_for_date, get_tim3_roster_for_date, replace_page1_employee_names
 )
+try:
+    from audit_and_correct_personnel import (
+        extract_personnel_from_pdf, extract_missing_no_sc, get_roster_sets
+    )
+except ImportError:
+    extract_personnel_from_pdf = None
+    extract_missing_no_sc = None
+    get_roster_sets = None
 from date_changer_engine import _get_date_cell_bounds, _get_date_font
 
 import pytesseract
@@ -620,34 +628,37 @@ def get_identifier_candidates(identifier: str) -> list[str]:
 
 
 def _find_candidate_folders(base_dir: Path, cand: str, expected_suffix: str = "") -> list[Path]:
-    """Find matching subfolders for cand, supporting exact match, suffix, and space-insensitive matching."""
+    """Find matching subfolders for cand, supporting exact match, suffix (_DD-MM atau _DD-MM-YYYY), and space-insensitive matching."""
     if not base_dir.is_dir():
         return []
+    suffixes = [expected_suffix] if isinstance(expected_suffix, str) else list(expected_suffix or [])
+    suffixes = [s for s in suffixes if s]
+
     folders = []
-    if expected_suffix:
-        suf_p = base_dir / f"{cand}{expected_suffix}"
-        if suf_p.is_dir():
+    for suf in suffixes:
+        suf_p = base_dir / f"{cand}{suf}"
+        if suf_p.is_dir() and suf_p not in folders:
             folders.append(suf_p)
     exact_p = base_dir / cand
     if exact_p.is_dir() and exact_p not in folders:
         folders.append(exact_p)
 
-    cand_clean = re.sub(r'_\d{2}-\d{2}(?:_part\d+)?$', '', cand).replace(" ", "").upper()
-    suf_clean = f"{cand_clean}{expected_suffix.replace(' ', '').upper()}" if expected_suffix else ""
+    cand_clean = re.sub(r'_\d{2}-\d{2}(?:-\d{4})?(?:_part\d+)?$', '', cand).replace(" ", "").upper()
+    suf_cleans = [f"{cand_clean}{s.replace(' ', '').upper()}" for s in suffixes]
     base_fallback = []
     target_dd = None
-    if expected_suffix:
-        m_dd = re.search(r'_(\d{2})-\d{2}', expected_suffix)
+    if suffixes:
+        m_dd = re.search(r'_(\d{2})-\d{2}', suffixes[0])
         if m_dd:
             target_dd = int(m_dd.group(1))
     try:
         for sub in base_dir.iterdir():
             if sub.is_dir() and sub not in folders:
                 sub_clean = sub.name.replace(" ", "").upper()
-                if (suf_clean and sub_clean == suf_clean) or (sub_clean == cand_clean):
+                if (suf_cleans and sub_clean in suf_cleans) or (sub_clean == cand_clean):
                     folders.append(sub)
                 else:
-                    sub_base = re.sub(r'_\d{2}-\d{2}(?:_PART\d+)?$', '', sub_clean, flags=re.I)
+                    sub_base = re.sub(r'_\d{2}-\d{2}(?:-\d{4})?(?:_PART\d+)?$', '', sub_clean, flags=re.I)
                     if sub_base == cand_clean:
                         sub_dd = 999
                         m_sdd = re.search(r'_(\d{2})-\d{2}', sub.name)
@@ -662,6 +673,120 @@ def _find_candidate_folders(base_dir: Path, cand: str, expected_suffix: str = ""
     return folders
 
 
+def _build_tim1_pool_for_date(
+    date_key: str,
+    k_counts: Counter,
+    p_counts: Counter,
+    pegawai_config: dict,
+    kaur_map: dict,
+    pnc_map: dict,
+) -> dict:
+    """Resolve consistent (1 KAUR, 2 PNC) Tim 1 fallback pool for date_key."""
+    all_k = list(pegawai_config.get("kaur", []))
+    all_p = list(pegawai_config.get("pnc", []))
+    k_ord = {k["nama"].strip().upper(): idx for idx, k in enumerate(all_k)}
+    p_ord = {p["nama"].strip().upper(): idx for idx, p in enumerate(all_p)}
+
+    m_day = re.match(r'^(\d{2})', str(date_key).strip())
+    day_num = int(m_day.group(1)) if m_day else 1
+
+    k_sorted = sorted(k_counts.keys(), key=lambda n: (-k_counts[n], k_ord.get(n, 999)))
+    p_sorted = sorted(p_counts.keys(), key=lambda n: (-p_counts[n], p_ord.get(n, 999)))
+
+    chosen_k = [kaur_map[n] for n in k_sorted[:1] if n in kaur_map]
+    chosen_p = [pnc_map[n] for n in p_sorted[:2] if n in pnc_map]
+
+    if not chosen_k and all_k:
+        chosen_k.append(all_k[(day_num - 1) % len(all_k)])
+
+    while len(chosen_p) < 2 and len(chosen_p) < len(all_p):
+        p_shift = ((day_num - 1) * 2 + len(chosen_p)) % len(all_p)
+        cand = all_p[p_shift]
+        if cand not in chosen_p:
+            chosen_p.append(cand)
+        else:
+            for p in all_p:
+                if p not in chosen_p:
+                    chosen_p.append(p)
+                    break
+
+    return {
+        "kaur": chosen_k,
+        "pnc": chosen_p,
+        "tokens": {x["nama"] for x in (chosen_k + chosen_p)},
+    }
+
+
+def _auto_correct_tim1_page1_if_needed(
+    doc: fitz.Document,
+    date_key: str,
+    pegawai_config: dict | None,
+    tim1_pool_by_date: dict | None,
+    _log,
+) -> None:
+    """Koreksi otomatis Halaman 1 Tim 1 jika defisit (< 1 KAUR / < 2 PNC), ada non-teknisi, atau No. SC kosong."""
+    if not extract_personnel_from_pdf or not get_roster_sets:
+        return
+    cfg = pegawai_config or load_pegawai_config()
+    kaur_map, pnc_map, cfg = get_roster_sets(cfg)
+    all_k = list(cfg.get("kaur", []))
+    all_p = list(cfg.get("pnc", []))
+    if not all_k or len(all_p) < 2:
+        return
+
+    found_k, found_p, raw_personnel, unauth = extract_personnel_from_pdf(
+        doc, kaur_map, pnc_map, return_unauthorized=True
+    )
+    if raw_personnel and not found_k and not found_p:
+        for raw_name in raw_personnel:
+            norm = re.sub(r'\s+', ' ', raw_name).strip().upper()
+            if norm in kaur_map and kaur_map[norm] not in found_k:
+                found_k.append(kaur_map[norm])
+            elif norm in pnc_map and pnc_map[norm] not in found_p:
+                found_p.append(pnc_map[norm])
+
+    num_k, num_p = len(found_k), len(found_p)
+    if num_k < 1 or num_p < 2 or bool(unauth):
+        pool = (tim1_pool_by_date or {}).get(date_key) or _build_tim1_pool_for_date(
+            date_key, Counter(), Counter(), cfg, kaur_map, pnc_map
+        )
+        chosen_kaur = found_k[0] if found_k else pool["kaur"][0]
+        chosen_pnc = list(found_p[:2])
+        seen_p_names = {p["nama"].strip().upper() for p in chosen_pnc}
+        for cand_pool in (pool["pnc"], all_p):
+            for p_obj in cand_pool:
+                if len(chosen_pnc) >= 2:
+                    break
+                p_name_u = p_obj["nama"].strip().upper()
+                if p_name_u not in seen_p_names:
+                    chosen_pnc.append(p_obj)
+                    seen_p_names.add(p_name_u)
+            if len(chosen_pnc) >= 2:
+                break
+
+        if len(chosen_pnc) < 2:
+            return
+
+        new_roster = [chosen_kaur, chosen_pnc[0], chosen_pnc[1]]
+        ok_rep = replace_page1_employee_names(doc, new_roster, sc_only=False)
+        reason = f"non-teknisi ({', '.join(unauth)})" if unauth else f"{num_k} KAUR, {num_p} PNC"
+        if ok_rep:
+            _log(
+                f"  │   ├── 👤 [KOREKSI PERSONIL] {reason} -> 1 KAUR, 2 PNC "
+                f"({chosen_kaur['nama']}, {chosen_pnc[0]['nama']}, {chosen_pnc[1]['nama']})"
+            )
+        else:
+            _log(f"  │   ├── ⚠️ [WARNING PERSONIL] Gagal koreksi tabel Halaman 1 ({reason})")
+        return
+
+    # Sudah >= 1 KAUR, >= 2 PNC tanpa non-teknisi: pertahankan nama, lengkapi No. SC jika ada yang kosong
+    if extract_missing_no_sc and raw_personnel:
+        missing_sc = extract_missing_no_sc(doc, raw_personnel, kaur_map, pnc_map)
+        if missing_sc:
+            if replace_page1_employee_names(doc, found_k + found_p, sc_only=True):
+                _log(f"  │   ├── 🧾 [LENGKAPI NO. SC] Diperbarui untuk {len(missing_sc)} personil")
+
+
 def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
                  input_root: Path | None = None,
                  sap_mapping: dict | None = None,
@@ -670,7 +795,8 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
                  tim1_personnel_by_date: dict | None = None,
                  pegawai_config: dict | None = None,
                  log_fn=None,
-                 split_multi_asset: bool = False) -> str:
+                 split_multi_asset: bool = False,
+                 tim1_pool_by_date: dict | None = None) -> str:
     """Merge edited photos into PDF.
     
     Flat structure. Photo lookup via Funcloc identifier from page 1.
@@ -703,6 +829,11 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
             page1_text = peek_doc[0].get_text() or ""
     except Exception as exc:
         return f"failed: cannot open PDF ({exc})"
+
+    if category in ("UNKNOWN", "PTLS") and page1_text:
+        ws_bs_p1 = _detect_ws_bs_category(page1_text)
+        if ws_bs_p1:
+            category = ws_bs_p1
 
     date_str = extract_date_from_page1(page1_text)
     fn_date_str = format_date_from_filename(pdf_path.name)
@@ -814,13 +945,15 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
             tim_order.append(td)
 
     # Expected date suffix for multi-date / 2x monthly inspections if any
-    expected_suffix = ""
-    m_wsl = re.search(r'(\d{2})-(\d{2})-\d{4}', pdf_path.name)
+    expected_suffix = []
+    m_wsl = re.search(r'(\d{2})-(\d{2})-(\d{4})', pdf_path.name)
     if m_wsl:
-        expected_suffix = f"_{m_wsl.group(1)}-{m_wsl.group(2)}"
         part_m = re.search(r'\((2|3|4)\)', pdf_path.name)
-        if part_m:
-            expected_suffix = f"{expected_suffix}_part{part_m.group(1)}"
+        part_s = f"_part{part_m.group(1)}" if part_m else ""
+        expected_suffix = [
+            f"_{m_wsl.group(1)}-{m_wsl.group(2)}-{m_wsl.group(3)}{part_s}",
+            f"_{m_wsl.group(1)}-{m_wsl.group(2)}{part_s}",
+        ]
 
     MULTI_ROW_CATEGORIES = {"SINYAL", "WESEL", "AXC"}
     is_multi_row = (category in MULTI_ROW_CATEGORIES) or any(item[2] in MULTI_ROW_CATEGORIES for item in asset_entries)
@@ -991,24 +1124,26 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
     doc = fitz.open(str(pdf_path))
     update_page1_date_text(doc, pdf_path.name)
 
-    # ── Update Tim 2 employee names on Page 1 if assigned to Tim 2 ──
+    # ── Update employee names on Page 1 (Tim 2/3 full roster; Tim 1 deficit/SC auto-fix) ──
+    m_date_p1 = re.search(r'(\d{2})-(\d{2})-(\d{4})', pdf_path.name)
+    d_key_p1 = m_date_p1.group(0) if m_date_p1 else date_str
     if output_tim == "Tim_2":
-        m_date = re.search(r'(\d{2})-(\d{2})-(\d{4})', pdf_path.name)
-        d_key = m_date.group(0) if m_date else date_str
         if tim2_roster_cache is not None:
-            if d_key not in tim2_roster_cache:
-                t1_tokens = tim1_personnel_by_date.get(d_key, set()) if tim1_personnel_by_date else set()
-                tim2_roster_cache[d_key] = get_tim2_roster_for_date(d_key, t1_tokens, pegawai_config)
-            roster = tim2_roster_cache[d_key]
+            if d_key_p1 not in tim2_roster_cache:
+                t1_tokens = tim1_personnel_by_date.get(d_key_p1, set()) if tim1_personnel_by_date else set()
+                tim2_roster_cache[d_key_p1] = get_tim2_roster_for_date(d_key_p1, t1_tokens, pegawai_config)
+            roster = tim2_roster_cache[d_key_p1]
         else:
-            t1_tokens = tim1_personnel_by_date.get(d_key, set()) if tim1_personnel_by_date else set()
-            roster = get_tim2_roster_for_date(d_key, t1_tokens, pegawai_config)
+            t1_tokens = tim1_personnel_by_date.get(d_key_p1, set()) if tim1_personnel_by_date else set()
+            roster = get_tim2_roster_for_date(d_key_p1, t1_tokens, pegawai_config)
         replace_page1_employee_names(doc, roster)
     elif output_tim and output_tim.startswith("Tim_") and output_tim not in ("Tim_1", "Tim_2"):
-        m_date = re.search(r'(\d{2})-(\d{2})-(\d{4})', pdf_path.name)
-        d_key = m_date.group(0) if m_date else date_str
-        roster_t3 = get_tim3_roster_for_date(d_key, pegawai_config)
+        roster_t3 = get_tim3_roster_for_date(d_key_p1, pegawai_config)
         replace_page1_employee_names(doc, roster_t3)
+    else:
+        _auto_correct_tim1_page1_if_needed(
+            doc, d_key_p1, pegawai_config, tim1_pool_by_date, _log
+        )
 
     # Remove all old photo pages (3-layer: QR code → header → heuristic)
     _delete_photo_pages(doc)
@@ -1383,44 +1518,74 @@ def parse_args():
     p.add_argument("--schedule", default=None, help="Path ke schedule.json")
     p.add_argument("--split-multi-asset", action="store_true", help="Bagi foto dan jam sesuai jumlah baris aset")
     p.add_argument("--file", default=None, help="Nama atau path berkas PDF spesifik untuk diproses saja")
+    p.add_argument("--period-filter", default="", help="Filter periode (misal '01. JANUARI' atau '2025/01. JANUARI')")
     return p.parse_args()
 
 
 def _merge_worker_wrapper(args_tuple):
-    pdf_path, photos_dir, output_dir, input_dir, sap_mapping, schedule_map, tim2_roster_cache, tim1_personnel_by_date, pegawai_config, split_multi_asset = args_tuple
+    (pdf_path, photos_dir, output_dir, input_dir, sap_mapping, schedule_map,
+     tim2_roster_cache, tim1_personnel_by_date, pegawai_config, split_multi_asset,
+     tim1_pool_by_date) = args_tuple
     captured_lines = []
     try:
         status = process_pdf(pdf_path, photos_dir, output_dir, input_dir, sap_mapping, schedule_map,
                              tim2_roster_cache, tim1_personnel_by_date, pegawai_config,
                              log_fn=captured_lines.append,
-                             split_multi_asset=split_multi_asset)
+                             split_multi_asset=split_multi_asset,
+                             tim1_pool_by_date=tim1_pool_by_date)
     except Exception as exc:
         status = f"failed: exception {exc}"
     return pdf_path, status, captured_lines
 
 
-def main():
+def main(override_args=None):
     sap_path = SAP_MAPPING_PATH
     if not Path(sap_path).exists() and Path("config/sap_station_mapping.json").exists():
         sap_path = "config/sap_station_mapping.json"
     sap_mapping = load_sap_mapping(sap_path)
 
-    args = parse_args()
+    args = parse_args() if override_args is None else override_args
     input_dir = Path(args.input).resolve()
     photos_dir = Path(args.photos).resolve()
     output_dir = Path(args.output).resolve()
 
-    # Load schedule.json for team assignment (prioritize --schedule, photos_dir.parent, input_dir)
+    if override_args is None and not getattr(args, "period_filter", "") and not args.file and not args.schedule and input_dir.is_dir():
+        from export_pdf_foto import resolve_pdf_period_map, split_export_base_and_subdir
+        EXCLUDE_PRE = {"backups", "backup", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
+        EXCL_L = {x.lower() for x in EXCLUDE_PRE}
+        scan_pdfs = sorted([
+            p for p in input_dir.rglob("*.pdf")
+            if p.is_file() and not any(x in EXCL_L for x in ([k.lower() for k in p.relative_to(input_dir).parts[:-1]]))
+        ])
+        pdf_to_pref, multi_month, _ = resolve_pdf_period_map(scan_pdfs)
+        if multi_month:
+            photos_base, edited_sub = split_export_base_and_subdir(photos_dir, "04_photos_edited")
+            prefs = sorted({pdf_to_pref.get(p, "") for p in scan_pdfs if pdf_to_pref.get(p, "")})
+            if prefs and any((photos_base / pr / edited_sub).is_dir() or (photos_base / pr / "04_photos_edited").is_dir() for pr in prefs):
+                print(f"[PERIODE] Terdeteksi {len(prefs)} periode untuk Merge PDF.", flush=True)
+                rc = 0
+                for pr in prefs:
+                    m_root = photos_base / pr
+                    m_photos = m_root / edited_sub
+                    if not m_photos.is_dir():
+                        m_photos = m_root / "04_photos_edited"
+                    sub_args = argparse.Namespace(**vars(args))
+                    sub_args.photos = str(m_photos)
+                    sub_args.output = str(output_dir / pr)
+                    sub_args.schedule = str(m_root / "schedule.json")
+                    sub_args.period_filter = pr
+                    print(f"\n── Merge Periode: {pr} ──", flush=True)
+                    res = main(override_args=sub_args)
+                    if res and res != 0:
+                        rc = res
+                return rc
+
+    # Load schedule.json for team assignment (prioritize --schedule, input_dir)
     schedule_map = {}
     sched_candidates = []
     if args.schedule:
         sched_candidates.append(Path(args.schedule))
-    sched_candidates.extend([
-        photos_dir.parent / "schedule.json",
-        input_dir / "schedule.json",
-        output_dir / "schedule.json",
-        Path("schedule.json"),
-    ])
+    sched_candidates.append(input_dir / "schedule.json")
     sched_path = next((c for c in sched_candidates if c.is_file()), None)
     if sched_path:
         try:
@@ -1483,10 +1648,16 @@ def main():
 
     pdf_files = sorted([p for p in input_dir.rglob("*.pdf")
                         if not _is_sub_excluded(p, input_dir) and p.is_file()])
+    period_filter = (getattr(args, "period_filter", "") or "").strip().replace("\\", "/")
+    if period_filter and pdf_files:
+        from export_pdf_foto import resolve_pdf_period_map
+        pdf_to_pref, _, _ = resolve_pdf_period_map(pdf_files)
+        pdf_files = [p for p in pdf_files if pdf_to_pref.get(p, "").replace("\\", "/") == period_filter]
     if not pdf_files:
         print(f"Tidak ada berkas PDF di: {input_dir}")
         return 0
 
+    all_period_pdfs = list(pdf_files)
     if args.file:
         raw_names = [f.strip().lower() for f in args.file.split(",") if f.strip()]
         pdf_files = [p for p in pdf_files if p.name.lower() in raw_names]
@@ -1506,22 +1677,31 @@ def main():
     # Load employee master config and pre-scan Tim 1 personnel per date
     pegawai_config = load_pegawai_config()
     tim1_personnel_by_date = defaultdict(set)
+    tim1_pool_by_date = {}
     tim2_roster_cache = {}
 
-    try:
-        from audit_and_correct_personnel import extract_personnel_from_pdf, get_roster_sets
+    if get_roster_sets:
         _km, _pm, _ = get_roster_sets(pegawai_config)
-    except Exception:
-        extract_personnel_from_pdf = None
+    else:
         _km, _pm = {}, {}
 
     _t1_k_counts = defaultdict(Counter)
     _t1_p_counts = defaultdict(Counter)
-    for p in pdf_files:
+    _all_t1_dates = set()
+    _scan_dates_needed = None
+    if args.file:
+        _scan_dates_needed = {
+            (m.group(0) if (m := re.search(r'(\d{2})-(\d{2})-(\d{4})', p.name)) else "DEFAULT")
+            for p in pdf_files
+        }
+    for p in all_period_pdfs:
         assigned_tim_num = schedule_map.get(p.name, {}).get("tim", 1)
         if assigned_tim_num == 1:
             m_dt = re.search(r'(\d{2})-(\d{2})-(\d{4})', p.name)
             d_k = m_dt.group(0) if m_dt else "DEFAULT"
+            if _scan_dates_needed is not None and d_k not in _scan_dates_needed:
+                continue
+            _all_t1_dates.add(d_k)
             try:
                 with fitz.open(str(p)) as doc_scan:
                     if extract_personnel_from_pdf:
@@ -1538,17 +1718,12 @@ def main():
                 pass
 
     if extract_personnel_from_pdf:
-        _all_k = list(pegawai_config.get("kaur", []))
-        _all_p = list(pegawai_config.get("pnc", []))
-        _k_ord = {k["nama"].strip().upper(): idx for idx, k in enumerate(_all_k)}
-        _p_ord = {p["nama"].strip().upper(): idx for idx, p in enumerate(_all_p)}
-        for d_k in set(_t1_k_counts.keys()) | set(_t1_p_counts.keys()):
-            kc = _t1_k_counts[d_k]
-            pc = _t1_p_counts[d_k]
-            ks = sorted(kc.keys(), key=lambda n: (-kc[n], _k_ord.get(n, 999)))[:1]
-            ps = sorted(pc.keys(), key=lambda n: (-pc[n], _p_ord.get(n, 999)))[:2]
-            tim1_personnel_by_date[d_k].update(ks)
-            tim1_personnel_by_date[d_k].update(ps)
+        for d_k in _all_t1_dates:
+            pool = _build_tim1_pool_for_date(
+                d_k, _t1_k_counts[d_k], _t1_p_counts[d_k], pegawai_config, _km, _pm
+            )
+            tim1_pool_by_date[d_k] = pool
+            tim1_personnel_by_date[d_k].update(pool["tokens"])
 
     success = 0
     skipped = 0
@@ -1562,7 +1737,8 @@ def main():
     split_multi_asset = bool(getattr(args, "split_multi_asset", False))
     tasks = [
         (p, photos_dir, output_dir, input_dir, sap_mapping, schedule_map,
-         tim2_roster_cache, tim1_personnel_by_date, pegawai_config, split_multi_asset)
+         tim2_roster_cache, tim1_personnel_by_date, pegawai_config, split_multi_asset,
+         tim1_pool_by_date)
         for p in pdf_files
     ]
 
@@ -1672,12 +1848,6 @@ def main():
 
 
     # ── Auto-export GAGAL_FALLBACK ──
-    # Salin schedule.json ke output_dir dan sinkronkan personil Tim 1/2/3 agar 100% sesuai saat diaudit
-    if sched_path and sched_path.is_file():
-        try:
-            shutil.copy2(sched_path, output_dir / "schedule.json")
-        except Exception:
-            pass
     # Hapus cache audit lama agar tab Koreksi Dokumen langsung menampilkan status terbaru
     try:
         app_d = os.environ.get("LOCALAPPDATA", "")

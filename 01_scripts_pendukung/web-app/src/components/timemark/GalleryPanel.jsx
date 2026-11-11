@@ -1330,7 +1330,7 @@ function TimemarkEditorModal({
 // =============================================================================
 // Komponen Utama GalleryPanel
 // =============================================================================
-export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '', onPickSchedule, onScheduleChange }) {
+export default function GalleryPanel({ exportDir, targetDir = '', onPickFolder, schedulePath = '', onPickSchedule, onScheduleChange, syncVersion = 0 }) {
   const [assets, setAssets] = useState([]);
   const [targetFiles, setTargetFiles] = useState([]);
   const [sourceFiles, setSourceFiles] = useState([]);
@@ -1569,14 +1569,13 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
     }
   };
 
-  const [activeSchedulePath, setActiveSchedulePath] = useState(schedulePath || '');
+  const [manualSchedulePath, setManualSchedulePath] = useState('');
   const [loadedScheduleInfo, setLoadedScheduleInfo] = useState('');
 
+  // Reset pilihan jadwal manual saat ganti folder atau saat pipeline selesai Step 2/3
   useEffect(() => {
-    if (schedulePath) {
-      setActiveSchedulePath(schedulePath);
-    }
-  }, [schedulePath]);
+    setManualSchedulePath('');
+  }, [exportDir, targetDir, syncVersion]);
 
   const handlePickScheduleFile = async () => {
     try {
@@ -1587,7 +1586,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
       const res = await fetch('/api/select-file', { method: 'POST' });
       const data = await res.json();
       if (data && data.path) {
-        setActiveSchedulePath(data.path);
+        setManualSchedulePath(data.path);
         if (onScheduleChange) onScheduleChange(data.path);
       }
     } catch (err) {
@@ -1601,24 +1600,18 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
     setLoading(true);
     setFeedback(null);
     try {
-      const curSched = (activeSchedulePath || schedulePath || '').trim();
+      const curSched = (manualSchedulePath || schedulePath || '').trim();
+      const targetQuery = targetDir ? `&targetDir=${encodeURIComponent(targetDir)}` : '';
       const schedQuery = curSched ? `&schedule=${encodeURIComponent(curSched)}` : '';
       const refreshQuery = isManualRefresh ? '&refresh=1' : '';
-      const res = await fetch(`/api/timemark/photos?folder=${encodeURIComponent(exportDir)}${schedQuery}${refreshQuery}`);
+      const res = await fetch(`/api/timemark/photos?folder=${encodeURIComponent(exportDir)}${targetQuery}${schedQuery}${refreshQuery}`);
       if (res.ok) {
         const data = await res.json();
         const loadedAssets = data.assets || [];
         setAssets(loadedAssets);
         setTargetFiles(data.targetFiles || []);
         setSourceFiles(data.sourceFiles || []);
-        if (data.loadedSchedule) {
-          setLoadedScheduleInfo(data.loadedSchedule);
-          if (!activeSchedulePath) {
-            setActiveSchedulePath(data.loadedSchedule);
-          }
-        } else {
-          setLoadedScheduleInfo('');
-        }
+        setLoadedScheduleInfo(data.loadedSchedule || '');
       } else {
         setFeedback({ type: 'error', text: 'Gagal memuat galeri foto dari folder ekspor.' });
       }
@@ -1632,7 +1625,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
   const [isFastUpdating, setIsFastUpdating] = useState(false);
 
   const handleTriggerFastUpdate = async () => {
-    const activeSched = (loadedScheduleInfo || activeSchedulePath || schedulePath || '').trim();
+    const activeSched = (manualSchedulePath || schedulePath || loadedScheduleInfo || '').trim();
     if (!activeSched) {
       alert('Silakan pilih berkas schedule.json terlebih dahulu dengan menekan tombol "Pilih Jadwal" di sebelah kiri!');
       handlePickScheduleFile();
@@ -1657,7 +1650,8 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
           folder: exportDir,
           schedulePath: activeSched,
           includeTime: true,
-          force: true
+          force: true,
+          detector: activeDetector
         })
       });
       if (!res.ok) {
@@ -1691,8 +1685,8 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
   };
 
   useEffect(() => {
-    fetchPhotos();
-  }, [exportDir, activeSchedulePath]);
+    fetchPhotos(syncVersion > 0);
+  }, [exportDir, targetDir, manualSchedulePath, schedulePath, syncVersion]);
 
   // Counts
   const editedCount = useMemo(() => assets.filter(a => a.hasEdited).length, [assets]);
@@ -1989,6 +1983,8 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           baseExportDir: exportDir,
+          targetDir: targetDir || undefined,
+          schedulePath: (manualSchedulePath || schedulePath || loadedScheduleInfo || '').trim() || undefined,
           assetRelPath: asset.relDir,
           photoName: photoName || undefined,
           detector: activeDetector,
@@ -2057,6 +2053,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
         body: JSON.stringify({
           rawRelPath: firstPhotoRel,
           baseExportDir: exportDir,
+          targetDir: targetDir || undefined,
           pdfName: targetPdfs[0] || undefined,
           pdfNames: targetPdfs
         })
@@ -2136,7 +2133,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
             )}
 
             <button
-              onClick={fetchPhotos}
+              onClick={() => fetchPhotos(true)}
               disabled={loading}
               style={{ padding: '0.28rem 0.6rem', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
               title="Refresh daftar foto"
@@ -2144,33 +2141,37 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
               🔄 Refresh
             </button>
 
-            {/* Indikator & Selector Jadwal (schedule.json) */}
+            {/* Indikator & Selector Jadwal (schedule.json dari DIR PDF Target) */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.3rem',
-                  background: (loadedScheduleInfo || activeSchedulePath) ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-secondary)',
-                  border: (loadedScheduleInfo || activeSchedulePath) ? '1px solid #6366f1' : '1px solid var(--border-color)',
+                  background: (loadedScheduleInfo || manualSchedulePath || schedulePath) ? 'rgba(99, 102, 241, 0.12)' : 'rgba(245, 158, 11, 0.1)',
+                  border: (loadedScheduleInfo || manualSchedulePath || schedulePath) ? '1px solid #6366f1' : '1px solid rgba(245, 158, 11, 0.35)',
                   borderRadius: '5px',
                   padding: '0.22rem 0.5rem',
-                  maxWidth: '220px'
+                  maxWidth: '240px'
                 }}
-                title={`Jadwal aktif: ${loadedScheduleInfo || activeSchedulePath || 'Otomatis'}`}
+                title={
+                  (loadedScheduleInfo || manualSchedulePath || schedulePath)
+                    ? `Jadwal aktif: ${loadedScheduleInfo || manualSchedulePath || schedulePath}`
+                    : `Menunggu Step 2 & 3 — belum ada schedule.json di DIR PDF Target${targetDir ? ` (${targetDir})` : ''}`
+                }
               >
-                <span style={{ fontSize: '0.8rem' }}>📅</span>
+                <span style={{ fontSize: '0.8rem' }}>{(loadedScheduleInfo || manualSchedulePath || schedulePath) ? '📅' : '⏳'}</span>
                 <span style={{
                   fontSize: '0.72rem',
-                  color: (loadedScheduleInfo || activeSchedulePath) ? '#a5b4fc' : 'var(--text-secondary)',
+                  color: (loadedScheduleInfo || manualSchedulePath || schedulePath) ? '#a5b4fc' : '#fbbf24',
                   fontWeight: 600,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis'
                 }}>
-                  {(loadedScheduleInfo || activeSchedulePath)
-                    ? (loadedScheduleInfo || activeSchedulePath).split(/[\\/]/).filter(Boolean).slice(-1)[0]
-                    : 'Jadwal Otomatis'}
+                  {(loadedScheduleInfo || manualSchedulePath || schedulePath)
+                    ? (loadedScheduleInfo || manualSchedulePath || schedulePath).split(/[\\/]/).filter(Boolean).slice(-2).join('/')
+                    : 'Menunggu Step 2 & 3'}
                 </span>
               </div>
 
@@ -2190,9 +2191,9 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                   alignItems: 'center',
                   gap: '0.25rem'
                 }}
-                title="Pilih atau ganti berkas schedule.json untuk menampilkan jam foto di galeri"
+                title="Pilih berkas schedule.json manual untuk folder ini"
               >
-                🗓️ {(loadedScheduleInfo || activeSchedulePath) ? 'Ganti Jadwal' : 'Pilih Jadwal'}
+                🗓️ {(loadedScheduleInfo || manualSchedulePath || schedulePath) ? 'Ganti Jadwal' : 'Pilih Jadwal'}
               </button>
             </div>
 

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 
-export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder, schedulePath = '', onScheduleChange, onTargetDirChange }) {
+export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder, schedulePath = '', onScheduleChange, onTargetDirChange, syncVersion = 0, onScheduleGenerated }) {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -27,14 +27,20 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [splitMultiAssetRows, setSplitMultiAssetRows] = useState(true);
 
-  // Sinkronisasi otomatis dari props pipeline jika belum dalam mode kustom
+  // Sinkronisasi otomatis dari props pipeline jika belum dalam mode kustom, dan reset saat folder target atau pipeline berubah
+  useEffect(() => {
+    setIsCustomMode(false);
+    setActiveTargetDir(targetDir || '');
+    setActiveExportDir(exportDir || '');
+    setActiveScheduleFile(schedulePath || '');
+  }, [targetDir, syncVersion]);
+
   useEffect(() => {
     if (!isCustomMode) {
-      setActiveTargetDir(targetDir || '');
       setActiveExportDir(exportDir || '');
       setActiveScheduleFile(schedulePath || '');
     }
-  }, [targetDir, exportDir, schedulePath, isCustomMode]);
+  }, [exportDir, schedulePath, isCustomMode]);
 
   // Handler memilih folder target PDF secara mandiri
   const handlePickTargetFolder = async () => {
@@ -153,6 +159,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
         setScheduleData(data.data);
         setSourcePath(data.source || '');
         setFeedback({ type: 'success', text: `✓ ${data.message}` });
+        if (onScheduleGenerated) onScheduleGenerated();
       } else {
         setFeedback({ type: 'error', text: data.error || 'Gagal membuat jadwal.' });
       }
@@ -165,7 +172,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
 
   useEffect(() => {
     fetchScheduleList();
-  }, [activeTargetDir, activeExportDir, activeScheduleFile]);
+  }, [activeTargetDir, activeExportDir, activeScheduleFile, syncVersion]);
 
   // 2. Parse rekord jadwal ke daftar baris tabel yang seragam
   const rows = useMemo(() => {

@@ -1,327 +1,73 @@
 {
   "by_location": {
-    "SERAT OPTIK/JPL 02 BOO": {
-      "location": "JPL 02 BOO",
-      "category": "SERAT OPTIK",
+    "WAYSTATION 3 BULANAN/WS S23 BOO": {
+      "location": "WS S23 BOO",
+      "category": "WAYSTATION 3 BULANAN",
       "btp": "BTP JAK",
-      "folder": "BTP JAK/SERAT OPTIK/JPL 02 BOO",
-      "pdf_file": "PERAWATAN SERAT OPTIK JPL 02 BOO 15-09-2026.pdf",
+      "folder": "BTP JAK/WAYSTATION 3 BULANAN/WS S23 BOO",
+      "pdf_file": "PERAWATAN RADIO WAYSTATION 3 BULANAN WS S23 BOO 28-09-2026.pdf",
       "assets": [
         {
-          "funcloc": "TRA11345",
-          "name": "OTB FO JPL 02 BOO",
-          "raw": "TRA11345 : OTB FO JPL 02 BOO"
+          "funcloc": "TLK10667",
+          "name": "WS S23 BOO",
+          "raw": "TLK10667 : WS S23 BOO"
         }
       ]
     },
-    "SERAT OPTIK/JPL 27 BOO-CLT": {
-      "location": "JPL 27 BOO-CLT",
-      "category": "SERAT OPTIK",
+    "WAYSTATION 3 BULANAN/WS TAIT S26 BOO": {
+      "location": "WS TAIT S26 BOO",
+      "category": "WAYSTATION 3 BULANAN",
       "btp": "BTP JAK",
-      "folder": "BTP JAK/SERAT OPTIK/JPL 27 BOO-CLT",
-      "pdf_file": "PERAWATAN SERAT OPTIK JPL 27 CLT-BOO 20-09-2026.pdf",
+      "folder": "BTP JAK/WAYSTATION 3 BULANAN/WS TAIT S26 BOO",
+      "pdf_file": "PERAWATAN RADIO WAYSTATION 3 BULANAN WS TAIT S26 BOO 28-09-2026.pdf",
       "assets": [
         {
-          "funcloc": "TRA11346",
-          "name": "OTB FO JPL 27 BOO-CLT",
-          "raw": "TRA11346 : OTB FO JPL 27 BOO-CLT"
+          "funcloc": "TLK11003",
+          "name": "WS TAIT S26 BOO",
+          "raw": "TLK11003 : WS TAIT S26 BOO"
         }
       ]
     },
-    "SERAT OPTIK/JPL 01 BOO": {
-      "location": "JPL 01 BOO",
-      "category": "SERAT OPTIK",
+    "WAYSTATION 3 BULANAN/WS DIGITAL S26 BOO": {
+      "location": "WS DIGITAL S26 BOO",
+      "category": "WAYSTATION 3 BULANAN",
       "btp": "BTP JAK",
-      "folder": "BTP JAK/SERAT OPTIK/JPL 01 BOO",
-      "pdf_file": "PERAWATAN SERAT OPTIK JPL 01 BOO 15-09-2026.pdf",
+      "folder": "BTP JAK/WAYSTATION 3 BULANAN/WS DIGITAL S26 BOO",
+      "pdf_file": "PERAWATAN RADIO WAYSTATION 3 BULANAN WS DIGITAL S26 BOO 28-09-2026.pdf",
       "assets": [
         {
-          "funcloc": "TRA11344",
-          "name": "OTB FO JPL 01 BOO",
-          "raw": "TRA11344 : OTB FO JPL 01 BOO"
-        }
-      ]
-    },
-    "SERAT OPTIK/JPL 26N CLT-BJD": {
-      "location": "JPL 26N CLT-BJD",
-      "category": "SERAT OPTIK",
-      "btp": "BTP JAK",
-      "folder": "BTP JAK/SERAT OPTIK/JPL 26N CLT-BJD",
-      "pdf_file": "PERAWATAN SERAT OPTIK JPL 26N CLT 17-09-2026.pdf",
-      "assets": [
-        {
-          "funcloc": "TRA11351",
-          "name": "OTB FO JPL 26N CLT-BJD",
-          "raw": "TRA11351 : OTB FO JPL 26N CLT-BJD"
-        }
-      ]
-    },
-    "SERAT OPTIK/ER SINYAL CLT": {
-      "location": "ER SINYAL CLT",
-      "category": "SERAT OPTIK",
-      "btp": "BTP JAK",
-      "folder": "BTP JAK/SERAT OPTIK/ER SINYAL CLT",
-      "pdf_file": "PERAWATAN SERAT OPTIK OTB 11-13 ER CILEBUT 03-09-2026.pdf",
-      "assets": [
-        {
-          "funcloc": "TRA11819",
-          "name": "OTB 11 ER CILEBUT",
-          "raw": "TRA11819 : OTB 11 ER CILEBUT"
-        },
-        {
-          "funcloc": "TRA11824",
-          "name": "OTB 12 ER CILEBUT",
-          "raw": "TRA11824 : OTB 12 ER CILEBUT"
-        },
-        {
-          "funcloc": "TRA11827",
-          "name": "OTB 13 ER CILEBUT",
-          "raw": "TRA11827 : OTB 13 ER CILEBUT"
-        }
-      ]
-    },
-    "SERAT OPTIK/RUANG RADIO BOO": {
-      "location": "RUANG RADIO BOO",
-      "category": "SERAT OPTIK",
-      "btp": "BTP JAK",
-      "folder": "BTP JAK/SERAT OPTIK/RUANG RADIO BOO",
-      "pdf_file": "PERAWATAN SERAT OPTIK OTB 1-3 ER TELKOM BOGOR 28-09-2026.pdf",
-      "assets": [
-        {
-          "funcloc": "TRA11803",
-          "name": "OTB 1 ER TELKOM BOGOR",
-          "raw": "TRA11803 : OTB 1 ER TELKOM BOGOR"
-        },
-        {
-          "funcloc": "TRA11838",
-          "name": "OTB 2 ER TELKOM BOGOR",
-          "raw": "TRA11838 : OTB 2 ER TELKOM BOGOR"
-        },
-        {
-          "funcloc": "TRA11856",
-          "name": "OTB 3 ER TELKOM BOGOR",
-          "raw": "TRA11856 : OTB 3 ER TELKOM BOGOR"
-        }
-      ]
-    },
-    "SERAT OPTIK/JPL 28 BOO-CLT": {
-      "location": "JPL 28 BOO-CLT",
-      "category": "SERAT OPTIK",
-      "btp": "BTP JAK",
-      "folder": "BTP JAK/SERAT OPTIK/JPL 28 BOO-CLT",
-      "pdf_file": "PERAWATAN SERAT OPTIK JPL 28 CLT-BOO 20-09-2026.pdf",
-      "assets": [
-        {
-          "funcloc": "TRA11347",
-          "name": "OTB FO JPL 28 BOO-CLT",
-          "raw": "TRA11347 : OTB FO JPL 28 BOO-CLT"
-        }
-      ]
-    },
-    "SERAT OPTIK/ER SINYAL BOO": {
-      "location": "ER SINYAL BOO",
-      "category": "SERAT OPTIK",
-      "btp": "BTP JAK",
-      "folder": "BTP JAK/SERAT OPTIK/ER SINYAL BOO",
-      "pdf_file": "PERAWATAN SERAT OPTIK OTB 6-10 ER BOGOR 28-09-2026.pdf",
-      "assets": [
-        {
-          "funcloc": "TRA11889",
-          "name": "OTB 7 ER BOGOR",
-          "raw": "TRA11889 : OTB 7 ER BOGOR"
-        },
-        {
-          "funcloc": "TRA11895",
-          "name": "OTB 8 ER BOGOR",
-          "raw": "TRA11895 : OTB 8 ER BOGOR"
-        },
-        {
-          "funcloc": "TRA11812",
-          "name": "OTB 10 ER BOGOR",
-          "raw": "TRA11812 : OTB 10 ER BOGOR"
-        },
-        {
-          "funcloc": "TRA11900",
-          "name": "OTB 9 ER BOGOR",
-          "raw": "TRA11900 : OTB 9 ER BOGOR"
-        },
-        {
-          "funcloc": "TRA11881",
-          "name": "OTB 6 ER BOGOR",
-          "raw": "TRA11881 : OTB 6 ER BOGOR"
+          "funcloc": "TLK10305",
+          "name": "WS DIGITAL S26 BOO",
+          "raw": "TLK10305 : WS DIGITAL S26 BOO"
         }
       ]
     }
   },
   "asset_to_location": {
-    "OTB FO JPL 02 BOO": "JPL 02 BOO",
-    "TRA11345 : OTB FO JPL 02 BOO": "JPL 02 BOO",
-    "TRA11345": "JPL 02 BOO",
-    "OTB FO JPL 27 BOO-CLT": "JPL 27 BOO-CLT",
-    "TRA11346 : OTB FO JPL 27 BOO-CLT": "JPL 27 BOO-CLT",
-    "TRA11346": "JPL 27 BOO-CLT",
-    "OTB FO JPL 01 BOO": "JPL 01 BOO",
-    "TRA11344 : OTB FO JPL 01 BOO": "JPL 01 BOO",
-    "TRA11344": "JPL 01 BOO",
-    "OTB FO JPL 26N CLT-BJD": "JPL 26N CLT-BJD",
-    "TRA11351 : OTB FO JPL 26N CLT-BJD": "JPL 26N CLT-BJD",
-    "TRA11351": "JPL 26N CLT-BJD",
-    "OTB 1 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11799 : OTB 1 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11799": "ER SINYAL CLT",
-    "OTB 2 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11833 : OTB 2 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11833": "ER SINYAL CLT",
-    "OTB 3 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11852 : OTB 3 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11852": "ER SINYAL CLT",
-    "OTB 4 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11866 : OTB 4 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11866": "ER SINYAL CLT",
-    "OTB 7 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11891 : OTB 7 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11891": "ER SINYAL CLT",
-    "OTB 8 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11897 : OTB 8 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11897": "ER SINYAL CLT",
-    "OTB 5 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11875 : OTB 5 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11875": "ER SINYAL CLT",
-    "OTB 6 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11884 : OTB 6 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11884": "ER SINYAL CLT",
-    "OTB 9 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11902 : OTB 9 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11902": "ER SINYAL CLT",
-    "OTB 10 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11814 : OTB 10 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11814": "ER SINYAL CLT",
-    "OTB 1 ER TELKOM BOGOR": "RUANG RADIO BOO",
-    "TRA11803 : OTB 1 ER TELKOM BOGOR": "RUANG RADIO BOO",
-    "TRA11803": "RUANG RADIO BOO",
-    "OTB 2 ER TELKOM BOGOR": "RUANG RADIO BOO",
-    "TRA11838 : OTB 2 ER TELKOM BOGOR": "RUANG RADIO BOO",
-    "TRA11838": "RUANG RADIO BOO",
-    "OTB 3 ER TELKOM BOGOR": "RUANG RADIO BOO",
-    "TRA11856 : OTB 3 ER TELKOM BOGOR": "RUANG RADIO BOO",
-    "TRA11856": "RUANG RADIO BOO",
-    "OTB FO JPL 28 BOO-CLT": "JPL 28 BOO-CLT",
-    "TRA11347 : OTB FO JPL 28 BOO-CLT": "JPL 28 BOO-CLT",
-    "TRA11347": "JPL 28 BOO-CLT",
-    "OTB 1 ER BOGOR": "ER SINYAL BOO",
-    "TRA11796 : OTB 1 ER BOGOR": "ER SINYAL BOO",
-    "TRA11796": "ER SINYAL BOO",
-    "OTB 4 ER BOGOR": "ER SINYAL BOO",
-    "TRA11863 : OTB 4 ER BOGOR": "ER SINYAL BOO",
-    "TRA11863": "ER SINYAL BOO",
-    "OTB 5 ER BOGOR": "ER SINYAL BOO",
-    "TRA11872 : OTB 5 ER BOGOR": "ER SINYAL BOO",
-    "TRA11872": "ER SINYAL BOO",
-    "OTB 2 ER BOGOR": "ER SINYAL BOO",
-    "TRA11830 : OTB 2 ER BOGOR": "ER SINYAL BOO",
-    "TRA11830": "ER SINYAL BOO",
-    "OTB 3 ER BOGOR": "ER SINYAL BOO",
-    "TRA11849 : OTB 3 ER BOGOR": "ER SINYAL BOO",
-    "TRA11849": "ER SINYAL BOO",
-    "OTB 11 ER BOGOR": "ER SINYAL BOO",
-    "TRA11817 : OTB 11 ER BOGOR": "ER SINYAL BOO",
-    "TRA11817": "ER SINYAL BOO",
-    "OTB 12 ER BOGOR": "ER SINYAL BOO",
-    "TRA11822 : OTB 12 ER BOGOR": "ER SINYAL BOO",
-    "TRA11822": "ER SINYAL BOO",
-    "OTB 11 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11819 : OTB 11 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11819": "ER SINYAL CLT",
-    "OTB 12 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11824 : OTB 12 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11824": "ER SINYAL CLT",
-    "OTB 13 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11827 : OTB 13 ER CILEBUT": "ER SINYAL CLT",
-    "TRA11827": "ER SINYAL CLT",
-    "OTB 7 ER BOGOR": "ER SINYAL BOO",
-    "TRA11889 : OTB 7 ER BOGOR": "ER SINYAL BOO",
-    "TRA11889": "ER SINYAL BOO",
-    "OTB 8 ER BOGOR": "ER SINYAL BOO",
-    "TRA11895 : OTB 8 ER BOGOR": "ER SINYAL BOO",
-    "TRA11895": "ER SINYAL BOO",
-    "OTB 10 ER BOGOR": "ER SINYAL BOO",
-    "TRA11812 : OTB 10 ER BOGOR": "ER SINYAL BOO",
-    "TRA11812": "ER SINYAL BOO",
-    "OTB 9 ER BOGOR": "ER SINYAL BOO",
-    "TRA11900 : OTB 9 ER BOGOR": "ER SINYAL BOO",
-    "TRA11900": "ER SINYAL BOO",
-    "OTB 6 ER BOGOR": "ER SINYAL BOO",
-    "TRA11881 : OTB 6 ER BOGOR": "ER SINYAL BOO",
-    "TRA11881": "ER SINYAL BOO"
+    "WS S23 BOO": "WS S23 BOO",
+    "TLK10667 : WS S23 BOO": "WS S23 BOO",
+    "TLK10667": "WS S23 BOO",
+    "WS TAIT S26 BOO": "WS TAIT S26 BOO",
+    "TLK11003 : WS TAIT S26 BOO": "WS TAIT S26 BOO",
+    "TLK11003": "WS TAIT S26 BOO",
+    "WS DIGITAL S26 BOO": "WS DIGITAL S26 BOO",
+    "TLK10305 : WS DIGITAL S26 BOO": "WS DIGITAL S26 BOO",
+    "TLK10305": "WS DIGITAL S26 BOO"
   },
   "pdf_to_location": {
-    "PERAWATAN SERAT OPTIK JPL 02 BOO 15-09-2026.pdf": "JPL 02 BOO",
-    "PERAWATAN SERAT OPTIK JPL 27 CLT-BOO 20-09-2026.pdf": "JPL 27 BOO-CLT",
-    "PERAWATAN SERAT OPTIK JPL 01 BOO 15-09-2026.pdf": "JPL 01 BOO",
-    "PERAWATAN SERAT OPTIK JPL 26N CLT 17-09-2026.pdf": "JPL 26N CLT-BJD",
-    "PERAWATAN SERAT OPTIK OTB 1-10 ER CILEBUT 03-09-2026.pdf": "ER SINYAL CLT",
-    "PERAWATAN SERAT OPTIK OTB 1-3 ER TELKOM BOGOR 28-09-2026.pdf": "RUANG RADIO BOO",
-    "PERAWATAN SERAT OPTIK JPL 28 CLT-BOO 20-09-2026.pdf": "JPL 28 BOO-CLT",
-    "PERAWATAN SERAT OPTIK OTB 1-5 ER BOGOR 28-09-2026.pdf": "ER SINYAL BOO",
-    "PERAWATAN SERAT OPTIK OTB 11-12 ER BOGOR 28-09-2026.pdf": "ER SINYAL BOO",
-    "PERAWATAN SERAT OPTIK OTB 11-13 ER CILEBUT 03-09-2026.pdf": "ER SINYAL CLT",
-    "PERAWATAN SERAT OPTIK OTB 6-10 ER BOGOR 28-09-2026.pdf": "ER SINYAL BOO"
+    "PERAWATAN RADIO WAYSTATION 3 BULANAN WS S23 BOO 28-09-2026.pdf": "WS S23 BOO",
+    "PERAWATAN RADIO WAYSTATION 3 BULANAN WS TAIT S26 BOO 28-09-2026.pdf": "WS TAIT S26 BOO",
+    "PERAWATAN RADIO WAYSTATION 3 BULANAN WS DIGITAL S26 BOO 28-09-2026.pdf": "WS DIGITAL S26 BOO"
   },
   "pdf_to_assets": {
-    "PERAWATAN SERAT OPTIK JPL 02 BOO 15-09-2026.pdf": [
-      "OTB FO JPL 02 BOO"
+    "PERAWATAN RADIO WAYSTATION 3 BULANAN WS S23 BOO 28-09-2026.pdf": [
+      "WS S23 BOO"
     ],
-    "PERAWATAN SERAT OPTIK JPL 27 CLT-BOO 20-09-2026.pdf": [
-      "OTB FO JPL 27 BOO-CLT"
+    "PERAWATAN RADIO WAYSTATION 3 BULANAN WS TAIT S26 BOO 28-09-2026.pdf": [
+      "WS TAIT S26 BOO"
     ],
-    "PERAWATAN SERAT OPTIK JPL 01 BOO 15-09-2026.pdf": [
-      "OTB FO JPL 01 BOO"
-    ],
-    "PERAWATAN SERAT OPTIK JPL 26N CLT 17-09-2026.pdf": [
-      "OTB FO JPL 26N CLT-BJD"
-    ],
-    "PERAWATAN SERAT OPTIK OTB 1-10 ER CILEBUT 03-09-2026.pdf": [
-      "OTB 1 ER CILEBUT",
-      "OTB 2 ER CILEBUT",
-      "OTB 3 ER CILEBUT",
-      "OTB 4 ER CILEBUT",
-      "OTB 7 ER CILEBUT",
-      "OTB 8 ER CILEBUT",
-      "OTB 5 ER CILEBUT",
-      "OTB 6 ER CILEBUT",
-      "OTB 9 ER CILEBUT",
-      "OTB 10 ER CILEBUT"
-    ],
-    "PERAWATAN SERAT OPTIK OTB 1-3 ER TELKOM BOGOR 28-09-2026.pdf": [
-      "OTB 1 ER TELKOM BOGOR",
-      "OTB 2 ER TELKOM BOGOR",
-      "OTB 3 ER TELKOM BOGOR"
-    ],
-    "PERAWATAN SERAT OPTIK JPL 28 CLT-BOO 20-09-2026.pdf": [
-      "OTB FO JPL 28 BOO-CLT"
-    ],
-    "PERAWATAN SERAT OPTIK OTB 1-5 ER BOGOR 28-09-2026.pdf": [
-      "OTB 1 ER BOGOR",
-      "OTB 4 ER BOGOR",
-      "OTB 5 ER BOGOR",
-      "OTB 2 ER BOGOR",
-      "OTB 3 ER BOGOR"
-    ],
-    "PERAWATAN SERAT OPTIK OTB 11-12 ER BOGOR 28-09-2026.pdf": [
-      "OTB 11 ER BOGOR",
-      "OTB 12 ER BOGOR"
-    ],
-    "PERAWATAN SERAT OPTIK OTB 11-13 ER CILEBUT 03-09-2026.pdf": [
-      "OTB 11 ER CILEBUT",
-      "OTB 12 ER CILEBUT",
-      "OTB 13 ER CILEBUT"
-    ],
-    "PERAWATAN SERAT OPTIK OTB 6-10 ER BOGOR 28-09-2026.pdf": [
-      "OTB 7 ER BOGOR",
-      "OTB 8 ER BOGOR",
-      "OTB 10 ER BOGOR",
-      "OTB 9 ER BOGOR",
-      "OTB 6 ER BOGOR"
+    "PERAWATAN RADIO WAYSTATION 3 BULANAN WS DIGITAL S26 BOO 28-09-2026.pdf": [
+      "WS DIGITAL S26 BOO"
     ]
   }
 }
