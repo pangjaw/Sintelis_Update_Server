@@ -85,6 +85,7 @@ def generate_excel_from_schedule(schedule_file: Path, output_file: Path):
     # 3. Data Rows
     tim1_fill = PatternFill(start_color="F0FDF4", end_color="F0FDF4", fill_type="solid")  # light green/white
     tim2_fill = PatternFill(start_color="FFFBEB", end_color="FFFBEB", fill_type="solid")  # light amber/orange
+    tim3_fill = PatternFill(start_color="EFF6FF", end_color="EFF6FF", fill_type="solid")  # light blue
     zebra_alt = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
 
     for row_idx, item in enumerate(schedules, 5):
@@ -119,7 +120,7 @@ def generate_excel_from_schedule(schedule_file: Path, output_file: Path):
         ]
 
         ws.row_dimensions[row_idx].height = 20
-        row_bg = tim2_fill if tim_n == 2 else (zebra_alt if row_idx % 2 == 0 else tim1_fill)
+        row_bg = tim3_fill if tim_n >= 3 else (tim2_fill if tim_n == 2 else (zebra_alt if row_idx % 2 == 0 else tim1_fill))
 
         for col_idx, val in enumerate(row_values, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=val)

@@ -660,9 +660,9 @@ def load_or_build_file_tim_mapping(folder_path: Path) -> dict[str, int]:
             photos_dir=Path("03_photos_export"),
             mapping=mapping,
             acuan=acuan,
-            jam_mulai=7 * 60,
+            jam_mulai=6 * 60,
             jam_selesai=18 * 60,
-            tim_max=2
+            tim_max=3
         )
         if sched.get("schedules"):
             return {s.get("file"): s.get("tim", 1) for s in sched["schedules"] if s.get("file")}

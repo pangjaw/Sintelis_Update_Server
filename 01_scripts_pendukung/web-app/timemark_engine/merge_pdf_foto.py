@@ -42,6 +42,7 @@ from employee_manager import (
     load_pegawai_config, extract_page1_tim1_personnel,
     get_tim2_roster_for_date, get_tim3_roster_for_date, replace_page1_employee_names
 )
+from date_changer_engine import _get_date_cell_bounds, _get_date_font
 
 import pytesseract
 TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -304,48 +305,82 @@ def draw_centered_label(page, text: str, img_x0: float, img_x1: float, y_baselin
 
 
 def update_page1_date_text(doc, filename: str):
-    """Updates Page 1 date value to match target PDF filename date format at exact original origin."""
+    """Updates Page 1 date value to match target PDF filename date format, centered inside its table cell."""
     m = re.search(r'(\d{2})-(\d{2})-(\d{4})', filename)
     if not m:
         return
-    
+
     raw_date = m.group(0)
     parts = raw_date.split('-')
     target_date_ymd = f"{parts[2]}-{parts[1]}-{parts[0]}"
-    
+
     page1 = doc[0]
     blocks = page1.get_text("dict")["blocks"]
     date_span = None
-    
+    fallback_span = None
+
     for b in blocks:
         if "lines" not in b:
             continue
         for l in b["lines"]:
             for span in l["spans"]:
                 txt = span["text"].strip()
-                if ("2025" in txt or "2026" in txt) and ("-" in txt or "/" in txt or " " in txt):
+                if re.fullmatch(r"\d{4}[-/]\d{2}[-/]\d{2}", txt) or re.fullmatch(r"\d{2}[-/]\d{2}[-/]\d{4}", txt):
                     date_span = span
                     break
+                if fallback_span is None and span["bbox"][1] < 350 and ("2025" in txt or "2026" in txt) and ("-" in txt or "/" in txt or " " in txt):
+                    fallback_span = span
             if date_span:
                 break
         if date_span:
             break
-            
+
+    if not date_span:
+        date_span = fallback_span
+
     if date_span:
-        bbox = date_span["bbox"]
-        origin = date_span["origin"]
+        bbox = fitz.Rect(date_span["bbox"])
+        origin = date_span.get("origin")
         original_txt = date_span["text"].strip()
         new_date_text = target_date_ymd if re.match(r'^\d{4}-\d{2}-\d{2}$', original_txt) else raw_date
-        
-        # Redact strictly around old date span
-        redact_rect = fitz.Rect(bbox[0] - 1.0, bbox[1] - 0.5, bbox[2] + 1.0, bbox[3] + 0.5)
+
+        x_left, x_right = _get_date_cell_bounds(page1, bbox)
+        font_name, font_file = _get_date_font()
+        font_size = date_span.get("size", 7.8) or 7.8
+
+        if font_file:
+            try:
+                custom_font = fitz.Font(fontfile=font_file)
+                text_w = custom_font.text_length(new_date_text, fontsize=font_size)
+            except Exception:
+                text_w = fitz.get_text_length(new_date_text, fontname="hebo", fontsize=font_size)
+        else:
+            text_w = fitz.get_text_length(new_date_text, fontname="hebo", fontsize=font_size)
+
+        center_x = (x_left + x_right) / 2.0
+        insert_x = center_x - (text_w / 2.0)
+        origin_y = origin[1] if origin else (bbox.y1 - 1.5)
+
+        # Skip rewriting if already exact text, same font family, and centered
+        if original_txt == new_date_text and abs(bbox.x0 - insert_x) < 1.0 and "DejaVu" in date_span.get("font", ""):
+            return
+
+        # Redact strictly inside cell bounds so border lines remain untouched
+        clean_x0 = max(x_left + 0.5, min(bbox.x0, insert_x) - 0.8)
+        clean_x1 = min(x_right - 0.5, max(bbox.x1, insert_x + text_w) + 0.8)
+        redact_rect = fitz.Rect(clean_x0, bbox.y0 - 0.8, clean_x1, bbox.y1 + 0.8)
         page1.add_redact_annot(redact_rect, fill=(1, 1, 1))
         page1.apply_redactions()
-        
-        # Insert at EXACT original origin (x, y) with Helvetica-Bold 7.8pt
-        font_name = "hebo"
-        font_size = 7.8
-        page1.insert_text(origin, new_date_text, fontname=font_name, fontsize=font_size, color=(0, 0, 0))
+
+        insert_kwargs = {
+            "fontsize": font_size,
+            "fontname": font_name if font_file else "hebo",
+            "color": (0, 0, 0)
+        }
+        if font_file:
+            insert_kwargs["fontfile"] = font_file
+
+        page1.insert_text((insert_x, origin_y), new_date_text, **insert_kwargs)
 
 
 def draw_header(page, location: str, date_str: str, checklist_title: str):

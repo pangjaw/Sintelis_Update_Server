@@ -1470,16 +1470,17 @@ def export_pdf(pdf_path: Path, output_root: Path, log_dir: Path,
                         fc_photo_data = all_photo_rows[fc_idx] if fc_idx < len(all_photo_rows) else all_photo_rows[0]
 
                         targets = []
-                        # 1. Folder gabungan/lokasi (misal ER SINYAL BOO): ambil dari baris pertama
-                        if row_id and row_id not in written_targets:
-                            written_targets.add(row_id)
-                            targets.append((row_id, determine_btp(row_id), all_photo_rows[0]))
-
-                        # 2. Folder mandiri per nama aset jika split_multi_asset aktif
-                        # (misal OTB 1 ER BOGOR, OTB 4 ER BOGOR, dst.): ambil baris yang sesuai
-                        if split_multi_asset and asset_name and asset_name not in written_targets:
-                            written_targets.add(asset_name)
-                            targets.append((asset_name, determine_btp(row_id or asset_name), fc_photo_data))
+                        if split_multi_asset:
+                            # Mode Multi-Asset: Folder mandiri per nama spesifik aset (misal OTB 1 ER BOGOR, OTB 4 ER BOGOR, dst.)
+                            target_id = asset_name or row_id
+                            if target_id and target_id not in written_targets:
+                                written_targets.add(target_id)
+                                targets.append((target_id, determine_btp(row_id or target_id), fc_photo_data))
+                        else:
+                            # Mode Biasa / Lokasi Tunggal: Folder gabungan lokasi (misal ER SINYAL BOO)
+                            if row_id and row_id not in written_targets:
+                                written_targets.add(row_id)
+                                targets.append((row_id, determine_btp(row_id), all_photo_rows[0]))
 
                         for tid, t_btp, target_photos in targets:
                             row_out_dir = identifier_output_dir(output_root, t_btp, category, tid)

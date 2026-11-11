@@ -3484,15 +3484,17 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     }
                 return fname, False, None
 
+            results = []
             processed = 0
             meta_saved = {}
             # Proses sekuensial (max_workers=1) untuk menjaga GPU VRAM 3GB tetap stabil dan mencegah tabrakan alokasi CUDA
             for fname in target_fnames:
-                fname, success, m_info = _process_one_fname(fname)
+                r_fname, success, m_info = _process_one_fname(fname)
+                results.append((r_fname, success, m_info))
                 if success:
                     processed += 1
                     if m_info:
-                        meta_saved[fname] = m_info
+                        meta_saved[r_fname] = m_info
 
             final_returned_meta = {}
             if meta_saved:
@@ -5212,9 +5214,9 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             photos_dir=Path(photos_dir).resolve(),
                             mapping=mapping,
                             acuan=acuan,
-                            jam_mulai=7 * 60,
+                            jam_mulai=6 * 60,
                             jam_selesai=18 * 60,
-                            tim_max=2
+                            tim_max=3
                         )
                         temp_sch = os.path.join(str(out_dir), "temp_custom_schedule.json")
                         with open(temp_sch, "w", encoding="utf-8") as f:
@@ -5300,9 +5302,9 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             photos_dir=Path(photos_dir_d).resolve(),
                             mapping=mapping,
                             acuan=acuan,
-                            jam_mulai=7 * 60,
+                            jam_mulai=6 * 60,
                             jam_selesai=18 * 60,
-                            tim_max=2
+                            tim_max=3
                         )
                         with open(temp_sch, "w", encoding="utf-8") as f:
                             json.dump(sched_data, f, indent=2, ensure_ascii=False)
@@ -5714,9 +5716,9 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 photos_dir=Path(photos_dir).resolve(),
                 mapping=mapping,
                 acuan=acuan,
-                jam_mulai=7 * 60,
+                jam_mulai=6 * 60,
                 jam_selesai=18 * 60,
-                tim_max=2,
+                tim_max=3,
                 split_multi_asset=split_multi
             )
 

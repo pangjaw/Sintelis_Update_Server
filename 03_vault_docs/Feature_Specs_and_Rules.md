@@ -154,9 +154,10 @@ flowchart TD
 2. **Acuan Durasi & Mapping**:
    - Menggunakan acuan waktu dari `asset_waktu_mapping.json` dan `data_acuan_tenaga_gabungan.json`.
    - Default fallback: PDSE = 420 menit (7 jam), SERAT OPTIK = 60 menit (atau `core * 6`), WESEL = 30 menit, SINYAL = 30 menit, Kategori lainnya = 45 menit.
-3. **Jam Dinas**:
-   - Standar: Jam Mulai = 07:00, Jam Selesai = 18:00, Tim Maksimal = 2 tim (`Tim_1`, `Tim_2`).
-   - Jika slot waktu melebihi batas jam selesai, tugas dialihkan ke `Tim 2` mulai pukul 07:00 kembali.
+3. **Jam Dinas & Penjadwalan Atomik 1-File-1-Tim**:
+   - Standar: Jam Mulai = `06:00` (360 menit), Batas Overlap / Jam Selesai = `18:00` (1080 menit), Tim Maksimal = `3` tim (`Tim_1`, `Tim_2`, `Tim_3`).
+   - **Aturan 1 File PDF = 1 Tim Utuh:** Seluruh aset dalam 1 berkas PDF dijadwalkan pada 1 tim yang sama dan jam diteruskan berurutan dari aset pertama sampai seluruh berkas tuntas (tidak dipecah di tengah berkas dan tidak me-reset jam di tengah berkas).
+   - **Pindah Tim Antar Berkas:** Jika tim aktif sudah melewati `18:00` atau tambahan durasi berkas berikutnya akan melewati `18:00`, berkas berikutnya dialihkan ke Tim berikutnya (`Tim 1 → Tim 2 → Tim 3`) mulai pukul `06:00` kembali. Jika seluruh tim telah melewati `18:00`, sistem memilih tim dengan jam akhir paling awal tanpa me-reset jam.
 4. **Distribusi File Jadwal**:
    - Disimpan di root ekspor: `{export_root}/schedule.json`.
    - Disalin (*mirror*) ke folder target PDF dan folder foto mentah agar selalu ditemukan oleh backend.
@@ -607,3 +608,20 @@ Ketika opsi *Bagi Foto & Jam Sesuai Jumlah Baris Aset* (`split_multi_asset`) akt
 1. `export_pdf_foto.py` mengekstrak foto ke folder lokasi dasar (`ER SINYAL BOO`) DAN menduplikasikannya ke folder masing-masing aset (`OTB 1 ER BOGOR`, `OTB 2 ER BOGOR`, dst.).
 2. `edit_timemark_ide1.py` mencap stempel watermark foto per folder aset dengan tanggal, jam, dan Tim yang sesuai dari `schedule.json`.
 3. `merge_pdf_foto.py` memprioritaskan folder spesifik aset terlebih dahulu saat menyematkan foto ke tabel baris lampiran PDF.
+
+---
+
+## 21. SPESIFIKASI AKSELERASI HARDWARE MULTI-DEVICE & OPTIMASI PDF
+
+### 21.1 Aturan Pemindaian Perangkat (Hardware Profiling)
+Aplikasi dan AI Agent wajib mendukung fleksibilitas instalasi di berbagai lingkungan PC (laptop dinas, PC kantor, PC server) dengan opsi setup:
+1. **Opsi 1 (NVIDIA GPU / CUDA 11.8)**: Pilihan utama untuk PC ber-GPU NVIDIA (GTX 1050 atau lebih baru). Memproses foto ~0.7s - 1.2s per foto.
+2. **Opsi 2 (Non-NVIDIA GPU / DirectML)**: Untuk GPU AMD Radeon, Intel Arc, Intel Iris Xe melalui DirectX 12. Kecepatan ~1.2s - 2.5s per foto.
+3. **Opsi 3 (CPU RAM Only)**: Untuk PC kantor standar tanpa GPU dedicated. Menggunakan RAM sistem dan optimasi multi-core CPU.
+
+Skrip pemindaian dan instalasi otomatis tersedia di `01_scripts_pendukung/setup_ai_hardware.py`.
+
+### 21.2 Pencegahan Kebocoran Memori & Bloat PDF (Garbage Collection)
+1. **PDF Saving Standard**: Setiap operasi simpan dokumen PDF di `merge_pdf_foto.py` wajib menyertakan flag `garbage=4, deflate=True, clean=True`. Hal ini mencegah penumpukan objek gambar lama (*orphaned XObjects*) yang menyebabkan dokumen membengkak hingga puluhan atau ratusan megabyte.
+2. **OpenMP & CPU Threading**: Lingkungan subprocess runtime selalu mengekspor `OMP_WAIT_POLICY=PASSIVE` dan `KMP_BLOCKTIME=0` untuk memastikan proses inferensi tidak memakan CPU di latar belakang saat idle.
+

@@ -39,7 +39,8 @@ try:
     from employee_manager import (
         load_pegawai_config,
         extract_page1_tim1_personnel,
-        get_tim2_roster_for_date
+        get_tim2_roster_for_date,
+        get_tim3_roster_for_date
     )
 except ImportError:
     pass
@@ -365,11 +366,13 @@ def generate_tablo_workbook(schedule_data: dict, year: int = None, month: int = 
     right_start_col = gap_col + 1
     right_end_col = right_start_col + 7
 
-    # 3. Organize schedule by day (1..num_days) and Tim (1 or 2)
+    # 3. Organize schedule by day (1..num_days) and Tim (1, 2, or 3)
     daily_tim1_groups = {d: set() for d in range(1, num_days + 1)}
     daily_tim2_groups = {d: set() for d in range(1, num_days + 1)}
+    daily_tim3_groups = {d: set() for d in range(1, num_days + 1)}
     daily_tim1_files = {d: [] for d in range(1, num_days + 1)}
     daily_tim2_files = {d: [] for d in range(1, num_days + 1)}
+    daily_tim3_files = {d: [] for d in range(1, num_days + 1)}
 
     for s in schedules:
         iso = s.get("iso_date")
@@ -382,7 +385,10 @@ def generate_tablo_workbook(schedule_data: dict, year: int = None, month: int = 
                 grp = match_asset_to_tablo_group(s)
                 tim = s.get("tim", 1)
                 f_name = s.get("file", "")
-                if tim == 2:
+                if tim == 3:
+                    if grp > 0: daily_tim3_groups[d].add(grp)
+                    if f_name: daily_tim3_files[d].append(f_name)
+                elif tim == 2:
                     if grp > 0: daily_tim2_groups[d].add(grp)
                     if f_name: daily_tim2_files[d].append(f_name)
                 else:
@@ -458,7 +464,7 @@ def generate_tablo_workbook(schedule_data: dict, year: int = None, month: int = 
 
         # 2. Jika belum ada personil terpetakan sama sekali dari schedule, coba scan dari PDF jika ada
         any_assigned = any(len(grps) > 0 for k, grps in person_groups.items() if k != "resor")
-        if (len(daily_tim1_files[day]) > 0 or len(daily_tim2_files[day]) > 0) and not any_assigned and d_str in pdf_by_date:
+        if (len(daily_tim1_files[day]) > 0 or len(daily_tim2_files[day]) > 0 or len(daily_tim3_files[day]) > 0) and not any_assigned and d_str in pdf_by_date:
             try:
                 doc = fitz.open(pdf_by_date[d_str])
                 pdf_tokens = extract_page1_tim1_personnel(doc)
@@ -495,10 +501,20 @@ def generate_tablo_workbook(schedule_data: dict, year: int = None, month: int = 
 
             t1_grps = daily_tim1_groups.get(day, set())
             t2_grps = daily_tim2_groups.get(day, set())
+            t3_grps = daily_tim3_groups.get(day, set())
             for k in t1_k:
                 person_groups[k].update(t1_grps or all_day_groups)
             for k in t2_k:
                 person_groups[k].update(t2_grps)
+            if t3_grps:
+                try:
+                    t3_roster = get_tim3_roster_for_date(d_str, cfg)
+                    for r in t3_roster:
+                        pkey = _match_token_to_key(r.get("nama", ""))
+                        if pkey:
+                            person_groups[pkey].update(t3_grps)
+                except Exception:
+                    pass
 
         day_values = {}
         # Resor (KUPT) schedule: selalu dinas jika ada perawatan, atau dinas kantor 'P'
@@ -997,9 +1013,9 @@ def main():
             photos_dir=photos_dir,
             mapping=mapping,
             acuan=acuan,
-            jam_mulai=7 * 60,
+            jam_mulai=6 * 60,
             jam_selesai=18 * 60,
-            tim_max=2
+            tim_max=3
         )
         try:
             with open(temp_sched_file, "w", encoding="utf-8") as f:

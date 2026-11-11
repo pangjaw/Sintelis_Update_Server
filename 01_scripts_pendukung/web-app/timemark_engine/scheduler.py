@@ -207,8 +207,7 @@ def m2hhmm(m: int) -> str:
 
 
 def m2iso(d: date, m: int) -> str:
-    rem_m = int(round(m)) % (24 * 60)
-    return datetime(d.year, d.month, d.day, int(rem_m // 60), int(rem_m % 60)).isoformat()
+    return (datetime(d.year, d.month, d.day) + timedelta(minutes=int(round(m)))).isoformat()
 
 
 def is_serat_optik_pdf(pdf_path: Path) -> bool:
@@ -541,19 +540,40 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
     print(f"[*] Pass 1 complete: {len(files)} PDFs ({total_extracted_assets} total asset entries) grouped into {len(files_by_date)} unique dates.")
     print(f"[*] Pass 2: Generating chronological multi-team schedule per date...")
 
-    # ── PASS 2: Sequential scheduling per chronological date ──
+    # ── PASS 2: Sequential scheduling per chronological date (1 PDF = 1 Tim utuh) ──
     schedules = []
     sorted_dates = sorted(files_by_date.keys())
 
     for cur_date in sorted_dates:
         pdf_list = files_by_date[cur_date]
         tim = 1
-        clock = jam_mulai
+        team_clocks = {t: jam_mulai for t in range(1, tim_max + 1)}
         scheduled_assets_on_date = {}  # (category, identifier) -> slot_info
 
         # Jika split_multi_asset aktif, pembagian jam sudah dihitung per PDF dokumen pada Pass 1
 
         for pdf_info in pdf_list:
+            # Hitung total durasi seluruh aset baru pada berkas PDF ini (1 file PDF = 1 Tim utuh)
+            new_items = [
+                a for a in pdf_info["asset_items"]
+                if (pdf_info["category"], a["identifier"]) not in scheduled_assets_on_date
+            ]
+            file_duration = sum(a["waktu_menit"] for a in new_items)
+
+            if new_items:
+                cur_clock = team_clocks[tim]
+                # Jika tim saat ini sudah melewati jam_selesai (18:00), atau tambahan durasi berkas ini akan melewati jam_selesai,
+                # alihkan seluruh berkas ini ke Tim berikutnya mulai dari jam_mulai (06:00)
+                if (cur_clock > jam_selesai) or (cur_clock > jam_mulai and cur_clock + file_duration > jam_selesai):
+                    if tim < tim_max:
+                        tim += 1
+                    else:
+                        # Seluruh tim (1..tim_max) sudah terisi lewat jam_selesai -> lanjut pada tim paling awal (tanpa reset jam)
+                        tim = min(range(1, tim_max + 1), key=lambda t: team_clocks[t])
+
+            file_tim = tim
+            clock = team_clocks[file_tim]
+
             for a in pdf_info["asset_items"]:
                 asset_key = (pdf_info["category"], a["identifier"])
 
@@ -580,17 +600,8 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
                     }
                     schedules.append(entry)
                 else:
-                    # Aset baru pada tanggal ini -> alokasikan slot jam berikutnya
+                    # Aset baru pada tanggal ini -> teruskan jam berurutan pada tim berkas ini sampai seluruh berkas tuntas
                     w = a["waktu_menit"]
-                    # Jika waktu pengerjaan aset melewati batas jam kerja dinas (misal: 15:30),
-                    # alokasikan aset ini ke Tim berikutnya (maksimal tim_max) mulai jam 08:30 pada tanggal yang sama
-                    if ((clock + w > jam_selesai and clock > jam_mulai) or clock > jam_selesai):
-                        if tim < tim_max:
-                            tim += 1
-                            clock = jam_mulai
-                        else:
-                            clock = jam_mulai
-
                     t0 = clock
                     t50 = round(clock + w / 2)
                     t100 = clock + w
@@ -602,7 +613,7 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
                     }
 
                     slot = {
-                        "tim": tim,
+                        "tim": file_tim,
                         "waktu_menit": w,
                         "t0": t0,
                         "t50": t50,
@@ -623,7 +634,7 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
                         "funcloc": a["funcloc"],
                         "date": pdf_info["date_str"],
                         "iso_date": cur_date.isoformat(),
-                        "tim": tim,
+                        "tim": file_tim,
                         "waktu_menit": w,
                         "photos": photos,
                         "personnel": pdf_info.get("personnel", []),
@@ -631,6 +642,8 @@ def build_schedule(pdf_dir: Path, photos_dir: Path,
                     }
                     schedules.append(entry)
                     clock = t100
+
+            team_clocks[file_tim] = clock
 
     return {"version": 3, "schedules": schedules}
 
@@ -641,9 +654,9 @@ def main() -> int:
     p.add_argument("--photos-dir", default="./03_photos_export")
     p.add_argument("--mapping", default="asset_waktu_mapping.json")
     p.add_argument("--data-acuan", default="data_acuan_tenaga_gabungan.json")
-    p.add_argument("--jam-mulai", type=float, default=8.5, help="jam mulai (0-23)")
-    p.add_argument("--jam-selesai", type=float, default=15.5, help="jam selesai (0-23)")
-    p.add_argument("--tim-max", type=int, default=2)
+    p.add_argument("--jam-mulai", type=float, default=6.0, help="jam mulai (0-23)")
+    p.add_argument("--jam-selesai", type=float, default=18.0, help="jam selesai (0-23)")
+    p.add_argument("--tim-max", type=int, default=3)
     p.add_argument("--split-multi-asset", action="store_true", help="Bagi foto dan jam sesuai jumlah baris aset")
     p.add_argument("--output", default="schedule.json")
     args = p.parse_args()

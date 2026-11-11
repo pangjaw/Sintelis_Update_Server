@@ -14,7 +14,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
   const [feedback, setFeedback] = useState(null);
 
   // Filters
-  const [timFilter, setTimFilter] = useState('ALL'); // 'ALL' | '1' | '2'
+  const [timFilter, setTimFilter] = useState('ALL'); // 'ALL' | '1' | '2' | '3'
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
 
@@ -274,6 +274,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
       // Filter Tim
       if (timFilter === '1' && r.tim !== 1) return false;
       if (timFilter === '2' && r.tim !== 2) return false;
+      if (timFilter === '3' && r.tim !== 3) return false;
 
       // Filter Kategori
       if (categoryFilter !== 'ALL' && r.category !== categoryFilter) return false;
@@ -393,7 +394,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
           </div>
           {!compactBanner && (
             <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Matriks alokasi waktu kerja, pembagian Tim 1/Tim 2, dan rincian stempel foto (0%, 50%, 100%) hasil Step 3 Penjadwalan.
+              Matriks alokasi waktu kerja, pembagian Tim 1/Tim 2/Tim 3, dan rincian stempel foto (0%, 50%, 100%) hasil Step 3 Penjadwalan.
             </p>
           )}
         </div>
@@ -752,6 +753,22 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
             >
               Tim 2 ({rows.filter(r => r.tim === 2).length})
             </button>
+            <button
+              type="button"
+              onClick={() => setTimFilter('3')}
+              style={{
+                padding: '0.3rem 0.65rem',
+                borderRadius: '5px',
+                border: 'none',
+                background: timFilter === '3' ? '#3b82f6' : 'transparent',
+                color: timFilter === '3' ? '#ffffff' : 'var(--text-secondary)',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Tim 3 ({rows.filter(r => r.tim === 3).length})
+            </button>
           </div>
 
           {/* Filter Kategori */}
@@ -901,7 +918,7 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
                     key={r.no || idx}
                     style={{
                       borderBottom: '1px solid var(--border-color)',
-                      background: r.tim === 1 ? 'rgba(34, 197, 94, 0.02)' : 'rgba(245, 158, 11, 0.02)',
+                      background: r.tim === 1 ? 'rgba(34, 197, 94, 0.02)' : (r.tim === 2 ? 'rgba(245, 158, 11, 0.02)' : 'rgba(59, 130, 246, 0.03)'),
                       transition: 'background 0.15s'
                     }}
                   >
@@ -918,8 +935,8 @@ export default function ScheduleSheetPanel({ targetDir, exportDir, onPickFolder,
                           borderRadius: '4px',
                           fontSize: '0.7rem',
                           fontWeight: 700,
-                          background: r.tim === 1 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                          color: r.tim === 1 ? '#22c55e' : '#f59e0b'
+                          background: r.tim === 1 ? 'rgba(34, 197, 94, 0.15)' : (r.tim === 2 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)'),
+                          color: r.tim === 1 ? '#22c55e' : (r.tim === 2 ? '#f59e0b' : '#60a5fa')
                         }}
                       >
                         Tim {r.tim}

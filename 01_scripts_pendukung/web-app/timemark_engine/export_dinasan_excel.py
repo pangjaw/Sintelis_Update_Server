@@ -30,7 +30,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as OpenpyxlImage
 from openpyxl.formatting.rule import CellIsRule
 
-from employee_manager import load_pegawai_config
+from employee_manager import load_pegawai_config, get_tim2_roster_for_date, get_tim3_roster_for_date
 
 try:
     from audit_and_correct_personnel import extract_personnel_from_pdf, get_roster_sets
@@ -284,9 +284,9 @@ def build_dinasan_workbook(year: int, month: int, schedule_path: Path, config_pa
         except Exception as e:
             print(f"[WARN] Could not load schedule.json: {e}")
 
-    # Map: day_number (1..num_days) -> {"tim1_files": [], "tim2_files": []}
+    # Map: day_number (1..num_days) -> {"tim1": [], "tim2": [], "tim3": []}
     num_days = calendar.monthrange(year, month)[1]
-    days_activity = {d: {"tim1": [], "tim2": []} for d in range(1, num_days + 1)}
+    days_activity = {d: {"tim1": [], "tim2": [], "tim3": []} for d in range(1, num_days + 1)}
 
     for item in schedules:
         iso = item.get("iso_date")
@@ -297,7 +297,9 @@ def build_dinasan_workbook(year: int, month: int, schedule_path: Path, config_pa
             if dt.year == year and dt.month == month:
                 t = item.get("tim", 1)
                 f_name = item.get("file")
-                if t == 2:
+                if t == 3:
+                    days_activity[dt.day]["tim3"].append(f_name)
+                elif t == 2:
                     days_activity[dt.day]["tim2"].append(f_name)
                 else:
                     days_activity[dt.day]["tim1"].append(f_name)
@@ -344,11 +346,12 @@ def build_dinasan_workbook(year: int, month: int, schedule_path: Path, config_pa
         act = days_activity[day]
         has_tim1 = len(act["tim1"]) > 0
         has_tim2 = len(act["tim2"]) > 0
+        has_tim3 = len(act["tim3"]) > 0
 
         d_str = f"{day:02d}-{month:02d}-{year}"
         t1_tokens = set()
 
-        if (has_tim1 or has_tim2) and d_str in pdf_by_date:
+        if (has_tim1 or has_tim2 or has_tim3) and d_str in pdf_by_date:
             for pdf_f in pdf_by_date[d_str]:
                 try:
                     doc = fitz.open(pdf_f)
@@ -388,6 +391,11 @@ def build_dinasan_workbook(year: int, month: int, schedule_path: Path, config_pa
         if has_tim2:
             roster_tim2 = get_tim2_roster_for_date(d_str, t1_tokens, cfg)
             for r in roster_tim2:
+                duty_set.add(r.get("nama", "").strip().upper())
+
+        if has_tim3:
+            roster_tim3 = get_tim3_roster_for_date(d_str, cfg)
+            for r in roster_tim3:
                 duty_set.add(r.get("nama", "").strip().upper())
 
         daily_duties[day] = duty_set
@@ -790,9 +798,9 @@ def main():
             photos_dir=Path("./03_photos_export").resolve(),
             mapping=mapping,
             acuan=acuan,
-            jam_mulai=7 * 60,
+            jam_mulai=6 * 60,
             jam_selesai=18 * 60,
-            tim_max=2
+            tim_max=3
         )
         try:
             with open(temp_sch, "w", encoding="utf-8") as f:
