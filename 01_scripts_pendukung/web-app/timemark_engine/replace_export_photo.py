@@ -29,7 +29,7 @@ def get_backup_path(target_path: Path) -> Path:
     return target_path.parent / f"{target_path.stem}.original_backup.jpg"
 
 
-def run_step4_auto(rel_path: str, mode: str, detector: str = "google_vision"):
+def run_step4_auto(rel_path: str, mode: str, detector: str = "paddle_ocr"):
     """Run the appropriate Step 4 script for the specific photo / folder."""
     norm_rel = rel_path.replace("\\", "/")
     folder_rel = str(Path(norm_rel).parent).replace("\\", "/")
@@ -67,7 +67,7 @@ def run_step4_auto(rel_path: str, mode: str, detector: str = "google_vision"):
     return res.returncode == 0, res.stdout, res.stderr
 
 
-def replace_photo(rel_path: str, new_image_path: str, mode: str, detector: str = "google_vision") -> dict:
+def replace_photo(rel_path: str, new_image_path: str, mode: str, detector: str = "paddle_ocr") -> dict:
     norm_rel = rel_path.replace("\\", "/")
     target_path = PHOTOS_EXPORT / norm_rel
 
@@ -110,7 +110,7 @@ def replace_photo(rel_path: str, new_image_path: str, mode: str, detector: str =
     }
 
 
-def revert_photo(rel_path: str, mode: str, detector: str = "google_vision") -> dict:
+def revert_photo(rel_path: str, mode: str, detector: str = "paddle_ocr") -> dict:
     norm_rel = rel_path.replace("\\", "/")
     target_path = PHOTOS_EXPORT / norm_rel
     backup_path = get_backup_path(target_path)
@@ -145,7 +145,7 @@ def revert_photo(rel_path: str, mode: str, detector: str = "google_vision") -> d
     }
 
 
-def swap_photos(source_rel: str, target_rel: str, mode: str, detector: str = "google_vision") -> dict:
+def swap_photos(source_rel: str, target_rel: str, mode: str, detector: str = "paddle_ocr") -> dict:
     norm_source = source_rel.replace("\\", "/")
     norm_target = target_rel.replace("\\", "/")
 
@@ -244,7 +244,7 @@ def main():
     parser.add_argument("--source", help="Source relative path in 03_photos_export (required for swap)")
     parser.add_argument("--image", help="Path to new image file (required for replace)")
     parser.add_argument("--mode", default="tanggal", choices=["tanggal", "jam", "koordinat"], help="Active pipeline mode")
-    parser.add_argument("--detector", default="google_vision", choices=["guide", "google_vision"], help="Timemark detector to use")
+    parser.add_argument("--detector", default="paddle_ocr", choices=["paddle_ocr", "google_vision", "guide"], help="Timemark detector to use")
 
     args = parser.parse_args()
 

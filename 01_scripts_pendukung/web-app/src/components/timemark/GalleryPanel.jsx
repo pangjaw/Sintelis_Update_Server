@@ -28,6 +28,43 @@ function helperCalculateDate(baseDate, photoStem) {
   return `${datePart} ${newHH}:${newMM}`;
 }
 
+const getDetectorInfo = (det) => {
+  if (det === 'paddle_ocr' || det === 'lama_ai') {
+    return {
+      label: 'LaMa AI (Hapus Teks)',
+      shortLabel: 'LaMa AI',
+      icon: '',
+      gradient: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+      btnBg: 'rgba(16, 185, 129, 0.2)',
+      btnColor: '#34d399',
+      border: '1px solid #10b981',
+      shadow: '0 2px 6px rgba(16, 185, 129, 0.4)'
+    };
+  }
+  if (det === 'google_vision') {
+    return {
+      label: 'Google AI Vision',
+      shortLabel: 'AI Vision',
+      icon: '✨',
+      gradient: 'linear-gradient(135deg, #7e22ce 0%, #9333ea 100%)',
+      btnBg: 'rgba(168, 85, 247, 0.2)',
+      btnColor: '#c084fc',
+      border: '1px solid #a855f7',
+      shadow: '0 2px 6px rgba(147, 51, 234, 0.4)'
+    };
+  }
+  return {
+    label: 'Metode Biasa (HSV)',
+    shortLabel: 'HSV',
+    icon: '⚡',
+    gradient: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+    btnBg: 'rgba(2, 132, 199, 0.2)',
+    btnColor: '#38bdf8',
+    border: '1px solid #0284c7',
+    shadow: '0 2px 6px rgba(2, 132, 199, 0.4)'
+  };
+};
+
 // =============================================================================
 // Komponen Kotak Timemark Interaktif yang Dapat Digeser (Inline Draggable Box)
 // =============================================================================
@@ -38,7 +75,7 @@ function InlineTimemarkBox({
   targetKey,
   localCoord,
   exportDir,
-  activeDetector = 'google_vision',
+  activeDetector = 'paddle_ocr',
   lastTimemarkPos,
   onPosChange,
   onSaved,
@@ -165,13 +202,14 @@ function InlineTimemarkBox({
             yPos: lastNormY,
             xPos: lastNormX,
             applyToFolder: false, // HANYA FOTO INI
+            saveOnly: true,       // INSTAN 0 ms: simpan koordinat murni tanpa komputasi gambar
             detector: activeDetector
           })
         });
         const data = await res.json();
         if (res.ok && data.ok) {
           setSavedFlash(true);
-          setTimeout(() => setSavedFlash(false), 1200);
+          setTimeout(() => setSavedFlash(false), 900);
           if (onSaved) onSaved({ targetKey: rawRelPath, xPos: lastNormX, yPos: lastNormY, dateText });
         }
       } catch (err) {
@@ -189,7 +227,7 @@ function InlineTimemarkBox({
   const displayText = photo?.meta?.dateText || (
     photoName === '50.jpg' ? helperCalculateDate(asset.dateText, '50') :
     photoName === '100.jpg' ? helperCalculateDate(asset.dateText, '100') :
-    asset.dateText || 'Timemark'
+    asset.dateText || ''
   );
 
   return (
@@ -203,41 +241,336 @@ function InlineTimemarkBox({
         position: 'absolute',
         top: `${(pos.y / 300) * 100}%`,
         left: `${(pos.x / 300) * 100}%`,
-        width: '36%',
-        height: '5.2%',
-        minHeight: '12px',
-        maxHeight: '18px',
-        border: dragging ? '1.5px solid #f0883e' : saving ? '1.5px solid #eab308' : savedFlash ? '1.5px solid #22c55e' : '1px solid #38bdf8',
-        background: dragging ? 'rgba(240, 136, 62, 0.65)' : saving ? 'rgba(234, 179, 8, 0.65)' : savedFlash ? 'rgba(34, 197, 94, 0.75)' : 'rgba(56, 189, 248, 0.45)',
-        boxShadow: dragging ? '0 0 10px rgba(240, 136, 62, 0.95)' : savedFlash ? '0 0 10px rgba(34, 197, 94, 0.95)' : '0 0 6px rgba(56, 189, 248, 0.6)',
+        minWidth: '32%',
+        width: 'fit-content',
+        maxWidth: '92%',
+        height: 'auto',
+        minHeight: '14px',
+        border: dragging ? '1.5px solid #38bdf8' : savedFlash ? '1.5px solid #22c55e' : '1px dashed rgba(56, 189, 248, 0.4)',
+        background: dragging ? 'rgba(15, 23, 42, 0.78)' : savedFlash ? 'rgba(34, 197, 94, 0.25)' : 'transparent',
+        boxShadow: dragging ? '0 0 10px rgba(56, 189, 248, 0.75)' : savedFlash ? '0 0 8px rgba(34, 197, 94, 0.75)' : 'none',
         borderRadius: '3px',
         cursor: dragging ? 'grabbing' : 'grab',
         zIndex: 25,
         display: 'flex',
         alignItems: 'center',
-        padding: '0 4px',
+        gap: '3px',
+        padding: '1px 4px',
         userSelect: 'none',
         touchAction: 'none',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        transition: dragging ? 'none' : 'border 0.2s, background 0.2s'
       }}
-      title="✥ Geser (drag) langsung kotak timemark ini untuk memindahkan posisinya di foto. Klik untuk buka editor modal."
+      title="✥ Watermark Timemark: Geser bebas ke posisi yang diinginkan. Tanggal akan ditempel saat klik Merge PDF."
     >
       <span
         style={{
-          fontSize: '7.5px',
+          fontFamily: '"Roboto", "Segoe UI", sans-serif',
+          fontSize: 'calc(7px + 0.2vw)',
           fontWeight: 700,
-          color: '#ffffff',
-          textShadow: '0 1px 2px #000',
+          color: dragging ? '#38bdf8' : '#f8f8f8',
+          textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 1.5px #000',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           pointerEvents: 'none',
-          lineHeight: 1,
-          letterSpacing: '-0.2px'
+          lineHeight: 1.15,
+          letterSpacing: '0.1px'
         }}
       >
-        {saving ? '⏳...' : savedFlash ? '✓ Disimpan' : displayText}
+        {displayText || 'Timemark'}
       </span>
+      {savedFlash && (
+        <span style={{ fontSize: '7px', background: '#22c55e', color: '#fff', padding: '0 3px', borderRadius: '2px', fontWeight: 800 }}>
+          ✓
+        </span>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Komponen Modal Edit Tanggal Baris Aset (Langsung 3 Foto: 0%, 50%, 100%)
+// =============================================================================
+function RowDateEditorModal({ isOpen, onClose, asset, exportDir, onSaved }) {
+  if (!isOpen || !asset) return null;
+
+  const [baseDate, setBaseDate] = useState(asset.dateText || '');
+  const [autoInterval, setAutoInterval] = useState(true);
+  const [customDates, setCustomDates] = useState({
+    '0.jpg': asset.dateText || '',
+    '50.jpg': helperCalculateDate(asset.dateText || '', '50'),
+    '100.jpg': helperCalculateDate(asset.dateText || '', '100')
+  });
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  const computed0 = baseDate.trim();
+  const computed50 = autoInterval ? helperCalculateDate(baseDate.trim(), '50') : customDates['50.jpg'];
+  const computed100 = autoInterval ? helperCalculateDate(baseDate.trim(), '100') : customDates['100.jpg'];
+
+  const handleUseCurrentTime = () => {
+    const now = new Date();
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const dayName = days[now.getDay()];
+    const monName = months[now.getMonth()];
+    const dd = String(now.getDate()).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const str = `${dayName}, ${monName} ${dd} ${yyyy} ${hh}:${mm}`;
+    setBaseDate(str);
+    if (!autoInterval) {
+      setCustomDates({
+        '0.jpg': str,
+        '50.jpg': helperCalculateDate(str, '50'),
+        '100.jpg': helperCalculateDate(str, '100')
+      });
+    }
+  };
+
+  const handleSave = async () => {
+    if (!baseDate.trim()) {
+      setErrorMsg('Tanggal acuan tidak boleh kosong.');
+      return;
+    }
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      const datesPayload = {
+        '0.jpg': computed0,
+        '50.jpg': computed50,
+        '100.jpg': computed100
+      };
+      const res = await fetch('/api/timemark/manual-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseExportDir: exportDir,
+          rawRelPath: asset.relDir,
+          dateText: baseDate.trim(),
+          datesPerPhoto: datesPayload,
+          applyToFolder: true,
+          saveOnly: true,
+          timGroup: 'Tim_1'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Gagal menyimpan tanggal');
+      }
+      if (onSaved) {
+        onSaved({
+          assetRel: asset.relDir,
+          baseDate: baseDate.trim(),
+          dates: datesPayload
+        });
+      }
+      onClose();
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.75)',
+        backdropFilter: 'blur(4px)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem'
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: 'var(--bg-card, #1e293b)',
+          border: '1px solid var(--border-color, #334155)',
+          borderRadius: '12px',
+          width: '100%',
+          maxWidth: '540px',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+          color: 'var(--text-primary, #f8fafc)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color, #334155)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>🗓️</span> Edit Tanggal 3 Foto Sekaligus
+            </h3>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+              {asset.station} • {asset.category || asset.asset_type} • <strong style={{ color: '#f1f5f9' }}>{asset.detail}</strong>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1 }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {errorMsg && (
+            <div style={{ padding: '0.6rem 0.8rem', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#f87171', fontSize: '0.8rem' }}>
+              ⚠️ {errorMsg}
+            </div>
+          )}
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>
+                Tanggal & Jam Acuan (Foto 0%)
+              </label>
+              <button
+                type="button"
+                onClick={handleUseCurrentTime}
+                style={{ fontSize: '0.72rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.2rem 0.5rem', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                ⚡ Waktu Sekarang
+              </button>
+            </div>
+            <input
+              type="text"
+              value={baseDate}
+              onChange={e => setBaseDate(e.target.value)}
+              placeholder="Contoh: Senin, Apr 28 2025 08:00"
+              style={{
+                width: '100%',
+                padding: '0.6rem 0.8rem',
+                borderRadius: '6px',
+                background: 'rgba(15, 23, 42, 0.6)',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                color: '#ffffff',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.3rem' }}>
+              Format standar: <code style={{ color: '#34d399' }}>Hari, Bulan Tgl Tahun JJ:MM</code>
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#cbd5e1', cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={autoInterval}
+              onChange={e => setAutoInterval(e.target.checked)}
+              style={{ cursor: 'pointer', accentColor: '#10b981' }}
+            />
+            <span>Otomatis beri jeda menit standar dinasan (+22 mnt Foto 50%, +45 mnt Foto 100%)</span>
+          </label>
+
+          {/* Realtime 3 Photo Previews / Inputs */}
+          <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(100, 116, 139, 0.25)', borderRadius: '8px', padding: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Pratinjau Nilai Tanggal Pada 3 Foto:
+            </div>
+
+            {/* 0% */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.8rem' }}>
+              <span style={{ fontWeight: 700, color: '#38bdf8', minWidth: '70px' }}>Foto 0%:</span>
+              <span style={{ flex: 1, color: '#f1f5f9', background: 'rgba(255,255,255,0.05)', padding: '0.3rem 0.6rem', borderRadius: '4px', fontFamily: 'monospace' }}>
+                {computed0 || <em style={{ color: '#64748b' }}>Belum diisi</em>}
+              </span>
+            </div>
+
+            {/* 50% */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.8rem' }}>
+              <span style={{ fontWeight: 700, color: '#34d399', minWidth: '70px' }}>Foto 50%:</span>
+              {autoInterval ? (
+                <span style={{ flex: 1, color: '#f1f5f9', background: 'rgba(255,255,255,0.05)', padding: '0.3rem 0.6rem', borderRadius: '4px', fontFamily: 'monospace', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{computed50 || <em style={{ color: '#64748b' }}>-</em>}</span>
+                  <span style={{ fontSize: '0.7rem', color: '#34d399', opacity: 0.8 }}>+22 mnt</span>
+                </span>
+              ) : (
+                <input
+                  type="text"
+                  value={customDates['50.jpg'] || ''}
+                  onChange={e => setCustomDates(prev => ({ ...prev, '50.jpg': e.target.value }))}
+                  placeholder="Tanggal Foto 50%"
+                  style={{ flex: 1, padding: '0.3rem 0.6rem', borderRadius: '4px', background: 'rgba(15, 23, 42, 0.8)', border: '1px solid #475569', color: '#fff', fontSize: '0.8rem' }}
+                />
+              )}
+            </div>
+
+            {/* 100% */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.8rem' }}>
+              <span style={{ fontWeight: 700, color: '#a78bfa', minWidth: '70px' }}>Foto 100%:</span>
+              {autoInterval ? (
+                <span style={{ flex: 1, color: '#f1f5f9', background: 'rgba(255,255,255,0.05)', padding: '0.3rem 0.6rem', borderRadius: '4px', fontFamily: 'monospace', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{computed100 || <em style={{ color: '#64748b' }}>-</em>}</span>
+                  <span style={{ fontSize: '0.7rem', color: '#a78bfa', opacity: 0.8 }}>+45 mnt</span>
+                </span>
+              ) : (
+                <input
+                  type="text"
+                  value={customDates['100.jpg'] || ''}
+                  onChange={e => setCustomDates(prev => ({ ...prev, '100.jpg': e.target.value }))}
+                  placeholder="Tanggal Foto 100%"
+                  style={{ flex: 1, padding: '0.3rem 0.6rem', borderRadius: '4px', background: 'rgba(15, 23, 42, 0.8)', border: '1px solid #475569', color: '#fff', fontSize: '0.8rem' }}
+                />
+              )}
+            </div>
+          </div>
+          
+          <div style={{ fontSize: '0.72rem', color: '#94a3b8', background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: '6px', padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span>💡</span>
+            <span>Tanggal baru langsung aktif seketika di kartu foto & tersimpan di meta.json tanpa perlu deteksi ulang.</span>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '0.85rem 1.25rem', borderTop: '1px solid var(--border-color, #334155)', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', background: 'rgba(15, 23, 42, 0.3)' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            style={{ padding: '0.45rem 1rem', borderRadius: '6px', border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !baseDate.trim()}
+            style={{
+              padding: '0.45rem 1.2rem',
+              borderRadius: '6px',
+              border: 'none',
+              background: saving ? '#64748b' : 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+              color: '#ffffff',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              fontSize: '0.8rem',
+              fontWeight: 800,
+              boxShadow: saving ? 'none' : '0 2px 8px rgba(16, 185, 129, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem'
+            }}
+          >
+            <span>{saving ? '⏳' : '💾'}</span>
+            <span>{saving ? 'Menyimpan...' : 'Simpan ke 3 Foto'}</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -251,7 +584,7 @@ function TimemarkEditorModal({
   asset,
   photo,
   exportDir,
-  defaultDetector = 'google_vision',
+  defaultDetector = 'paddle_ocr',
   lastTimemarkPos,
   onPosChange,
   onSaved
@@ -270,11 +603,11 @@ function TimemarkEditorModal({
   }
 
   const rawRelPath = `${asset.relDir}/${photo.name}`;
-  const [detector, setDetector] = useState(photo.meta?.detector || defaultDetector || 'google_vision');
+  const [detector, setDetector] = useState(photo.meta?.detector || defaultDetector || 'paddle_ocr');
   const [yPos, setYPos] = useState(photo.meta?.yPos ?? lastTimemarkPos?.y ?? 220);
   const [xPos, setXPos] = useState(photo.meta?.xPos ?? lastTimemarkPos?.x ?? 14);
   const [dateText, setDateText] = useState(calculatedDefaultDate);
-  const [previewUrl, setPreviewUrl] = useState(photo.editedUrl || photo.outputUrl || null);
+  const [previewUrl, setPreviewUrl] = useState(photo.cleanUrl || photo.editedUrl || photo.outputUrl || null);
   const [applyToFolder, setApplyToFolder] = useState(false);
   const [saving, setSaving] = useState(false);
   const [processingAuto, setProcessingAuto] = useState(false);
@@ -441,13 +774,15 @@ function TimemarkEditorModal({
 
       if (andRemerge) {
         setRemerging(true);
+        const targetPdfs = (asset.targetFiles && asset.targetFiles.length > 0) ? asset.targetFiles : [];
         const mergeRes = await fetch('/api/timemark/remerge-single', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             rawRelPath,
             baseExportDir: exportDir,
-            pdfName: (asset.targetFiles && asset.targetFiles[0]) || undefined
+            pdfName: targetPdfs[0] || undefined,
+            pdfNames: targetPdfs
           })
         });
         const mergeData = await mergeRes.json();
@@ -579,7 +914,7 @@ function TimemarkEditorModal({
                 {previewUrl || photo.rawUrl ? (
                   <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', lineHeight: 0, textAlign: 'center' }}>
                     <img
-                      src={previewUrl || photo.rawUrl}
+                      src={(photo.hasClean && photo.cleanUrl) ? photo.cleanUrl : (previewUrl || photo.rawUrl)}
                       alt="Foto Preview Timemark"
                       draggable={false}
                       onError={() => {
@@ -601,51 +936,63 @@ function TimemarkEditorModal({
                         position: 'absolute',
                         top: `${(yPos / 300) * 100}%`,
                         left: `${(xPos / 300) * 100}%`,
-                        width: '38%',
-                        height: '6%',
-                        minHeight: '16px',
-                        maxHeight: '24px',
+                        minWidth: '135px',
+                        maxWidth: '90%',
+                        width: 'fit-content',
+                        height: 'auto',
+                        minHeight: '22px',
                         border: isModalDragging ? '2px solid #f0883e' : '2px solid #38bdf8',
-                        background: isModalDragging ? 'rgba(240, 136, 62, 0.65)' : 'rgba(56, 189, 248, 0.45)',
-                        boxShadow: isModalDragging ? '0 0 14px rgba(240, 136, 62, 0.95)' : '0 0 10px rgba(56, 189, 248, 0.75)',
+                        background: isModalDragging ? 'rgba(240, 136, 62, 0.95)' : 'rgba(15, 23, 42, 0.95)',
+                        boxShadow: isModalDragging ? '0 0 16px rgba(240, 136, 62, 0.95)' : '0 0 12px rgba(56, 189, 248, 0.85)',
                         borderRadius: '4px',
                         cursor: isModalDragging ? 'grabbing' : 'grab',
                         zIndex: 20,
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '0 6px',
+                        padding: '3px 8px',
                         userSelect: 'none',
                         touchAction: 'none',
-                        boxSizing: 'border-box'
+                        boxSizing: 'border-box',
+                        lineHeight: 1.2
                       }}
                       title="✥ Klik & geser kotak ini langsung di foto untuk memindahkan posisi timemark (X & Y)"
                     >
+                      {/* Floating Coordinate Tag */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '-18px',
+                          left: '0',
+                          background: isModalDragging ? '#ea580c' : '#0284c7',
+                          color: '#ffffff',
+                          fontSize: '8px',
+                          fontWeight: 800,
+                          padding: '1px 5px',
+                          borderRadius: '3px',
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                          pointerEvents: 'none',
+                          lineHeight: '1.2'
+                        }}
+                      >
+                        ✥ X:{xPos} · Y:{yPos}
+                      </div>
+
                       <span
                         style={{
-                          fontSize: '8px',
-                          fontWeight: 700,
+                          fontSize: '9.5px',
+                          fontWeight: 800,
                           color: '#ffffff',
-                          textShadow: '0 1px 2px #000',
+                          textShadow: '0 1px 3px rgba(0,0,0,0.9)',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          pointerEvents: 'none'
-                        }}
-                      >
-                        {dateText || 'Timemark'}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '7.5px',
-                          color: '#ffffff',
-                          opacity: 0.9,
-                          fontWeight: 700,
                           pointerEvents: 'none',
-                          marginLeft: '4px'
+                          lineHeight: '1.2',
+                          display: 'inline-block'
                         }}
                       >
-                        ✥ {xPos},{yPos}
+                        {dateText || 'Pilih Tanggal'}
                       </span>
                     </div>
 
@@ -682,7 +1029,7 @@ function TimemarkEditorModal({
                 {processingAuto && (
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#4ade80', zIndex: 30, gap: '0.4rem' }}>
                     <span style={{ fontSize: '1.75rem', animation: 'spin 1s linear infinite' }}>⏳</span>
-                    <strong style={{ fontSize: '0.8rem' }}>Memproses Timemark ({detector === 'google_vision' ? 'Vision AI' : 'HSV'})...</strong>
+                    <strong style={{ fontSize: '0.8rem' }}>Memproses Timemark ({detector === 'paddle_ocr' ? 'LaMa AI' : (detector === 'google_vision' ? 'Vision AI' : 'HSV')})...</strong>
                   </div>
                 )}
               </div>
@@ -699,6 +1046,25 @@ function TimemarkEditorModal({
                 🔍 Metode Detektor Timemark:
               </label>
               <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setDetector('paddle_ocr')}
+                  style={{
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: '6px',
+                    border: detector === 'paddle_ocr' ? '1px solid #10b981' : '1px solid var(--border-color)',
+                    background: detector === 'paddle_ocr' ? 'rgba(16, 185, 129, 0.2)' : 'var(--bg-card)',
+                    color: detector === 'paddle_ocr' ? '#34d399' : 'var(--text-secondary)',
+                    fontWeight: detector === 'paddle_ocr' ? 800 : 500,
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem'
+                  }}
+                >
+                  LaMa AI (Hapus Teks)
+                </button>
                 <button
                   type="button"
                   onClick={() => setDetector('google_vision')}
@@ -977,7 +1343,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
   const [cardSize, setCardSize] = useState('large'); // 'normal' | 'large'
   const [photoViewOverrides, setPhotoViewOverrides] = useState({}); // { [targetKey]: 'edited' | 'raw' }
   const [sourceTypeFilter, setSourceTypeFilter] = useState('all'); // 'timemark' | 'export' | 'all'
-  const [activeDetector, setActiveDetector] = useState('google_vision'); // 'google_vision' | 'guide'
+  const [activeDetector, setActiveDetector] = useState('paddle_ocr'); // 'google_vision' | 'guide'
 
   // Filter States
   const [selectedFile, setSelectedFile] = useState('');
@@ -1017,7 +1383,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
 
   // Drag & Drop State
   const [dragOverRel, setDragOverRel] = useState(null);
-  const [actionLoadingRel, setActionLoadingRel] = useState(null);
+  const [actionLoadingKeys, setActionLoadingKeys] = useState({}); // { [targetKey]: true }
   const [photoCardVersions, setPhotoCardVersions] = useState({}); // { [targetKey]: timestamp }
 
   // Fast targeted refresh: Memperbarui 1 foto lokal tanpa reload seluruh network drive
@@ -1041,20 +1407,30 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
             ...(newMeta || {}),
             xPos: newMeta?.xPos !== undefined && newMeta?.xPos !== null ? Number(newMeta.xPos) : p.meta?.xPos,
             yPos: newMeta?.yPos !== undefined && newMeta?.yPos !== null ? Number(newMeta.yPos) : p.meta?.yPos,
-            manualEdit: true,
+            manualEdit: (newMeta && newMeta.manualEdit !== undefined) ? Boolean(newMeta.manualEdit) : Boolean(p.meta?.manualEdit),
             updatedAt: new Date().toISOString()
+          };
+          const bustUrl = (u) => {
+            if (!u) return u;
+            const clean = u.replace(/([?&])(_v|t)=\d+/g, '');
+            const sep = clean.includes('?') ? '&' : '?';
+            return `${clean}${sep}_v=${now}`;
           };
           const resolvedEditedUrl = (p.name === pName && newMeta?.outputUrl) ? newMeta.outputUrl : (
             p.editedUrl || p.outputUrl || (
               p.rawUrl ? p.rawUrl.replace(/03_export_foto/i, '04_photos_edited').replace(/03_photos_export/i, '04_photos_edited') : null
             )
           );
+          const freshEditedUrl = bustUrl(resolvedEditedUrl);
+          const freshCleanUrl = bustUrl(p.cleanUrl || (resolvedEditedUrl ? resolvedEditedUrl.replace(/\.jpg/i, '.clean.jpg') : null));
           return {
             ...p,
             hasEdited: true,
-            editedUrl: resolvedEditedUrl,
-            outputUrl: resolvedEditedUrl,
-            url: resolvedEditedUrl || p.url,
+            hasClean: true,
+            editedUrl: freshEditedUrl,
+            outputUrl: freshEditedUrl,
+            cleanUrl: freshCleanUrl,
+            url: freshCleanUrl || freshEditedUrl || p.url,
             meta: mergedMeta
           };
         });
@@ -1112,9 +1488,86 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
 
   // Timemark Editor Modal State
   const [editingModal, setEditingModal] = useState(null); // { asset, photo }
+  const [editingRowDateAsset, setEditingRowDateAsset] = useState(null); // { asset }
+
+  const handleRowDateSaved = ({ assetRel, baseDate, dates }) => {
+    const normRel = (assetRel || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    const now = Date.now();
+
+    setAssets(prevAssets => {
+      return prevAssets.map(a => {
+        const aNorm = (a.relDir || a.relPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+        if (aNorm !== normRel) return a;
+
+        const nextPhotos = (a.photos || []).map(p => {
+          const pDate = (dates && dates[p.name]) || (
+            p.name === '50.jpg' ? helperCalculateDate(baseDate, '50') :
+            p.name === '100.jpg' ? helperCalculateDate(baseDate, '100') :
+            baseDate
+          );
+          return {
+            ...p,
+            hasEdited: true,
+            meta: {
+              ...(p.meta || {}),
+              dateText: pDate,
+              manualEdit: true,
+              updatedAt: new Date().toISOString()
+            }
+          };
+        });
+
+        return {
+          ...a,
+          hasEdited: true,
+          dateText: baseDate,
+          photos: nextPhotos
+        };
+      });
+    });
+
+    setPhotoCardVersions(prev => ({
+      ...prev,
+      [`${normRel}/0.jpg`]: now,
+      [`${normRel}/50.jpg`]: now,
+      [`${normRel}/100.jpg`]: now
+    }));
+
+    setFeedback({
+      type: 'success',
+      text: `✓ Tanggal 3 foto berhasil diperbarui menjadi: ${baseDate}`
+    });
+  };
 
   // Single Merge State per Asset Row
   const [mergingRel, setMergingRel] = useState(null);
+  const [bakingRel, setBakingRel] = useState(null);
+
+  const handleBakeStamp = async (asset) => {
+    if (!asset || !asset.relDir) return;
+    setBakingRel(asset.relDir);
+    try {
+      const res = await fetch('/api/timemark/bake-stamp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseExportDir: exportDir,
+          rawRelPath: asset.relDir
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        fetchPhotos();
+        alert(data.message || '✓ Berhasil menempelkan tanggal ke foto fisik JPG!');
+      } else {
+        alert(data.error || 'Gagal menempelkan tanggal.');
+      }
+    } catch (err) {
+      alert('Error bake stamp: ' + err.message);
+    } finally {
+      setBakingRel(null);
+    }
+  };
 
   const [activeSchedulePath, setActiveSchedulePath] = useState(schedulePath || '');
   const [loadedScheduleInfo, setLoadedScheduleInfo] = useState('');
@@ -1173,6 +1626,67 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
       setFeedback({ type: 'error', text: 'Koneksi gagal: ' + err.message });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [isFastUpdating, setIsFastUpdating] = useState(false);
+
+  const handleTriggerFastUpdate = async () => {
+    const activeSched = (loadedScheduleInfo || activeSchedulePath || schedulePath || '').trim();
+    if (!activeSched) {
+      alert('Silakan pilih berkas schedule.json terlebih dahulu dengan menekan tombol "Pilih Jadwal" di sebelah kiri!');
+      handlePickScheduleFile();
+      return;
+    }
+    if (!exportDir) {
+      alert('Folder foto belum dipilih!');
+      return;
+    }
+
+    const schedFileName = activeSched.split(/[\\/]/).filter(Boolean).pop();
+    const confirmMsg = `Jalankan Fast Update Timemark?\n\n• Jadwal Acuan: ${schedFileName}\n• Folder Foto: ${exportDir}\n\nSistem akan langsung menempelkan teks tanggal & jam dinas dari jadwal ke seluruh foto menggunakan koordinat (xPos, yPos) yang tersimpan di meta.json tanpa deteksi AI lagi (instan).\n\nLanjutkan?`;
+    if (!confirm(confirmMsg)) return;
+
+    setIsFastUpdating(true);
+    setFeedback({ type: 'info', text: '⚡ Menjalankan Fast Update Timemark (membaca meta.json)... Mohon tunggu.' });
+    try {
+      const res = await fetch('/api/timemark/fast-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folder: exportDir,
+          schedulePath: activeSched,
+          includeTime: true,
+          force: true
+        })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let errMsg = `Error ${res.status}`;
+        try {
+          const j = JSON.parse(text);
+          errMsg = j.error || errMsg;
+        } catch (_) {
+          if (res.status === 404) {
+            errMsg = 'Endpoint Fast Update belum aktif pada proses backend. Mohon tutup aplikasi Sintelis Utility dan jalankan kembali via run_dev.bat.';
+          }
+        }
+        throw new Error(errMsg);
+      }
+      const data = await res.json();
+      if (data.ok) {
+        setFeedback({ type: 'success', text: `✅ Fast Update Timemark Selesai! ${data.message || ''}` });
+        alert(`⚡ Fast Update Timemark Selesai!\n\n${data.message || ''}`);
+        await fetchPhotos(true);
+      } else {
+        setFeedback({ type: 'error', text: `❌ Gagal Fast Update: ${data.error || 'Terjadi kesalahan'}` });
+        alert(`Gagal Fast Update: ${data.error || 'Terjadi kesalahan'}`);
+      }
+    } catch (err) {
+      setFeedback({ type: 'error', text: `❌ Error: ${err.message}` });
+      alert(`Gagal menghubungi server: ${err.message}`);
+    } finally {
+      setIsFastUpdating(false);
     }
   };
 
@@ -1339,7 +1853,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
     }
 
     const targetKey = `${assetRel}/${photoName}`;
-    setActionLoadingRel(targetKey);
+    setActionLoadingKeys(prev => ({ ...prev, [targetKey]: true }));
     try {
       const reader = new FileReader();
       reader.onload = async () => {
@@ -1363,12 +1877,12 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
         } else {
           alert('Gagal mengganti foto: ' + (data.error || 'Terjadi kesalahan'));
         }
-        setActionLoadingRel(null);
+        setActionLoadingKeys(prev => { const n = { ...prev }; delete n[targetKey]; return n; });
       };
       reader.readAsDataURL(file);
     } catch (err) {
       alert('Galat baca berkas: ' + err.message);
-      setActionLoadingRel(null);
+      setActionLoadingKeys(prev => { const n = { ...prev }; delete n[targetKey]; return n; });
     }
   };
 
@@ -1376,7 +1890,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
   const handleRevert = async (assetRel, photoName) => {
     if (!confirm(`Kembalikan foto ${photoName} untuk ${assetRel} ke versi aslinya?`)) return;
     const targetKey = `${assetRel}/${photoName}`;
-    setActionLoadingRel(targetKey);
+    setActionLoadingKeys(prev => ({ ...prev, [targetKey]: true }));
     try {
       const res = await fetch('/api/timemark/revert-photo', {
         method: 'POST',
@@ -1397,14 +1911,14 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
     } catch (err) {
       alert('Galat: ' + err.message);
     } finally {
-      setActionLoadingRel(null);
+      setActionLoadingKeys(prev => { const n = { ...prev }; delete n[targetKey]; return n; });
     }
   };
 
   // Tukar Posisi Foto (Swap Photos) Handler
   const handleSwapPhotos = async (sourceRel, targetRel) => {
     if (!sourceRel || !targetRel || sourceRel === targetRel) return;
-    setActionLoadingRel(sourceRel);
+    setActionLoadingKeys(prev => ({ ...prev, [sourceRel]: true }));
     try {
       const res = await fetch('/api/timemark/swap-photo', {
         method: 'POST',
@@ -1429,14 +1943,14 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
     } catch (err) {
       alert('Galat tukar foto: ' + err.message);
     } finally {
-      setActionLoadingRel(null);
+      setActionLoadingKeys(prev => { const n = { ...prev }; delete n[sourceRel]; return n; });
     }
   };
 
   // Potong Kolase Per Foto (Crop Single Collage) Handler
   const handleCropCollageSingle = async (targetKey, quadrant = null) => {
     if (!targetKey) return;
-    setActionLoadingRel(targetKey);
+    setActionLoadingKeys(prev => ({ ...prev, [targetKey]: true }));
     try {
       const res = await fetch('/api/timemark/crop-collage-single', {
         method: 'POST',
@@ -1461,14 +1975,14 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
     } catch (err) {
       alert('Galat potong kolase: ' + err.message);
     } finally {
-      setActionLoadingRel(null);
+      setActionLoadingKeys(prev => { const n = { ...prev }; delete n[targetKey]; return n; });
     }
   };
 
   // Proses Timemark Otomatis (Per Foto atau Per Folder Aset)
   const handleProcessTimemark = async (asset, photoName = null) => {
     const targetKey = photoName ? `${asset.relDir}/${photoName}` : asset.relDir;
-    setActionLoadingRel(targetKey);
+    setActionLoadingKeys(prev => ({ ...prev, [targetKey]: true }));
     try {
       const res = await fetch('/api/timemark/process-single', {
         method: 'POST',
@@ -1489,9 +2003,26 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
         });
         const metaObj = data.meta || {};
         if (photoName) {
+          const tKey = `${asset.relDir}/${photoName}`;
+          const normKey = tKey.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+          setPhotoCoordsMap(prev => {
+            const next = { ...prev };
+            delete next[tKey];
+            delete next[normKey];
+            return next;
+          });
           const pMeta = metaObj[photoName] || { detector: activeDetector };
-          refreshSinglePhotoCard(`${asset.relDir}/${photoName}`, pMeta);
+          refreshSinglePhotoCard(tKey, pMeta);
         } else {
+          setPhotoCoordsMap(prev => {
+            const next = { ...prev };
+            (asset.photos || []).forEach(p => {
+              const k = `${asset.relDir}/${p.name}`;
+              delete next[k];
+              delete next[k.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')];
+            });
+            return next;
+          });
           const fnames = (asset.photos && asset.photos.length > 0)
             ? asset.photos.map(p => p.name)
             : ['0.jpg', '50.jpg', '100.jpg'];
@@ -1506,7 +2037,11 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
     } catch (err) {
       alert('Galat proses timemark: ' + err.message);
     } finally {
-      setActionLoadingRel(null);
+      setActionLoadingKeys(prev => {
+        const next = { ...prev };
+        delete next[targetKey];
+        return next;
+      });
     }
   };
 
@@ -1515,13 +2050,15 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
     setMergingRel(asset.relDir);
     try {
       const firstPhotoRel = `${asset.relDir}/0.jpg`;
+      const targetPdfs = (asset.targetFiles && asset.targetFiles.length > 0) ? asset.targetFiles : [];
       const res = await fetch('/api/timemark/remerge-single', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           rawRelPath: firstPhotoRel,
           baseExportDir: exportDir,
-          pdfName: (asset.targetFiles && asset.targetFiles[0]) || undefined
+          pdfName: targetPdfs[0] || undefined,
+          pdfNames: targetPdfs
         })
       });
       const data = await res.json();
@@ -1531,7 +2068,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
         }
         setFeedback({
           type: 'success',
-          text: `✓ Berkas PDF target ${data.pdfName} berhasil digabung dengan foto Timemark!`
+          text: `✓ Berkas PDF target (${targetPdfs.length > 0 ? targetPdfs.join(', ') : data.pdfName}) berhasil digabung dengan foto Timemark!`
         });
       } else {
         alert('Gagal merge PDF: ' + (data.error || 'Terjadi kesalahan'));
@@ -1659,6 +2196,32 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
               </button>
             </div>
 
+            {/* Tombol Fast Update Timemark */}
+            <button
+              type="button"
+              disabled={isFastUpdating || loading}
+              onClick={handleTriggerFastUpdate}
+              style={{
+                padding: '0.25rem 0.65rem',
+                background: isFastUpdating ? '#4b5563' : '#8957e5',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: (isFastUpdating || loading) ? 'not-allowed' : 'pointer',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                transition: 'all 0.2s',
+                opacity: (isFastUpdating || loading) ? 0.7 : 1
+              }}
+              title="Stempel ulang seluruh foto menggunakan koordinat meta.json dan acuan schedule.json (Proses Instan)"
+            >
+              <span>⚡</span> {isFastUpdating ? 'Memproses Fast Update...' : 'Fast Update Timemark'}
+            </button>
+
             {/* Counter Badge */}
             <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'rgba(15, 23, 42, 0.8)', padding: '0.28rem 0.6rem', borderRadius: '5px', border: '1px solid var(--border-color)', fontWeight: 600 }}>
               <strong style={{ color: '#10b981' }}>{filteredAssets.length}</strong> / <strong>{assets.length}</strong> aset ({editedCount} diedit)
@@ -1727,6 +2290,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
             {/* Detektor Selector */}
             <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
               {[
+                { id: 'paddle_ocr', label: 'LaMa AI (Hapus Teks)', color: '#10b981' },
                 { id: 'google_vision', label: '✨ Vision AI', color: '#a855f7' },
                 { id: 'guide', label: '🎯 HSV', color: '#0284c7' }
               ].map(d => (
@@ -1920,11 +2484,12 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
         {filteredAssets.map((asset, idx) => {
           const isComplete = (asset.photos || []).length === 3;
           const isRowMerging = mergingRel === asset.relDir;
-          const isRowProcessing = actionLoadingRel === asset.relDir;
+          const isRowProcessing = Boolean(actionLoadingKeys[asset.relDir]);
+          const isRowBaking = bakingRel === asset.relDir;
 
           return (
             <div
-              key={idx}
+              key={asset.relDir || idx}
               style={{
                 background: 'var(--bg-card)',
                 border: '1px solid var(--border-color)',
@@ -1962,9 +2527,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                         ? 'rgba(100, 116, 139, 0.25)'
                         : isRowProcessing
                         ? 'rgba(147, 51, 234, 0.4)'
-                        : activeDetector === 'google_vision'
-                        ? 'linear-gradient(135deg, #7e22ce 0%, #9333ea 100%)'
-                        : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                        : getDetectorInfo(activeDetector).gradient,
                       color: (asset.photos || []).length === 0 ? '#94a3b8' : '#ffffff',
                       border: 'none',
                       fontSize: '0.75rem',
@@ -1973,10 +2536,10 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.35rem',
-                      boxShadow: (asset.photos || []).length === 0 ? 'none' : (activeDetector === 'google_vision' ? '0 2px 6px rgba(147, 51, 234, 0.4)' : '0 2px 6px rgba(2, 132, 199, 0.4)'),
+                      boxShadow: (asset.photos || []).length === 0 ? 'none' : getDetectorInfo(activeDetector).shadow,
                       transition: 'all 0.2s'
                     }}
-                    title={(asset.photos || []).length === 0 ? 'Belum ada foto mentah yang dapat diproses' : `Edit otomatis 3 foto aset ini menggunakan ${activeDetector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa (HSV)'}`}
+                    title={(asset.photos || []).length === 0 ? 'Belum ada foto mentah yang dapat diproses' : `Edit otomatis 3 foto aset ini menggunakan ${getDetectorInfo(activeDetector).label}`}
                   >
                     {isRowProcessing ? (
                       <>
@@ -1985,8 +2548,8 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                       </>
                     ) : (
                       <>
-                        <span>{activeDetector === 'google_vision' ? '✨' : '⚡'}</span>
-                        <span>Proses Timemark ({activeDetector === 'google_vision' ? 'AI Vision' : 'HSV'})</span>
+                        <span>{getDetectorInfo(activeDetector).icon}</span>
+                        <span>Proses Timemark ({getDetectorInfo(activeDetector).shortLabel})</span>
                       </>
                     )}
                   </button>
@@ -2025,6 +2588,40 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                     )}
                   </button>
 
+                  {/* Tombol Tempel Tanggal Fisik (Bake Virtual Overlay to Physical JPG) */}
+                  <button
+                    onClick={() => handleBakeStamp(asset)}
+                    disabled={isRowBaking || isRowMerging || isRowProcessing || (asset.photos || []).length === 0}
+                    style={{
+                      padding: '0.25rem 0.65rem',
+                      borderRadius: '6px',
+                      background: (asset.photos || []).length === 0 ? 'rgba(100, 116, 139, 0.25)' : (isRowBaking ? 'rgba(234, 179, 8, 0.4)' : '#d97706'),
+                      color: (asset.photos || []).length === 0 ? '#94a3b8' : '#ffffff',
+                      border: 'none',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      cursor: isRowBaking || isRowMerging || isRowProcessing || (asset.photos || []).length === 0 ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      boxShadow: (asset.photos || []).length === 0 ? 'none' : '0 2px 6px rgba(217, 119, 6, 0.4)',
+                      transition: 'all 0.2s'
+                    }}
+                    title="Tempelkan posisi watermark tanggal sekarang langsung ke file fisik JPG (04_photos_edited)"
+                  >
+                    {isRowBaking ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" style={{ width: '12px', height: '12px', borderWidth: '2px' }} />
+                        <span>Menempel...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>💾</span>
+                        <span>Tempel Tanggal</span>
+                      </>
+                    )}
+                  </button>
+
                   {asset.targetFiles && asset.targetFiles.length > 0 && (
                     <span
                       style={{ fontSize: '0.72rem', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.15)', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.25)', cursor: 'help' }}
@@ -2047,9 +2644,40 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '0.25rem 0.6rem', borderRadius: '5px', background: isComplete ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', color: isComplete ? '#4ade80' : '#f87171', border: `1px solid ${isComplete ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}` }}>
                     {isComplete ? '✅ Lengkap (3 Foto)' : `⚠️ ${(asset.photos || []).length}/3 Foto`}
                   </span>
-                  <span style={{ fontSize: '0.8rem', color: asset.hasEdited ? '#4ade80' : 'var(--text-secondary)', background: asset.hasEdited ? 'rgba(34, 197, 94, 0.1)' : 'var(--bg-secondary)', border: asset.hasEdited ? '1px solid rgba(34, 197, 94, 0.25)' : 'none', padding: '0.25rem 0.65rem', borderRadius: '5px', fontWeight: asset.hasEdited ? 700 : 500 }}>
-                    📅 {asset.dateText || 'Belum ada tanggal'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingRowDateAsset(asset)}
+                    style={{
+                      fontSize: '0.8rem',
+                      color: asset.hasEdited ? '#4ade80' : '#38bdf8',
+                      background: asset.hasEdited ? 'rgba(34, 197, 94, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                      border: asset.hasEdited ? '1px solid rgba(34, 197, 94, 0.35)' : '1px solid rgba(56, 189, 248, 0.35)',
+                      padding: '0.25rem 0.65rem',
+                      borderRadius: '6px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      transition: 'all 0.18s ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.borderColor = '#10b981';
+                      e.currentTarget.style.boxShadow = '0 3px 8px rgba(16, 185, 129, 0.35)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'none';
+                      e.currentTarget.style.borderColor = asset.hasEdited ? 'rgba(34, 197, 94, 0.35)' : 'rgba(56, 189, 248, 0.35)';
+                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.2)';
+                    }}
+                    title="Klik untuk ubah tanggal & jam dinas langsung untuk 3 foto (0%, 50%, 100%)"
+                  >
+                    <span>📅</span>
+                    <span>{asset.dateText || 'Belum ada tanggal'}</span>
+                    <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>✏️</span>
+                  </button>
                 </div>
               </div>
 
@@ -2069,9 +2697,10 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                   const photoObj = (asset.photos || []).find(p => p.name === photoName);
                   const cardVer = photoCardVersions[targetKey];
                   const editedPhotoUrl = photoObj?.editedUrl ? (cardVer ? `${photoObj.editedUrl}${photoObj.editedUrl.includes('?') ? '&' : '?'}_v=${cardVer}` : photoObj.editedUrl) : null;
+                  const targetCleanUrl = (photoObj?.hasClean && photoObj?.cleanUrl) ? (cardVer ? `${photoObj.cleanUrl}${photoObj.cleanUrl.includes('?') ? '&' : '?'}_v=${cardVer}` : photoObj.cleanUrl) : null;
                   const labelPercent = photoName.replace('.jpg', '') + '%';
                   const isDragOver = dragOverRel === targetKey;
-                  const isActionLoading = actionLoadingRel === targetKey;
+                  const isActionLoading = Boolean(actionLoadingKeys[targetKey]);
                   const isManual = photoObj?.meta?.manualEdit;
                   const dualCardHeight = cardSize === 'large' ? 290 : 220;
                   const singleCardHeight = cardSize === 'large' ? 380 : 270;
@@ -2079,7 +2708,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
 
                   return (
                     <div
-                      key={photoName}
+                      key={`${asset.relDir}_${photoName}`}
                       style={{
                         display: 'flex',
                         flexDirection: 'column',
@@ -2261,12 +2890,12 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                                     <button
                                       type="button"
                                       onClick={() => handleCropCollageSingle(targetKey)}
-                                      disabled={actionLoadingRel === targetKey}
+                                      disabled={isActionLoading}
                                       style={{
                                         background: photoObj.hasTemp ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
                                         border: photoObj.hasTemp ? '1px solid #22c55e' : '1px solid #f59e0b',
                                         color: photoObj.hasTemp ? '#4ade80' : '#fbbf24',
-                                        cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                        cursor: isActionLoading ? 'not-allowed' : 'pointer',
                                         padding: '1px 5px',
                                         borderRadius: '4px',
                                         fontSize: '0.68rem',
@@ -2274,18 +2903,18 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                                       }}
                                       title={photoObj.hasTemp ? "Klik untuk ganti kuadran potong (Kiri-Atas ➔ Kanan-Atas ➔ Kiri-Bawah ➔ Kanan-Bawah ➔ Utuh)" : "Potong otomatis kolase ini (auto-crop 300x300)"}
                                     >
-                                      ✂️ {actionLoadingRel === targetKey ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong')}
+                                      ✂️ {isActionLoading ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong')}
                                     </button>
                                     {photoObj.hasTemp && (
                                       <button
                                         type="button"
                                         onClick={() => handleCropCollageSingle(targetKey, 'ORIGINAL')}
-                                        disabled={actionLoadingRel === targetKey}
+                                        disabled={isActionLoading}
                                         style={{
                                           background: 'rgba(239, 68, 68, 0.18)',
                                           border: '1px solid #ef4444',
                                           color: '#f87171',
-                                          cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                          cursor: isActionLoading ? 'not-allowed' : 'pointer',
                                           padding: '1px 5px',
                                           borderRadius: '4px',
                                           fontSize: '0.68rem',
@@ -2413,7 +3042,24 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                               {photoObj?.editedUrl && (
                                 <button
                                   type="button"
-                                  onClick={() => setZoomPhoto({ url: editedPhotoUrl || photoObj.editedUrl, title: `${asset.detail} - ${labelPercent} (Hasil Timemark 04)` })}
+                                  onClick={() => {
+                                    const coord = photoCoordsMap[targetKey] || photoCoordsMap[targetKey.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')] || {};
+                                    const x = coord.x ?? photoObj?.meta?.xPos ?? 14;
+                                    const y = coord.y ?? photoObj?.meta?.yPos ?? 220;
+                                    const dt = photoObj?.meta?.dateText || (
+                                      photoName === '50.jpg' ? helperCalculateDate(asset.dateText, '50') :
+                                      photoName === '100.jpg' ? helperCalculateDate(asset.dateText, '100') :
+                                      asset.dateText || ''
+                                    );
+                                    const cleanTarget = (photoObj?.hasClean && photoObj?.cleanUrl) ? photoObj.cleanUrl : null;
+                                    setZoomPhoto({
+                                      url: cleanTarget || editedPhotoUrl || photoObj.editedUrl,
+                                      title: `${asset.detail} - ${labelPercent} (Hasil Timemark 04)`,
+                                      dateText: cleanTarget ? dt : null,
+                                      xPos: x,
+                                      yPos: y
+                                    });
+                                  }}
                                   style={{ background: 'transparent', border: 'none', color: '#34d399', cursor: 'pointer', padding: '0 2px', fontSize: '0.75rem' }}
                                   title="Perbesar Foto Editan Timemark (04)"
                                 >
@@ -2426,7 +3072,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                               {photoObj?.editedUrl ? (
                                 <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', lineHeight: 0, textAlign: 'center' }}>
                                   <img
-                                    src={editedPhotoUrl || photoObj.editedUrl}
+                                    src={targetCleanUrl || editedPhotoUrl || photoObj.editedUrl}
                                     alt={`${asset.detail} - ${labelPercent} (Editan)`}
                                     style={{ maxWidth: '100%', maxHeight: `${dualCardHeight}px`, width: 'auto', height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block' }}
                                     loading="lazy"
@@ -2471,26 +3117,26 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                                   <button
                                     type="button"
                                     onClick={() => handleProcessTimemark(asset, photoName)}
-                                    disabled={actionLoadingRel === targetKey}
+                                    disabled={isActionLoading}
                                     style={{
                                       marginTop: '0.2rem',
                                       padding: '0.35rem 0.65rem',
-                                      background: activeDetector === 'google_vision' ? 'linear-gradient(135deg, #7e22ce 0%, #9333ea 100%)' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                                      background: getDetectorInfo(activeDetector).gradient,
                                       color: '#ffffff',
                                       border: 'none',
                                       borderRadius: '5px',
                                       fontSize: '0.7rem',
                                       fontWeight: 700,
-                                      cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                      cursor: isActionLoading ? 'not-allowed' : 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
                                       gap: '0.3rem',
                                       boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
                                     }}
-                                    title={`Proses timemark foto ini sekarang menggunakan ${activeDetector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa'}`}
+                                    title={`Proses timemark foto ini sekarang menggunakan ${getDetectorInfo(activeDetector).label}`}
                                   >
-                                    <span>{activeDetector === 'google_vision' ? '✨' : '⚡'}</span>
-                                    <span>{actionLoadingRel === targetKey ? 'Memproses...' : `Proses (${activeDetector === 'google_vision' ? 'AI Vision' : 'HSV'})`}</span>
+                                    <span>{getDetectorInfo(activeDetector).icon}</span>
+                                    <span>{isActionLoading ? 'Memproses...' : `Proses (${getDetectorInfo(activeDetector).shortLabel})`}</span>
                                   </button>
                                 </div>
                               )}
@@ -2592,7 +3238,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                             photoObj?.editedUrl ? (
                               <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', lineHeight: 0, textAlign: 'center' }}>
                                 <img
-                                  src={editedPhotoUrl || photoObj.editedUrl}
+                                  src={targetCleanUrl || editedPhotoUrl || photoObj.editedUrl}
                                   alt={`${asset.detail} - ${labelPercent} (Editan)`}
                                   style={{ maxWidth: '100%', maxHeight: `${singleCardHeight}px`, width: 'auto', height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block' }}
                                   loading="lazy"
@@ -2636,26 +3282,26 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                                 <button
                                   type="button"
                                   onClick={() => handleProcessTimemark(asset, photoName)}
-                                  disabled={actionLoadingRel === targetKey}
+                                  disabled={isActionLoading}
                                   style={{
                                     marginTop: '0.25rem',
                                     padding: '0.4rem 0.85rem',
-                                    background: activeDetector === 'google_vision' ? 'linear-gradient(135deg, #7e22ce 0%, #9333ea 100%)' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                                    background: getDetectorInfo(activeDetector).gradient,
                                     color: '#ffffff',
                                     border: 'none',
                                     borderRadius: '6px',
                                     fontSize: '0.75rem',
                                     fontWeight: 700,
-                                    cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                    cursor: isActionLoading ? 'not-allowed' : 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.35rem',
                                     boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
                                   }}
-                                  title={`Proses timemark foto ini sekarang menggunakan ${activeDetector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa'}`}
+                                  title={`Proses timemark foto ini sekarang menggunakan ${getDetectorInfo(activeDetector).label}`}
                                 >
-                                  <span>{activeDetector === 'google_vision' ? '✨' : '⚡'}</span>
-                                  <span>{actionLoadingRel === targetKey ? 'Memproses...' : `Proses Timemark (${activeDetector === 'google_vision' ? 'AI Vision' : 'HSV'})`}</span>
+                                  <span>{getDetectorInfo(activeDetector).icon}</span>
+                                  <span>{isActionLoading ? 'Memproses...' : `Proses Timemark (${getDetectorInfo(activeDetector).shortLabel})`}</span>
                                 </button>
                               </div>
                             )
@@ -2694,7 +3340,7 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                               onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                             >
                               <img
-                                src={currentSingleView === 'edited' ? photoObj.rawUrl : (editedPhotoUrl || photoObj.editedUrl)}
+                                src={currentSingleView === 'edited' ? photoObj.rawUrl : (targetCleanUrl || editedPhotoUrl || photoObj.editedUrl)}
                                 alt="Thumbnail sebaliknya"
                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                               />
@@ -2741,14 +3387,14 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                           <button
                             type="button"
                             onClick={() => handleProcessTimemark(asset, photoName)}
-                            disabled={actionLoadingRel === targetKey}
+                            disabled={isActionLoading}
                             style={{
                               padding: '0.4rem 0.65rem',
-                              background: activeDetector === 'google_vision' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(2, 132, 199, 0.2)',
-                              color: activeDetector === 'google_vision' ? '#c084fc' : '#38bdf8',
-                              border: `1px solid ${activeDetector === 'google_vision' ? '#a855f7' : '#0284c7'}`,
+                              background: getDetectorInfo(activeDetector).btnBg,
+                              color: getDetectorInfo(activeDetector).btnColor,
+                              border: getDetectorInfo(activeDetector).border,
                               borderRadius: '6px',
-                              cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                              cursor: isActionLoading ? 'not-allowed' : 'pointer',
                               fontSize: '0.75rem',
                               fontWeight: 700,
                               display: 'flex',
@@ -2757,10 +3403,10 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                               gap: '0.3rem',
                               transition: 'all 0.2s'
                             }}
-                            title={`Proses timemark foto ini sekarang menggunakan ${activeDetector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa (HSV)'}`}
+                            title={`Proses timemark foto ini sekarang menggunakan ${getDetectorInfo(activeDetector).label}`}
                           >
-                            <span>{actionLoadingRel === targetKey ? '⏳' : activeDetector === 'google_vision' ? '✨' : '⚡'}</span>
-                            <span>{actionLoadingRel === targetKey ? 'Memproses...' : activeDetector === 'google_vision' ? 'AI Vision' : 'HSV'}</span>
+                            <span>{isActionLoading ? '⏳' : getDetectorInfo(activeDetector).icon}</span>
+                            <span>{isActionLoading ? 'Memproses...' : getDetectorInfo(activeDetector).shortLabel}</span>
                           </button>
 
                           <button
@@ -2812,14 +3458,14 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                               <button
                                 type="button"
                                 onClick={() => handleCropCollageSingle(targetKey)}
-                                disabled={actionLoadingRel === targetKey}
+                                disabled={isActionLoading}
                                 style={{
                                   padding: '0.4rem 0.6rem',
                                   background: photoObj.hasTemp ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)',
                                   color: photoObj.hasTemp ? '#4ade80' : '#fbbf24',
                                   border: photoObj.hasTemp ? '1px solid #22c55e' : '1px solid #f59e0b',
                                   borderRadius: '6px',
-                                  cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                  cursor: isActionLoading ? 'not-allowed' : 'pointer',
                                   fontSize: '0.75rem',
                                   fontWeight: 600,
                                   display: 'flex',
@@ -2829,20 +3475,20 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                                 title={photoObj.hasTemp ? "Klik untuk ganti kuadran potong (Kiri-Atas ➔ Kanan-Atas ➔ Kiri-Bawah ➔ Kanan-Bawah ➔ Utuh)" : "Potong otomatis foto kolase ini (auto-crop 300x300)"}
                               >
                                 <span>✂️</span>
-                                <span>{actionLoadingRel === targetKey ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong Kolase')}</span>
+                                <span>{isActionLoading ? '...' : (photoObj.hasTemp ? 'Potong Ulang' : 'Potong Kolase')}</span>
                               </button>
                               {photoObj.hasTemp && (
                                 <button
                                   type="button"
                                   onClick={() => handleCropCollageSingle(targetKey, 'ORIGINAL')}
-                                  disabled={actionLoadingRel === targetKey}
+                                  disabled={isActionLoading}
                                   style={{
                                     padding: '0.4rem 0.6rem',
                                     background: 'rgba(239, 68, 68, 0.18)',
                                     color: '#f87171',
                                     border: '1px solid #ef4444',
                                     borderRadius: '6px',
-                                    cursor: actionLoadingRel === targetKey ? 'not-allowed' : 'pointer',
+                                    cursor: isActionLoading ? 'not-allowed' : 'pointer',
                                     fontSize: '0.75rem',
                                     fontWeight: 600,
                                     display: 'flex',
@@ -2862,11 +3508,26 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
                             <button
                               type="button"
                               onClick={() => {
-                                const targetZoom = viewMode === 'raw' ? ((photoObj.hasTemp && photoObj.tempUrl) || photoObj.rawUrl) : (editedPhotoUrl || photoObj.editedUrl);
+                                const isRaw = viewMode === 'raw';
+                                const coord = photoCoordsMap[targetKey] || photoCoordsMap[targetKey.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')] || {};
+                                const x = coord.x ?? photoObj?.meta?.xPos ?? 14;
+                                const y = coord.y ?? photoObj?.meta?.yPos ?? 220;
+                                const dt = photoObj?.meta?.dateText || (
+                                  photoName === '50.jpg' ? helperCalculateDate(asset.dateText, '50') :
+                                  photoName === '100.jpg' ? helperCalculateDate(asset.dateText, '100') :
+                                  asset.dateText || ''
+                                );
+                                const cleanTarget = (photoObj?.hasClean && photoObj?.cleanUrl) ? photoObj.cleanUrl : null;
+                                const targetZoom = isRaw
+                                  ? ((photoObj.hasTemp && photoObj.tempUrl) || photoObj.rawUrl)
+                                  : (cleanTarget || editedPhotoUrl || photoObj.editedUrl);
                                 if (targetZoom) {
                                   setZoomPhoto({
                                     url: targetZoom,
-                                    title: `${asset.detail} - Foto ${labelPercent} (${viewMode === 'raw' ? (photoObj.hasTemp ? 'Mentah Terpotong' : 'Mentah 03') : 'Editan 04'})`
+                                    title: `${asset.detail} - Foto ${labelPercent} (${isRaw ? (photoObj.hasTemp ? 'Mentah Terpotong' : 'Mentah 03') : 'Editan 04'})`,
+                                    dateText: (!isRaw && cleanTarget) ? dt : null,
+                                    xPos: x,
+                                    yPos: y
                                   });
                                 }
                               }}
@@ -2942,11 +3603,33 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
               </button>
             </div>
             <div style={{ maxWidth: '85vw', maxHeight: '80vh', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img
-                src={zoomPhoto.url}
-                alt={zoomPhoto.title}
-                style={{ maxWidth: '100%', maxHeight: '78vh', objectFit: 'contain', borderRadius: '6px' }}
-              />
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <img
+                  src={zoomPhoto.url}
+                  alt={zoomPhoto.title}
+                  style={{ maxWidth: '100%', maxHeight: '78vh', objectFit: 'contain', borderRadius: '6px', display: 'block' }}
+                />
+                {zoomPhoto.dateText && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: `${((zoomPhoto.yPos ?? 220) / 300) * 100}%`,
+                      left: `${((zoomPhoto.xPos ?? 14) / 300) * 100}%`,
+                      fontFamily: '"Roboto", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif',
+                      fontWeight: 700,
+                      color: '#f8f8f8',
+                      fontSize: 'clamp(14px, 1.8vw, 24px)',
+                      lineHeight: 1.15,
+                      textShadow: '0 1px 2px rgba(0, 0, 0, 0.95), 0 0 1.5px #000, 0 0 1px #000',
+                      pointerEvents: 'none',
+                      whiteSpace: 'nowrap',
+                      userSelect: 'none'
+                    }}
+                  >
+                    {zoomPhoto.dateText}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2970,6 +3653,17 @@ export default function GalleryPanel({ exportDir, onPickFolder, schedulePath = '
               fetchPhotos();
             }
           }}
+        />
+      )}
+
+      {/* ── Modal Edit Tanggal Baris Aset (3 Foto Sekaligus: 0%, 50%, 100%) ── */}
+      {editingRowDateAsset && (
+        <RowDateEditorModal
+          isOpen={Boolean(editingRowDateAsset)}
+          onClose={() => setEditingRowDateAsset(null)}
+          asset={editingRowDateAsset}
+          exportDir={exportDir}
+          onSaved={handleRowDateSaved}
         />
       )}
 

@@ -28,7 +28,7 @@ function BatchTimemarkEditorModal({
   sourceDir,
   targetDir,
   batchDateText,
-  defaultDetector = 'google_vision',
+  defaultDetector = 'paddle_ocr',
   onSaved
 }) {
   if (!isOpen || !asset || !photo) return null;
@@ -445,6 +445,7 @@ function BatchTimemarkEditorModal({
                   borderRadius: '4px'
                 }}
               >
+                <option value="paddle_ocr">LaMa AI (Hapus Teks)</option>
                 <option value="google_vision">Google Vision AI (Inpainting Bersih)</option>
                 <option value="guide">Metode Garis Panduan (Guide HSV)</option>
               </select>
@@ -526,7 +527,7 @@ function InlineTimemarkBox({
   localCoord,
   sourceDir,
   targetDir,
-  activeDetector = 'google_vision',
+  activeDetector = 'paddle_ocr',
   lastTimemarkPos,
   onPosChange,
   onSaved,
@@ -740,7 +741,7 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
   const todayStr = new Date().toISOString().split('T')[0];
   const [inputDate, setInputDate] = useState(todayStr);
   const [dateText, setDateText] = useState(() => formatDateIndo(todayStr));
-  const [detector, setDetector] = useState('google_vision'); // 'google_vision' | 'guide'
+  const [detector, setDetector] = useState('paddle_ocr'); // 'google_vision' | 'guide'
 
   // Filter states
   const [selectedStation, setSelectedStation] = useState('');
@@ -2087,6 +2088,7 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
                   borderRadius: '4px'
                 }}
               >
+                <option value="paddle_ocr">LaMa AI (Hapus Teks)</option>
                 <option value="google_vision">Google Vision AI (Inpainting Bersih)</option>
                 <option value="guide">Garis Panduan Oranye / HSV Fallback</option>
               </select>

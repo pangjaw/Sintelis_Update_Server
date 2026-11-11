@@ -241,15 +241,18 @@ def fast_update(
                 x2 = min(w, x1 + fit_w)
                 box = (x1, y1, x2, y2)
 
-                # Fast diffuse inpainting on original clean photo
-                arr = np.array(img)
-                crop = arr[y1:y2, x1:x2]
-                mask = np.ones((y2 - y1, x2 - x1), dtype=bool)
-                arr[y1:y2, x1:x2] = diffuse_fill(crop, mask, steps=25)
-                img_erased = Image.fromarray(arr)
-
-                # Draw new textbox
-                img_out = draw_textbox(img_erased, box, target_text)
+                # Fast update: jika clean base ada, gunakan langsung tanpa diffuse fill
+                clean_f = dest_file.parent / (dest_file.stem + ".clean.jpg")
+                if clean_f.is_file():
+                    img_erased = Image.open(clean_f).convert("RGB")
+                    img_out = draw_textbox(img_erased, box, target_text, no_bg=True)
+                else:
+                    arr = np.array(img)
+                    crop = arr[y1:y2, x1:x2]
+                    mask = np.ones((y2 - y1, x2 - x1), dtype=bool)
+                    arr[y1:y2, x1:x2] = diffuse_fill(crop, mask, steps=25)
+                    img_erased = Image.fromarray(arr)
+                    img_out = draw_textbox(img_erased, box, target_text)
 
                 # Save to destination
                 target_dir.mkdir(parents=True, exist_ok=True)

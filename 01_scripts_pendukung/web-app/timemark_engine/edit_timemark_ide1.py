@@ -11,9 +11,16 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# Proteksi aman protobuf untuk PaddleOCR
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+os.environ["OMP_WAIT_POLICY"] = "PASSIVE"
+os.environ["KMP_BLOCKTIME"] = "0"
+os.environ["OMP_NUM_THREADS"] = "1"
 
 if sys.platform == "win32":
     try:
@@ -90,7 +97,7 @@ def _read_manual_meta(asset_dir: Path, photo_name: str) -> dict:
         item = data.get(photo_name, {})
         if not item:
             return {}
-        if item.get("manualEdit") or ("xPos" in item and "yPos" in item):
+        if item.get("manualEdit"):
             return item
         return {}
     except (OSError, json.JSONDecodeError):
@@ -777,6 +784,133 @@ def diffuse_fill(arr: np.ndarray, mask: np.ndarray, steps: int = 20) -> np.ndarr
     return np.clip(filled, 0, 255).astype(np.uint8)
 
 
+# ─── Local AI Inpainting (LaMa Neural Network) ───
+_LAMA_SESSION = None
+
+def _setup_cuda_dlls():
+    """Register pip-installed NVIDIA CUDA/cuDNN/cuFFT DLL paths into Windows search path."""
+    if sys.platform != "win32":
+        return
+    try:
+        import site
+        dirs_to_check = []
+        base_sites = list(site.getsitepackages())
+        user_site = getattr(site, "getusersitepackages", lambda: "")()
+        if user_site:
+            base_sites.append(user_site)
+
+        for sp in base_sites:
+            nvidia_dir = os.path.join(sp, "nvidia")
+            if os.path.isdir(nvidia_dir):
+                for entry in os.listdir(nvidia_dir):
+                    bin_dir = os.path.join(nvidia_dir, entry, "bin")
+                    if os.path.isdir(bin_dir):
+                        dirs_to_check.append(bin_dir)
+
+        for p in dirs_to_check:
+            if os.path.isdir(p):
+                try:
+                    os.add_dll_directory(p)
+                except Exception:
+                    pass
+                if p not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = p + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass
+
+
+def get_lama_session():
+    global _LAMA_SESSION
+    if _LAMA_SESSION is None:
+        try:
+            _setup_cuda_dlls()
+            import onnxruntime as ort
+            import shutil
+
+            # 1. Cek SSD Cache C: (%LOCALAPPDATA%/Sintelis/models/lama_fp32.onnx) untuk pembacaan super cepat
+            local_appdata = os.environ.get("LOCALAPPDATA")
+            ssd_model = os.path.join(local_appdata, "Sintelis", "models", "lama_fp32.onnx") if local_appdata else None
+            model_path = None
+            if ssd_model and os.path.isfile(ssd_model):
+                model_path = ssd_model
+            else:
+                src_model = os.path.join(os.path.dirname(__file__), "models", "lama_fp32.onnx")
+                if not os.path.isfile(src_model):
+                    src_model = os.path.join(os.path.dirname(__file__), "models", "lama_int8.onnx")
+                if os.path.isfile(src_model):
+                    if ssd_model:
+                        try:
+                            os.makedirs(os.path.dirname(ssd_model), exist_ok=True)
+                            shutil.copy2(src_model, ssd_model)
+                            model_path = ssd_model
+                        except Exception:
+                            model_path = src_model
+                    else:
+                        model_path = src_model
+
+            if model_path and os.path.isfile(model_path):
+                opts = ort.SessionOptions()
+                opts.intra_op_num_threads = 4
+                opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+                avail = ort.get_available_providers()
+                preferred_providers = []
+                if 'CUDAExecutionProvider' in avail:
+                    preferred_providers.append('CUDAExecutionProvider')
+                preferred_providers.append('CPUExecutionProvider')
+
+                _LAMA_SESSION = ort.InferenceSession(model_path, sess_options=opts, providers=preferred_providers)
+                print(f"[LaMa AI Init] Loaded model from {'SSD (C:)' if 'AppData' in model_path else 'Disk D:'}: {os.path.basename(model_path)} | Providers: {_LAMA_SESSION.get_providers()}", flush=True)
+            else:
+                _LAMA_SESSION = False
+        except Exception as e:
+            print(f"[LaMa AI Init Failed] Error: {e}", flush=True)
+            _LAMA_SESSION = False
+    return _LAMA_SESSION if _LAMA_SESSION else None
+
+
+def lama_inpaint(img_arr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
+    """Inpaint box region using local AI LaMa neural network for photorealistic texture synthesis."""
+    sess = get_lama_session()
+    if not sess:
+        return None
+    try:
+        import cv2
+        h, w = img_arr.shape[:2]
+        x1, y1, x2, y2 = box
+        if y2 <= y1 or x2 <= x1:
+            return None
+        # Padding adaptif (3-4px) untuk memastikan seluruh tepi glif teks lama ter-mask secara utuh
+        pad_y = max(3, int(h * 0.012))
+        pad_x = max(3, int(w * 0.012))
+        my1 = max(0, y1 - pad_y)
+        my2 = min(h, y2 + pad_y)
+        mx1 = max(0, x1 - pad_x)
+        mx2 = min(w, x2 + pad_x)
+
+        mask = np.zeros((h, w), dtype=np.uint8)
+        mask[my1:my2, mx1:mx2] = 255
+
+        img_resized = cv2.resize(img_arr, (512, 512), interpolation=cv2.INTER_AREA)
+        mask_resized = cv2.resize(mask, (512, 512), interpolation=cv2.INTER_NEAREST)
+
+        img_t = (img_resized.astype(np.float32) / 255.0).transpose(2, 0, 1)[None, ...]
+        mask_t = (mask_resized > 127).astype(np.float32)[None, None, ...]
+
+        outputs = sess.run(None, {'image': img_t, 'mask': mask_t})
+        out = outputs[0][0].transpose(1, 2, 0)
+        out = np.clip(out, 0, 255).astype(np.uint8)
+        out_orig_size = cv2.resize(out, (w, h), interpolation=cv2.INTER_CUBIC)
+
+        blended = img_arr.copy()
+        mask_bool = mask > 0
+        blended[mask_bool] = out_orig_size[mask_bool]
+        return blended
+    except Exception as e:
+        print(f"[LaMa Inpaint Error] {e}", flush=True)
+        return None
+
+
 # ─── Font ───
 # Cache font at module level to avoid repeated disk reads
 _FONT_CACHE = {}
@@ -784,8 +918,12 @@ _FONT_CACHE = {}
 def get_font(size: int):
     if size in _FONT_CACHE:
         return _FONT_CACHE[size]
+    fonts_dir = Path(__file__).resolve().parent / "fonts"
     candidates = [
-        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arialbd.ttf",   # Arial Bold (Standar Baku Timemark GPS)
+        fonts_dir / "Roboto-Bold.ttf",                                              # Font Asli Kamera Timemark Android
+        fonts_dir / "Roboto-Medium.ttf",
+        fonts_dir / "Roboto-Regular.ttf",
+        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arialbd.ttf",   # Fallback Windows
         Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "segoeuib.ttf",  # Segoe UI Bold
         Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "calibrib.ttf",  # Calibri Bold
         "DejaVuSans-Bold.ttf",
@@ -807,7 +945,7 @@ def get_font(size: int):
             _FONT_CACHE[size] = font
             return font
     return ImageFont.load_default()
-def draw_textbox(img: Image.Image, box: tuple[int,int,int,int], text: str) -> Image.Image:
+def draw_textbox(img: Image.Image, box: tuple[int,int,int,int], text: str, no_bg: bool = False) -> Image.Image:
     x1, y1, x2, y2 = box
     w, h = img.size
     box_h = y2 - y1
@@ -819,7 +957,7 @@ def draw_textbox(img: Image.Image, box: tuple[int,int,int,int], text: str) -> Im
     bbox = dummy.textbbox((0,0), text, font=font, stroke_width=fit_stroke)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
-    pad_x = max(6, int(w * 0.012))
+    pad_x = 0 if no_bg else max(6, int(w * 0.012))
     pad_y = max(2, int(h * 0.005))
     fit_w = tw + (2 * pad_x)
 
@@ -835,23 +973,24 @@ def draw_textbox(img: Image.Image, box: tuple[int,int,int,int], text: str) -> Im
 
     out = img.copy()
 
-    # Efek Buram / Frosted Glass Gaussian Blur di belakang box (Sesuai Spek Baku Timemark GPS)
-    bw = sx2 - sx1
-    bh = sy2 - sy1
-    if bw > 0 and bh > 0:
-        radius = max(2, int(box_h * 0.25))
-        blur_radius = max(3, int(box_h * 0.16))
-        crop_box = out.crop(shape_box)
-        blurred_box = crop_box.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-        mask = Image.new("L", (bw, bh), 0)
-        mdraw = ImageDraw.Draw(mask)
-        mdraw.rounded_rectangle((0, 0, bw, bh), radius=radius, fill=255)
-        out.paste(blurred_box, (sx1, sy1), mask)
+    # Efek Buram / Frosted Glass Gaussian Blur & Pill Hitam di belakang box (hanya jika no_bg=False)
+    if not no_bg:
+        bw = sx2 - sx1
+        bh = sy2 - sy1
+        if bw > 0 and bh > 0:
+            radius = max(2, int(box_h * 0.25))
+            blur_radius = max(3, int(box_h * 0.16))
+            crop_box = out.crop(shape_box)
+            blurred_box = crop_box.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+            mask = Image.new("L", (bw, bh), 0)
+            mdraw = ImageDraw.Draw(mask)
+            mdraw.rounded_rectangle((0, 0, bw, bh), radius=radius, fill=255)
+            out.paste(blurred_box, (sx1, sy1), mask)
 
-        overlay = Image.new("RGBA", out.size, (0, 0, 0, 0))
-        odraw = ImageDraw.Draw(overlay)
-        odraw.rounded_rectangle(shape_box, radius=radius, fill=(0, 0, 0, 140))
-        out = Image.alpha_composite(out.convert("RGBA"), overlay).convert("RGB")
+            overlay = Image.new("RGBA", out.size, (0, 0, 0, 0))
+            odraw = ImageDraw.Draw(overlay)
+            odraw.rounded_rectangle(shape_box, radius=radius, fill=(0, 0, 0, 140))
+            out = Image.alpha_composite(out.convert("RGBA"), overlay).convert("RGB")
 
     draw = ImageDraw.Draw(out)
     so = max(1, int(font_size * 0.025))
@@ -1246,7 +1385,7 @@ def detect_timemark_via_google_vision(image_path: Path, w: int, h: int, arr_orig
         resp = requests.post(url, json=payload, timeout=20)
         if resp.status_code in (401, 403, 429):
             err_text = resp.text
-            if "BILLING_DISABLED" in err_text or resp.status_code == 429 or "RESOURCE_EXHAUSTED" in err_text:
+            if "BILLING_DISABLED" in err_text or "billing" in err_text.lower() or resp.status_code == 429 or "RESOURCE_EXHAUSTED" in err_text:
                 return None, "quota_exceeded"
             return None, f"auth_error_{resp.status_code}"
         if resp.status_code != 200:
@@ -1394,11 +1533,77 @@ def detect_timemark_via_google_vision(image_path: Path, w: int, h: int, arr_orig
 
 
 # Global detector tracker for pause/resume fallback
-CURRENT_DETECTOR = "google_vision"
+
+# ponytail: PaddleOCR worker bridge calling Python 3.11
+PADDLE_PY = r"C:\Users\dikarm\AppData\Local\Programs\Python\Python311\python.exe"
+PADDLE_WORKER = str(Path(__file__).parent / "paddle_worker.py")
+_PADDLE_CACHE = {}
+_IN_PROCESS_OCR_FN = None
+
+def register_in_process_ocr(fn):
+    global _IN_PROCESS_OCR_FN
+    _IN_PROCESS_OCR_FN = fn
+
+def detect_timemark_via_paddle_ocr(image_path: Path, w: int, h: int) -> tuple[tuple[int, int, int, int] | None, str]:
+    global _PADDLE_CACHE, _IN_PROCESS_OCR_FN
+    k = str(image_path)
+    if k in _PADDLE_CACHE:
+        return _PADDLE_CACHE[k]
+
+    # Jalur Ultra Cepat 1 (Direct In-Memory ~0.14s): Jika dipanggil langsung di dalam resident service
+    if _IN_PROCESS_OCR_FN is not None:
+        try:
+            res = _IN_PROCESS_OCR_FN(str(image_path))
+            if res.get("ok") and res.get("box"):
+                box = tuple(res["box"])
+                _PADDLE_CACHE[k] = (box, "stage_paddle_ocr")
+                return box, "stage_paddle_ocr"
+            else:
+                _PADDLE_CACHE[k] = (None, "stage_fallback")
+                return None, "stage_fallback"
+        except Exception:
+            _PADDLE_CACHE[k] = (None, "stage_fallback")
+            return None, "stage_fallback"
+
+    # Jalur Cepat 2 (HTTP Daemon ~0.14s): Cek apakah resident daemon sedang aktif di background
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            "http://127.0.0.1:58253/ocr",
+            data=json.dumps({"image_path": str(image_path), "w": w, "h": h}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                if data.get("ok") and data.get("box"):
+                    box = tuple(data["box"])
+                    _PADDLE_CACHE[k] = (box, "stage_paddle_ocr")
+                    return box, "stage_paddle_ocr"
+    except Exception:
+        pass
+
+    # Fallback jika daemon belum menyala: Jalankan subproses mandiri
+    if not os.path.exists(PADDLE_PY) or not os.path.exists(PADDLE_WORKER):
+        return None, "stage_paddle_not_found"
+    try:
+        proc = subprocess.run([PADDLE_PY, PADDLE_WORKER, str(image_path)], capture_output=True, text=True, timeout=40)
+        if proc.returncode == 0 and proc.stdout.strip():
+            data = json.loads(proc.stdout.strip())
+            if data.get("ok") and data.get("box"):
+                box = tuple(data["box"])
+                _PADDLE_CACHE[k] = (box, "stage_paddle_ocr")
+                return box, "stage_paddle_ocr"
+    except Exception:
+        pass
+    return None, "stage_paddle_not_found"
+
+CURRENT_DETECTOR = "paddle_ocr"
+
 
 
 # ─── Process Single Image ───
-def process_image(image_path: Path, output_path: Path, timemark_text: str, y_override: int | None = None, x_override: int | None = None, schedule_lookup=None, asset_key=None, consensus_gy1: int | None = None, is_collage: bool = False, mask_mode: str | None = None, detector: str = "google_vision", ignore_manual: bool = False) -> str:
+def process_image(image_path: Path, output_path: Path, timemark_text: str, y_override: int | None = None, x_override: int | None = None, schedule_lookup=None, asset_key=None, consensus_gy1: int | None = None, is_collage: bool = False, mask_mode: str | None = None, detector: str = "paddle_ocr", ignore_manual: bool = False) -> str:
     global CURRENT_DETECTOR
     actual_input_path = image_path
     if "03_photos_export" in str(image_path) or "03_export_foto" in str(image_path):
@@ -1421,6 +1626,8 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
     img_orig = Image.open(actual_input_path).convert("RGB")
     w, h = img_orig.size
     arr_orig = np.array(img_orig)
+
+    eff_detector = detector or CURRENT_DETECTOR
 
     # Prioritas 1: Override manual (dari UI / parameter CLI) -> Bypass semua deteksi
     if y_override is not None:
@@ -1465,8 +1672,50 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
     # Prioritas 3: Deteksi otomatis (Google Vision / HSV Guide / OCR)
     else:
         if True:
-            eff_detector = detector or CURRENT_DETECTOR
-            if eff_detector == "google_vision":
+            if eff_detector in ("paddle_ocr", "lama_ai"):
+                p_box, p_stage = detect_timemark_via_paddle_ocr(actual_input_path, w, h)
+                if p_box is not None:
+                    # Snapping px1 to standard margin (14px) prevents duplicate day name
+                    std_x1 = max(4, int(w * 0.047))
+                    px1, py1, px2, py2 = p_box
+                    if px1 > std_x1 and px1 < int(w * 0.35):
+                        p_box = (std_x1, py1, max(px2, std_x1 + int(w * BOX_WIDTH_RATIO)), py2)
+                    initial_box = p_box
+                    initial_stage = p_stage
+                else:
+                    # Cek konsensus koordinat dari foto saudara (0.jpg / 100.jpg) dalam folder aset yang sama
+                    sibling_box = None
+                    try:
+                        p_dir = actual_input_path.parent
+                        for sib_name in ("0.txt", "100.txt", "50.txt"):
+                            sib_txt = p_dir / sib_name
+                            if sib_txt.exists() and sib_txt != actual_input_path.with_suffix(".txt"):
+                                sib_b = _read_yolo_label(actual_input_path.with_name(sib_name.replace(".txt", ".jpg")), (w, h))
+                                if sib_b is not None:
+                                    sibling_box = sib_b
+                                    break
+                        if sibling_box is None:
+                            meta_cand = output_path.parent / "meta.json"
+                            if meta_cand.exists():
+                                with open(meta_cand, "r", encoding="utf-8") as mf:
+                                    mdata = json.load(mf)
+                                for s_key in ("0.jpg", "100.jpg", "50.jpg"):
+                                    if s_key in mdata and mdata[s_key].get("yPos"):
+                                        sy = int(round((mdata[s_key]["yPos"] / 300.0) * h))
+                                        sx = int(round((mdata[s_key].get("xPos", 14) / 300.0) * w))
+                                        sb_w = int(w * BOX_WIDTH_RATIO)
+                                        sb_h = int(h * BOX_HEIGHT_RATIO)
+                                        sibling_box = (sx, sy, min(w, sx + sb_w), min(h, sy + sb_h))
+                                        break
+                    except Exception:
+                        pass
+
+                    if sibling_box is not None:
+                        initial_box = sibling_box
+                        initial_stage = "stage_consensus_sibling"
+                    else:
+                        initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+            elif eff_detector == "google_vision":
                 gv_box, gv_stage = detect_timemark_via_google_vision(actual_input_path, w, h, arr_orig=arr_orig, is_collage=is_collage)
                 if gv_box is not None:
                     initial_box = gv_box
@@ -1492,7 +1741,38 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
                         print("  │   ├── 🛑 [STOP] Proses dihentikan pengguna karena kuota Google Vision habis.", flush=True)
                         sys.exit(42)
                 else:
-                    initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+                    # Cek konsensus koordinat dari foto saudara (0.jpg / 100.jpg) dalam folder aset yang sama
+                    sibling_box = None
+                    try:
+                        p_dir = actual_input_path.parent
+                        for sib_name in ("0.txt", "100.txt", "50.txt"):
+                            sib_txt = p_dir / sib_name
+                            if sib_txt.exists() and sib_txt != actual_input_path.with_suffix(".txt"):
+                                sib_b = _read_yolo_label(actual_input_path.with_name(sib_name.replace(".txt", ".jpg")), (w, h))
+                                if sib_b is not None:
+                                    sibling_box = sib_b
+                                    break
+                        if sibling_box is None:
+                            meta_cand = output_path.parent / "meta.json"
+                            if meta_cand.exists():
+                                with open(meta_cand, "r", encoding="utf-8") as mf:
+                                    mdata = json.load(mf)
+                                for s_key in ("0.jpg", "100.jpg", "50.jpg"):
+                                    if s_key in mdata and mdata[s_key].get("yPos"):
+                                        sy = int(round((mdata[s_key]["yPos"] / 300.0) * h))
+                                        sx = int(round((mdata[s_key].get("xPos", 14) / 300.0) * w))
+                                        sb_w = int(w * BOX_WIDTH_RATIO)
+                                        sb_h = int(h * BOX_HEIGHT_RATIO)
+                                        sibling_box = (sx, sy, min(w, sx + sb_w), min(h, sy + sb_h))
+                                        break
+                    except Exception:
+                        pass
+
+                    if sibling_box is not None:
+                        initial_box = sibling_box
+                        initial_stage = "stage_consensus_sibling"
+                    else:
+                        initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
             else:
                 initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
 
@@ -1559,39 +1839,92 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
     fit_w = tw + (2 * pad_x)
 
     # Tighten box to fit text exactly (while ensuring old detected text is covered if wider)
-    old_w = (x2 - x1) if (stage == "stage_google_vision" and (x2 - x1) <= int(w * 0.40)) else 0
+    old_w = (x2 - x1) if (stage in ("stage_google_vision", "stage_paddle_ocr") and (x2 - x1) <= int(w * 0.40)) else 0
     box_w = max(fit_w, old_w)
     x2 = min(w, x1 + box_w)
     box = (x1, y1, x2, y2)
 
-    # Blur: inpainting difusi untuk membersihkan teks lama & menyiapkan area textbox baru
-    arr_work = arr_orig.copy()
+    clean_path = output_path.parent / (output_path.stem + ".clean.jpg")
+    if not clean_path.exists() and image_path is not None:
+        cand_c = image_path.parent / (image_path.stem + ".clean.jpg")
+        if cand_c.exists():
+            clean_path = cand_c
+    is_lama_mode = (eff_detector in ("paddle_ocr", "lama_ai") or detector in ("paddle_ocr", "lama_ai"))
 
-    # Jika y_override ditentukan dan posisinya berbeda dari posisi timemark standar (y=220), bersihkan area lama di bawah
-    if y_override is not None:
-        std_y1 = int((220 / 300.0) * h)
-        if abs(y1 - std_y1) > max(10, int(h * 0.02)):
-            std_x1 = int(w * 0.047)
-            std_box_w = int(w * BOX_WIDTH_RATIO)
-            std_box_h = int(h * BOX_HEIGHT_RATIO)
-            std_x2 = min(w, std_x1 + std_box_w)
-            std_y2 = min(h, std_y1 + std_box_h)
-            if std_y2 > std_y1 and std_x2 > std_x1:
-                old_crop = arr_work[std_y1:std_y2, std_x1:std_x2]
-                if old_crop.size > 0:
-                    old_mask = np.ones((std_y2 - std_y1, std_x2 - std_x1), dtype=bool)
-                    arr_work[std_y1:std_y2, std_x1:std_x2] = diffuse_fill(old_crop, old_mask, steps=60)
+    if is_lama_mode:
+        # ARSITEKTUR CLEAN BASE: Jika foto sudah pernah dibersihkan LaMa, gunakan langsung tanpa inpaint ulang
+        arr_work = None
+        if y_override is not None and clean_path.exists() and not ignore_manual:
+            try:
+                img_clean = Image.open(clean_path).convert("RGB")
+                arr_work = np.array(img_clean)
+            except Exception:
+                arr_work = None
 
-    if y2 > y1 and x2 > x1:
-        crop = arr_work[y1:y2, x1:x2]
-        box_h_px = y2 - y1
-        mask_img = np.ones((y2 - y1, x2 - x1), dtype=bool)
-        arr_work[y1:y2, x1:x2] = diffuse_fill(crop, mask_img, steps=60)
+        if arr_work is None:
+            # Foto belum memiliki clean base: jalankan LaMa inpainting pada area tanggal lama
+            old_box = None
+            if box is not None:
+                old_box = box
+            else:
+                p_box, _ = detect_timemark_via_paddle_ocr(actual_input_path, w, h)
+                if p_box is not None:
+                    old_box = p_box
+                else:
+                    std_y1 = int((240 / 300.0) * h)
+                    std_box_h = int(h * BOX_HEIGHT_RATIO)
+                    old_box = (int(w * 0.047), std_y1, int(w * 0.047) + int(w * BOX_WIDTH_RATIO), min(h, std_y1 + std_box_h))
 
-    img_erased = Image.fromarray(arr_work)
+            arr_clean = arr_orig.copy()
+            if old_box and old_box[3] > old_box[1] and old_box[2] > old_box[0]:
+                ai_inp = lama_inpaint(arr_clean, old_box)
+                if ai_inp is not None:
+                    arr_clean = ai_inp
+                    # Simpan foto dasar bersih (clean base) hanya jika LaMa benar-benar sukses inpainting
+                    try:
+                        clean_path.parent.mkdir(parents=True, exist_ok=True)
+                        Image.fromarray(arr_clean).save(clean_path, quality=95, subsampling=0)
+                    except Exception:
+                        pass
+                else:
+                    # Jika inpainting gagal, hapus clean_path korup/lama jika ada agar tidak terkontaminasi teks lama
+                    if clean_path.exists():
+                        try:
+                            clean_path.unlink()
+                        except Exception:
+                            pass
+            arr_work = arr_clean
 
-    # Draw textbox
-    img_out = draw_textbox(img_erased, box, timemark_text)
+        img_erased = Image.fromarray(arr_work)
+        # ARSITEKTUR TANGGAL KOSONG (Virtual Layer):
+        # Saat diproses dengan LaMa, foto di folder 04 murni foto bersih tanpa teks (tanggal kosong).
+        # Teks baru TIDAK ditempel ke file JPG saat proses LaMa, melainkan ditampilkan
+        # sebagai layer virtual di UI dan baru akan ditempelkan secara fisik saat 'Merge PDF' atau klik 'Tempel Tanggal'.
+        img_out = img_erased
+    else:
+        # Mode Non-LaMa (Google Vision / HSV): Pertahankan alur legacy
+        arr_work = arr_orig.copy()
+        if y_override is not None:
+            std_y1 = int((220 / 300.0) * h)
+            if abs(y1 - std_y1) > max(10, int(h * 0.02)):
+                std_x1 = int(w * 0.047)
+                std_box_w = int(w * BOX_WIDTH_RATIO)
+                std_box_h = int(h * BOX_HEIGHT_RATIO)
+                std_x2 = min(w, std_x1 + std_box_w)
+                std_y2 = min(h, std_y1 + std_box_h)
+                if std_y2 > std_y1 and std_x2 > std_x1:
+                    old_crop = arr_work[std_y1:std_y2, std_x1:std_x2]
+                    if old_crop.size > 0:
+                        old_mask = np.ones((std_y2 - std_y1, std_x2 - std_x1), dtype=bool)
+                        arr_work[std_y1:std_y2, std_x1:std_x2] = diffuse_fill(old_crop, old_mask, steps=60)
+
+        if y2 > y1 and x2 > x1:
+            crop = arr_work[y1:y2, x1:x2]
+            mask_img = np.ones((y2 - y1, x2 - x1), dtype=bool)
+            arr_work[y1:y2, x1:x2] = diffuse_fill(crop, mask_img, steps=60)
+
+        img_erased = Image.fromarray(arr_work)
+        img_out = draw_textbox(img_erased, box, timemark_text, no_bg=False)
 
     # Save
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1616,7 +1949,7 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
         if pname not in folder_meta:
             folder_meta[pname] = {}
         folder_meta[pname]["stage"] = stage
-        folder_meta[pname]["detector"] = "google_vision" if stage == "stage_google_vision" else "guide"
+        folder_meta[pname]["detector"] = "paddle_ocr" if stage == "stage_paddle_ocr" else ("google_vision" if stage == "stage_google_vision" else "guide")
         folder_meta[pname]["dateText"] = timemark_text
         folder_meta[pname]["updatedAt"] = datetime.now().isoformat()
         norm_x = int(round((box[0] / float(w)) * 300)) if w > 0 else box[0]
@@ -1690,7 +2023,7 @@ def main():
     parser.add_argument("--red-mask", action="store_true", help="Run with Red Mask HSV priority")
     parser.add_argument("--cyan-mask", action="store_true", help="Run with Cyan Mask HSV priority")
     parser.add_argument("--custom-mask", action="store_true", help="Run with Custom Mask HSV priority")
-    parser.add_argument("--detector", choices=["guide", "google_vision"], default="google_vision", help="Detection method: google_vision (default) or guide")
+    parser.add_argument("--detector", choices=["paddle_ocr", "lama_ai", "google_vision", "guide"], default="paddle_ocr", help="Detection method: paddle_ocr/lama_ai (default), google_vision, or guide")
     parser.add_argument("--no-time", action="store_true", help="Format watermark tanggal saja tanpa jam (HH:MM)")
     parser.add_argument("--ignore-manual", action="store_true", help="Abaikan koreksi manual sebelumnya dan deteksi ulang posisi via detektor")
     args = parser.parse_args()
@@ -1725,6 +2058,7 @@ def main():
     failed = 0
     skipped = 0
     stage_counts = {
+        "stage_paddle_ocr": 0,
         "stage_0_override": 0,
         "stage_1c_guide_original": 0,
         "stage_2_invert_guide": 0,
@@ -1858,9 +2192,13 @@ def main():
         tim_mapping[str(rel)] = tim_n
         dst = args.single_out if args.single_out else (dst_dir / src.name)
         meta_lookup_dir = dst.parent if args.single_out else dst_dir
-        manual_meta = {} if args.ignore_manual else _read_manual_meta(meta_lookup_dir, photo_name)
-        if not manual_meta and not args.ignore_manual and src.parent != meta_lookup_dir:
-            manual_meta = _read_manual_meta(src.parent, photo_name)
+        # ponytail: batch mode ignores stale dst meta.json so detector runs cleanly
+        if args.single_out:
+            manual_meta = {} if args.ignore_manual else _read_manual_meta(meta_lookup_dir, photo_name)
+            if not manual_meta and not args.ignore_manual and src.parent != meta_lookup_dir:
+                manual_meta = _read_manual_meta(src.parent, photo_name)
+        else:
+            manual_meta = {} if args.ignore_manual else _read_manual_meta(src.parent, photo_name)
         # Prioritaskan argumen CLI eksplisit (--y-override / --x-override) dari aksi user
         if args.y_override is not None:
             photo_y_override = args.y_override
@@ -1999,78 +2337,87 @@ def main():
         with open(logs_dir / "tim_mapping.json", "w", encoding="utf-8") as f:
             json.dump(tim_mapping_data, f, indent=2, ensure_ascii=False)
 
-    if stage_details:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Stage Details"
-        headers = ["File", "Stage", "Asset Type", "Detail Aset", "Photo", "Timestamp"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-            cell.font = Font(bold=True, color="FFFFFF")
-        for row_idx, item in enumerate(stage_details, 2):
-            ws.cell(row=row_idx, column=1, value=item["file"])
-            ws.cell(row=row_idx, column=2, value=item["stage"])
-            ws.cell(row=row_idx, column=3, value=item["asset_type"])
-            ws.cell(row=row_idx, column=4, value=item["detail"])
-            ws.cell(row=row_idx, column=5, value=item["photo"])
-            ws.cell(row=row_idx, column=6, value=item["timestamp"])
-        for col in ws.columns:
-            max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-            ws.column_dimensions[col[0].column_letter].width = max_length + 2
-        wb.save(logs_dir / "edit_stages.xlsx")
+    if not args.single_out and stage_details:
+        try:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Stage Details"
+            headers = ["File", "Stage", "Asset Type", "Detail Aset", "Photo", "Timestamp"]
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+                cell.font = Font(bold=True, color="FFFFFF")
+            for row_idx, item in enumerate(stage_details, 2):
+                ws.cell(row=row_idx, column=1, value=item["file"])
+                ws.cell(row=row_idx, column=2, value=item["stage"])
+                ws.cell(row=row_idx, column=3, value=item["asset_type"])
+                ws.cell(row=row_idx, column=4, value=item["detail"])
+                ws.cell(row=row_idx, column=5, value=item["photo"])
+                ws.cell(row=row_idx, column=6, value=item["timestamp"])
+            for col in ws.columns:
+                max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+                ws.column_dimensions[col[0].column_letter].width = max_length + 2
+            wb.save(logs_dir / "edit_stages.xlsx")
+        except Exception:
+            pass
 
-    if failed_files:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Failed Files"
-        headers = ["File", "Asset Type", "Detail Aset", "Photo", "Alasan", "Timestamp"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="FF4444", end_color="FF4444", fill_type="solid")
-            cell.font = Font(bold=True, color="FFFFFF")
-        for row_idx, item in enumerate(failed_files, 2):
-            ws.cell(row=row_idx, column=1, value=item["file"])
-            ws.cell(row=row_idx, column=2, value=item["asset_type"])
-            ws.cell(row=row_idx, column=3, value=item["detail"])
-            ws.cell(row=row_idx, column=4, value=item["photo"])
-            ws.cell(row=row_idx, column=5, value=item["reason"])
-            ws.cell(row=row_idx, column=6, value=item["timestamp"])
-        for col in ws.columns:
-            max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-            ws.column_dimensions[col[0].column_letter].width = max_length + 2
-        wb.save(logs_dir / "edit_failed.xlsx")
-        (logs_dir / "edit_failed.json").write_text(json.dumps(failed_files, indent=2, ensure_ascii=False), encoding="utf-8")
+    if not args.single_out and failed_files:
+        try:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Failed Files"
+            headers = ["File", "Asset Type", "Detail Aset", "Photo", "Alasan", "Timestamp"]
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="FF4444", end_color="FF4444", fill_type="solid")
+                cell.font = Font(bold=True, color="FFFFFF")
+            for row_idx, item in enumerate(failed_files, 2):
+                ws.cell(row=row_idx, column=1, value=item["file"])
+                ws.cell(row=row_idx, column=2, value=item["asset_type"])
+                ws.cell(row=row_idx, column=3, value=item["detail"])
+                ws.cell(row=row_idx, column=4, value=item["photo"])
+                ws.cell(row=row_idx, column=5, value=item["reason"])
+                ws.cell(row=row_idx, column=6, value=item["timestamp"])
+            for col in ws.columns:
+                max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+                ws.column_dimensions[col[0].column_letter].width = max_length + 2
+            wb.save(logs_dir / "edit_failed.xlsx")
+            (logs_dir / "edit_failed.json").write_text(json.dumps(failed_files, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
 
-    if missing_dates:
-        # Deduplicate by folder
-        seen_folders = set()
-        unique_missing = []
-        for item in missing_dates:
-            if item["folder"] not in seen_folders:
-                seen_folders.add(item["folder"])
-                unique_missing.append(item)
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Missing Dates"
-        headers = ["Folder", "BTP", "Category", "Identifier", "Alasan"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="FF8800", end_color="FF8800", fill_type="solid")
-            cell.font = Font(bold=True, color="FFFFFF")
-        for row_idx, item in enumerate(unique_missing, 2):
-            ws.cell(row=row_idx, column=1, value=item["folder"])
-            ws.cell(row=row_idx, column=2, value=item["btp"])
-            ws.cell(row=row_idx, column=3, value=item["category"])
-            ws.cell(row=row_idx, column=4, value=item["identifier"])
-            ws.cell(row=row_idx, column=5, value=item["reason"])
-        for col in ws.columns:
-            max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-            ws.column_dimensions[col[0].column_letter].width = max_length + 2
-        wb.save(logs_dir / "missing_dates.xlsx")
+    if not args.single_out and missing_dates:
+        try:
+            # Deduplicate by folder
+            seen_folders = set()
+            unique_missing = []
+            for item in missing_dates:
+                if item["folder"] not in seen_folders:
+                    seen_folders.add(item["folder"])
+                    unique_missing.append(item)
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Missing Dates"
+            headers = ["Folder", "BTP", "Category", "Identifier", "Alasan"]
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="FF8800", end_color="FF8800", fill_type="solid")
+                cell.font = Font(bold=True, color="FFFFFF")
+            for row_idx, item in enumerate(unique_missing, 2):
+                ws.cell(row=row_idx, column=1, value=item["folder"])
+                ws.cell(row=row_idx, column=2, value=item["btp"])
+                ws.cell(row=row_idx, column=3, value=item["category"])
+                ws.cell(row=row_idx, column=4, value=item["identifier"])
+                ws.cell(row=row_idx, column=5, value=item["reason"])
+            for col in ws.columns:
+                max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+                ws.column_dimensions[col[0].column_letter].width = max_length + 2
+            wb.save(logs_dir / "missing_dates.xlsx")
+        except Exception:
+            pass
         (logs_dir / "missing_dates.json").write_text(json.dumps(unique_missing, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if unedited_files:

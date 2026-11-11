@@ -20,12 +20,13 @@ export default function TimemarkModule() {
   const [mergedDir, setMergedDir] = useState('');
 
   const [selectedSteps, setSelectedSteps] = useState(['1', '1.5', '2', '3', '4', '5']);
-  const [detector, setDetector] = useState('google_vision'); // 'google_vision' | 'guide'
+  const [detector, setDetector] = useState('paddle_ocr'); // 'google_vision' | 'guide'
   const [splitMultiAssetRows, setSplitMultiAssetRows] = useState(false);
   const [includeTime, setIncludeTime] = useState(true);
   const [useCustomSchedule, setUseCustomSchedule] = useState(false);
   const [customSchedulePath, setCustomSchedulePath] = useState('');
   const [scheduleInfo, setScheduleInfo] = useState(null);
+  const isPickingFolderRef = useRef(false);
 
   const fetchScheduleInfo = async (path) => {
     if (!path || !path.trim()) {
@@ -119,11 +120,13 @@ export default function TimemarkModule() {
 
   // Folder picking helper
   const handlePickFolder = async (setter, type) => {
+    if (isPickingFolderRef.current) return;
+    isPickingFolderRef.current = true;
     try {
       const res = await fetch('/api/select-folder', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        if (data.path) {
+        if (data && data.path) {
           setter(data.path);
           if (type === 'single' || type === 'source' || type === 'target') {
             const listRes = await fetch(`/api/list-folder-pdfs?folder=${encodeURIComponent(data.path)}`);
@@ -139,6 +142,10 @@ export default function TimemarkModule() {
       }
     } catch (err) {
       alert('Gagal membuka dialog folder: ' + err.message);
+    } finally {
+      setTimeout(() => {
+        isPickingFolderRef.current = false;
+      }, 350);
     }
   };
 
@@ -197,45 +204,6 @@ export default function TimemarkModule() {
       const data = await res.json();
       if (!data.ok) {
         alert('Gagal memulai pipeline: ' + (data.error || 'Terjadi kesalahan'));
-      } else {
-        setPipelineState(prev => ({ ...prev, running: true, error: null, logs: [] }));
-      }
-    } catch (err) {
-      alert('Gagal menghubungi server: ' + err.message);
-    }
-  };
-
-  const handleFastUpdateTimemark = async () => {
-    const isSingle = folderMode === 'single';
-    const effectiveSource = isSingle ? singleDir : sourceDir;
-    const effectiveTarget = isSingle ? singleDir : targetDir;
-
-    if (!exportDir && !effectiveTarget && !effectiveSource) {
-      alert('Silakan pilih Folder Ekstraksi Foto (03/04) atau Folder PDF Target terlebih dahulu!');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/timemark/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: folderMode,
-          sourceDir: effectiveSource || effectiveTarget || exportDir,
-          targetDir: effectiveTarget || effectiveSource || exportDir,
-          exportDir: exportDir || undefined,
-          mergedDir: mergedDir || undefined,
-          overwriteOriginal: isSingle && overwriteOriginal,
-          steps: ['4_fast'],
-          detector: 'fast_meta',
-          splitMultiAssetRows: splitMultiAssetRows,
-          includeTime: includeTime,
-          customScheduleFile: useCustomSchedule ? customSchedulePath : undefined
-        })
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        alert('Gagal memulai Fast Update Timemark: ' + (data.error || 'Terjadi kesalahan'));
       } else {
         setPipelineState(prev => ({ ...prev, running: true, error: null, logs: [] }));
       }
@@ -360,6 +328,7 @@ export default function TimemarkModule() {
                       style={{ flex: 1, padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                     />
                     <button
+                      type="button"
                       onClick={() => handlePickFolder(setSingleDir, 'single')}
                       style={{ padding: '0.5rem 0.85rem', background: 'var(--accent)', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
                     >
@@ -415,6 +384,7 @@ export default function TimemarkModule() {
                       style={{ flex: 1, padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                     />
                     <button
+                      type="button"
                       onClick={() => handlePickFolder(setSourceDir, 'source')}
                       style={{ padding: '0.5rem 0.85rem', background: 'var(--accent)', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
                     >
@@ -440,6 +410,7 @@ export default function TimemarkModule() {
                       style={{ flex: 1, padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                     />
                     <button
+                      type="button"
                       onClick={() => handlePickFolder(setTargetDir, 'target')}
                       style={{ padding: '0.5rem 0.85rem', background: 'var(--accent)', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
                     >
@@ -465,6 +436,7 @@ export default function TimemarkModule() {
                     style={{ flex: 1, padding: '0.45rem 0.65rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.825rem' }}
                   />
                   <button
+                    type="button"
                     onClick={() => handlePickFolder(setExportDir, 'export')}
                     style={{ padding: '0.45rem 0.75rem', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
                   >
@@ -487,6 +459,7 @@ export default function TimemarkModule() {
                       style={{ flex: 1, padding: '0.45rem 0.65rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.825rem' }}
                     />
                     <button
+                      type="button"
                       onClick={() => handlePickFolder(setMergedDir, 'merged')}
                       style={{ padding: '0.45rem 0.75rem', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
                     >
@@ -558,6 +531,30 @@ export default function TimemarkModule() {
                   <button
                     type="button"
                     disabled={pipelineState.running}
+                    onClick={() => setDetector('paddle_ocr')}
+                    style={{
+                      padding: '0.6rem 0.75rem',
+                      borderRadius: '8px',
+                      border: detector === 'paddle_ocr' ? '2px solid #10b981' : '1px solid var(--border-color)',
+                      background: detector === 'paddle_ocr' ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-secondary)',
+                      color: detector === 'paddle_ocr' ? '#34d399' : 'var(--text-secondary)',
+                      cursor: pipelineState.running ? 'not-allowed' : 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.2s',
+                      boxShadow: detector === 'paddle_ocr' ? '0 0 12px rgba(16, 185, 129, 0.25)' : 'none'
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center' }}>
+                      LaMa AI (Hapus Teks)
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.3 }}>
+                      AI inpainting hapus teks bersih + watermark teks murni tanpa box hitam, 100% offline
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={pipelineState.running}
                     onClick={() => setDetector('google_vision')}
                     style={{
                       padding: '0.6rem 0.75rem',
@@ -600,30 +597,6 @@ export default function TimemarkModule() {
                     </div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.3 }}>
                       Deteksi garis panduan warna merah/oranye klasik
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={pipelineState.running}
-                    onClick={() => setDetector('fast_meta')}
-                    style={{
-                      padding: '0.6rem 0.75rem',
-                      borderRadius: '8px',
-                      border: detector === 'fast_meta' ? '2px solid #10b981' : '1px solid var(--border-color)',
-                      background: detector === 'fast_meta' ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-secondary)',
-                      color: detector === 'fast_meta' ? '#34d399' : 'var(--text-secondary)',
-                      cursor: pipelineState.running ? 'not-allowed' : 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.2s',
-                      boxShadow: detector === 'fast_meta' ? '0 0 12px rgba(16, 185, 129, 0.25)' : 'none'
-                    }}
-                  >
-                    <div style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span>⚡</span> Fast Update (Ikuti meta.json)
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.3 }}>
-                      Langsung pakai koordinat xPos/yPos tersimpan di meta.json tanpa deteksi ulang
                     </div>
                   </button>
                 </div>
@@ -782,43 +755,23 @@ export default function TimemarkModule() {
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: '0.6rem', marginTop: 'auto', paddingBottom: '0.5rem' }}>
             {!pipelineState.running ? (
-              <>
-                <button
-                  onClick={handleStartPipeline}
-                  style={{
-                    flex: 1.2,
-                    padding: '0.75rem',
-                    background: 'var(--accent)',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontWeight: 600,
-                    fontSize: '0.88rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  🚀 Mulai Pipeline
-                </button>
-                <button
-                  type="button"
-                  onClick={handleFastUpdateTimemark}
-                  title="Hanya perbarui tanggal dan jam di textbox memakai koordinat tersimpan di meta.json tanpa OCR/deteksi ulang"
-                  style={{
-                    flex: 1,
-                    padding: '0.75rem 0.65rem',
-                    background: '#8957e5',
-                    color: '#ffffff',
-                    border: '1px solid #a371f7',
-                    borderRadius: '6px',
-                    fontWeight: 700,
-                    fontSize: '0.82rem',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  ⚡ Fast Update Timemark
-                </button>
-              </>
+              <button
+                onClick={handleStartPipeline}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  background: 'var(--accent)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s'
+                }}
+              >
+                🚀 Mulai Pipeline
+              </button>
             ) : (
               <button
                 onClick={handleCancelPipeline}

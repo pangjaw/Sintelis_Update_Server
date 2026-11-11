@@ -31,3 +31,19 @@ Thumbs.db
 .env.local
 audit_personnel_cache.json
 file_personnel_cache.json
+*api_key*
+*.key
+google_vision_api_key.txt
+config/
+
+# AI Models & Weights (> 100MB exceeds GitHub limits)
+*.onnx
+*.pth
+*.bin
+**/timemark_engine/models/
+
+# Runtime Logs & Caches
+**/logs/*.xlsx
+**/logs/*.json
+logs/
+

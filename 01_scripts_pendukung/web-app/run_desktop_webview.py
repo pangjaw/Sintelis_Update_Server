@@ -44,13 +44,164 @@ ENGINE_DIR = os.path.join(BUNDLE_DIR, "timemark_engine")
 if not os.path.isdir(ENGINE_DIR):
     ENGINE_DIR = os.path.join(BASE_DIR, "timemark_engine")
 
+def _find_gpu_python():
+    """Find a Python interpreter capable of GPU CUDA acceleration (e.g. Python 3.11 with onnxruntime-gpu)."""
+    # Check if sys.executable already has CUDA
+    try:
+        import onnxruntime as ort
+        if "CUDAExecutionProvider" in ort.get_available_providers():
+            return sys.executable
+    except Exception:
+        pass
+
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    candidates = [
+        os.path.join(local_app_data, "Programs", "Python", "Python311", "python.exe") if local_app_data else "",
+        r"C:\Python311\python.exe",
+        r"C:\Program Files\Python311\python.exe",
+        os.path.join(local_app_data, "Programs", "Python", "Python310", "python.exe") if local_app_data else "",
+        r"C:\Python310\python.exe",
+    ]
+    for c in candidates:
+        if c and os.path.isfile(c):
+            return c
+
+    # Fallback to py launcher if available
+    py_launcher = shutil.which("py")
+    if py_launcher:
+        return [py_launcher, "-3.11"]
+    return sys.executable
+
 def make_script_cmd(script_name, script_args):
     is_frozen = getattr(sys, 'frozen', False)
     if is_frozen:
         return [sys.executable, "--run-script", os.path.basename(script_name)] + script_args
     else:
         script_path = os.path.join(ENGINE_DIR, os.path.basename(script_name))
-        return [sys.executable, script_path] + script_args
+        py_runner = sys.executable
+        # Prefer GPU-capable Python environment for LaMa neural network scripts
+        if os.path.basename(script_name) == "edit_timemark_ide1.py":
+            py_runner = _find_gpu_python()
+
+        if isinstance(py_runner, list):
+            return py_runner + [script_path] + script_args
+        return [py_runner, script_path] + script_args
+
+_RESIDENT_DAEMON_PORT = 58253
+_RESIDENT_DAEMON_PROC = None
+
+def _start_timemark_resident_daemon():
+    """Start background Timemark Resident Worker (LaMa AI on GPU + PaddleOCR in RAM) asynchronously."""
+    global _RESIDENT_DAEMON_PROC
+    try:
+        import urllib.request
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{_RESIDENT_DAEMON_PORT}/health")
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                if resp.status == 200:
+                    _log(f"[Resident Daemon] Worker sudah aktif dan siap di port {_RESIDENT_DAEMON_PORT}.")
+                    return
+        except Exception:
+            pass
+
+        gpu_py = _find_gpu_python()
+        if not gpu_py:
+            gpu_py = sys.executable
+        if isinstance(gpu_py, list):
+            cmd = list(gpu_py)
+        else:
+            cmd = [gpu_py]
+
+        daemon_script = os.path.join(ENGINE_DIR, "timemark_resident_service.py")
+        if not os.path.isfile(daemon_script):
+            _log(f"[Resident Daemon] Script {daemon_script} tidak ditemukan.")
+            return
+
+        cmd.extend([daemon_script, str(_RESIDENT_DAEMON_PORT)])
+        _log(f"[Resident Daemon] Meluncurkan background AI worker: {cmd}")
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        _RESIDENT_DAEMON_PROC = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+            cwd=BASE_DIR
+        )
+        _log(f"[Resident Daemon] Worker AI berhasil diluncurkan (PID: {_RESIDENT_DAEMON_PROC.pid}).")
+    except Exception as e:
+        _log(f"[Resident Daemon] Gagal memulai worker: {e}")
+
+def _stop_timemark_resident_daemon():
+    global _RESIDENT_DAEMON_PROC
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{_RESIDENT_DAEMON_PORT}/shutdown",
+            data=b"{}",
+            headers={"Content-Type": "application/json"}
+        )
+        urllib.request.urlopen(req, timeout=1.0)
+    except Exception:
+        pass
+    if _RESIDENT_DAEMON_PROC is not None:
+        try:
+            _RESIDENT_DAEMON_PROC.terminate()
+        except Exception:
+            pass
+        _RESIDENT_DAEMON_PROC = None
+
+import atexit
+atexit.register(_stop_timemark_resident_daemon)
+
+def _stamp_clean_photo_direct(clean_path: str, out_path: str, text: str, x_pos=14, y_pos=220) -> bool:
+    """Stamp date text directly in-memory onto clean base without subprocess overhead."""
+    try:
+        from timemark_engine.edit_timemark_ide1 import draw_textbox, BOX_HEIGHT_RATIO, BOX_WIDTH_RATIO
+        from PIL import Image
+        with Image.open(clean_path) as img:
+            img = img.convert("RGB")
+            w, h = img.size
+            yp = 220 if y_pos is None or str(y_pos) == "" else int(y_pos)
+            xp = 14 if x_pos is None or str(x_pos) == "" else int(x_pos)
+            y1 = int((yp / 300.0) * h) if yp <= 300 else yp
+            x1 = int((xp / 300.0) * w) if xp <= 300 else xp
+            box_h = max(10, int(h * BOX_HEIGHT_RATIO))
+            box_w = max(20, int(w * BOX_WIDTH_RATIO))
+            box = (x1, y1, min(w, x1 + box_w), min(h, y1 + box_h))
+            res = draw_textbox(img, box, text, no_bg=True)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            res.save(out_path, quality=95, subsampling=0)
+            return True
+    except Exception as e:
+        _log(f"Notice in _stamp_clean_photo_direct: {e}")
+        return False
+
+def _ensure_asset_photos_stamped(asset_folder: str) -> int:
+    """Pastikan foto-foto di folder editan ter-stamp dari clean base sebelum digabung ke PDF."""
+    if not os.path.isdir(asset_folder):
+        return 0
+    meta_path = os.path.join(asset_folder, "meta.json")
+    meta_data = {}
+    if os.path.isfile(meta_path):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as mf:
+                meta_data = json.load(mf)
+        except Exception:
+            pass
+    stamped = 0
+    for p_name in ["0.jpg", "50.jpg", "100.jpg"]:
+        stem = os.path.splitext(p_name)[0]
+        clean_file = os.path.join(asset_folder, f"{stem}.clean.jpg")
+        target_file = os.path.join(asset_folder, p_name)
+        if os.path.isfile(clean_file):
+            p_info = meta_data.get(p_name, {}) if isinstance(meta_data.get(p_name), dict) else {}
+            date_text = p_info.get("dateText", "")
+            x_pos = p_info.get("xPos", 14)
+            y_pos = p_info.get("yPos", 220)
+            if date_text:
+                if _stamp_clean_photo_direct(clean_file, target_file, date_text, x_pos, y_pos):
+                    stamped += 1
+    return stamped
 
 def get_tesseract_cmd():
     candidates = [
@@ -132,6 +283,8 @@ _TIMEMARK_PHOTOS_CACHE = {
 def _invalidate_timemark_photos_cache():
     global _TIMEMARK_PHOTOS_CACHE
     _TIMEMARK_PHOTOS_CACHE = {"key": None, "time": 0, "data": None}
+
+_PROCESS_SINGLE_LOCK = threading.Lock()
 
 
 def _init_persistent_storage():
@@ -1388,6 +1541,8 @@ def on_restored():
     _was_minimized = False
 
 
+_dialog_lock = threading.Lock()
+
 def _pick_folder_native():
     """Buka dialog pemilihan folder di Windows:
     1. Tkinter askdirectory (Topmost, native OS dialog, paling stabil & cepat)
@@ -1401,10 +1556,12 @@ def _pick_folder_native():
         root = tk.Tk()
         root.withdraw()
         root.attributes("-topmost", True)
-        folder = filedialog.askdirectory(title="Pilih Folder Penyimpanan PDF Rekap")
+        folder = filedialog.askdirectory(title="Pilih Folder")
         root.destroy()
         if folder and os.path.isdir(folder):
             return os.path.normpath(folder)
+        # Jika user membatalkan (Cancel / Tutup window), jangan lanjutkan ke fallback
+        return None
     except Exception as e:
         _log(f"Tkinter folder picker notice: {e}")
 
@@ -1415,6 +1572,8 @@ def _pick_folder_native():
             result = webview.windows[0].create_file_dialog(dialog_type)
             if result and len(result) > 0 and result[0]:
                 return os.path.normpath(result[0])
+            # User membatalkan dialog pywebview
+            return None
     except Exception as e:
         _log(f"WebView file dialog notice: {e}")
 
@@ -1436,6 +1595,7 @@ def _pick_folder_native():
         path = res.stdout.strip()
         if path and os.path.isdir(path):
             return os.path.normpath(path)
+        return None
     except Exception as e:
         _log(f"PowerShell folder dialog fallback error: {e}")
 
@@ -1460,6 +1620,8 @@ def _pick_file_native():
         root.destroy()
         if fpath and os.path.isfile(fpath):
             return os.path.normpath(fpath)
+        # Jika user membatalkan (Cancel / Tutup window), jangan lanjut fallback
+        return None
     except Exception as e:
         _log(f"Tkinter file picker notice: {e}")
 
@@ -1472,6 +1634,7 @@ def _pick_file_native():
             )
             if result and len(result) > 0 and result[0]:
                 return os.path.normpath(result[0])
+            return None
     except Exception as e:
         _log(f"WebView file dialog notice: {e}")
 
@@ -1496,6 +1659,8 @@ def _pick_files_native():
         root.destroy()
         if fpaths:
             return [os.path.normpath(f) for f in fpaths if os.path.isfile(f)]
+        # Jika user membatalkan (Cancel / Tutup window), jangan lanjut fallback
+        return []
     except Exception as e:
         _log(f"Tkinter multi file picker notice: {e}")
 
@@ -1512,6 +1677,7 @@ def _pick_files_native():
                     return [os.path.normpath(f) for f in result if os.path.isfile(f)]
                 elif os.path.isfile(result):
                     return [os.path.normpath(result)]
+            return []
     except Exception as e:
         _log(f"WebView multi file dialog notice: {e}")
 
@@ -1535,6 +1701,8 @@ def _pick_json_file_native(title="Pilih Berkas Cadangan Preset (*.json)"):
         root.destroy()
         if fpath and os.path.isfile(fpath):
             return os.path.normpath(fpath)
+        # Jika user membatalkan (Cancel / Tutup window), jangan lanjut fallback
+        return None
     except Exception as e:
         _log(f"Tkinter JSON picker notice: {e}")
 
@@ -1548,6 +1716,7 @@ def _pick_json_file_native(title="Pilih Berkas Cadangan Preset (*.json)"):
             )
             if result and len(result) > 0 and result[0]:
                 return os.path.normpath(result[0])
+            return None
     except Exception as e:
         _log(f"WebView JSON dialog notice: {e}")
 
@@ -1569,6 +1738,7 @@ def _pick_json_file_native(title="Pilih Berkas Cadangan Preset (*.json)"):
         path = res.stdout.strip()
         if path and os.path.isfile(path):
             return os.path.normpath(path)
+        return None
     except Exception as ps_err:
         _log(f"PowerShell JSON open dialog notice: {ps_err}")
 
@@ -1624,6 +1794,8 @@ def _save_file_dialog_native(default_name):
         root.destroy()
         if path:
             return os.path.normpath(path)
+        # Jika user membatalkan (Cancel), jangan lanjut fallback
+        return None
     except Exception as e:
         _log(f"Tkinter save dialog notice: {e}")
 
@@ -2243,6 +2415,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             self._json({"ok": True})
         elif parsed.path == "/api/timemark/start":
             self._handle_timemark_start()
+        elif parsed.path == "/api/timemark/fast-update":
+            self._handle_timemark_fast_update()
         elif parsed.path == "/api/timemark/cancel":
             pipeline_runner.cancel_pipeline()
             self._json({"ok": True})
@@ -2252,6 +2426,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_timemark_process_single()
         elif parsed.path == "/api/timemark/manual-edit":
             self._handle_timemark_manual_edit()
+        elif parsed.path == "/api/timemark/bake-stamp":
+            self._handle_timemark_bake_stamp()
         elif parsed.path == "/api/timemark/remerge-single":
             self._handle_timemark_remerge_single()
         elif parsed.path == "/api/timemark/edit-coord":
@@ -2323,7 +2499,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 data.get("steps"),
                 data.get("mode", "dual"),
                 data.get("overwriteOriginal", False),
-                data.get("detector", "google_vision"),
+                data.get("detector", "paddle_ocr"),
                 split_multi_asset=split_multi,
                 include_time=inc_time,
                 custom_schedule_file=custom_sched
@@ -2332,6 +2508,66 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             _log(f"Timemark start error: {e}")
             self._json({"error": str(e)}, 500)
+
+    def _handle_timemark_fast_update(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            data = json.loads(body) if body else {}
+
+            folder = (data.get("folder") or "").strip()
+            sched_path = (data.get("schedulePath") or "").strip()
+            include_time = data.get("includeTime", True)
+            force = data.get("force", True)
+
+            if not sched_path or not os.path.isfile(sched_path):
+                self._json({"ok": False, "error": f"Berkas schedule.json tidak ditemukan: {sched_path}"}, 400)
+                return
+
+            if not folder or not os.path.isdir(folder):
+                self._json({"ok": False, "error": f"Folder foto tidak valid: {folder}"}, 400)
+                return
+
+            export_root, dir_raw, dir_edited = _resolve_photo_directories(folder)
+            input_dir = dir_raw if (dir_raw and os.path.isdir(dir_raw)) else export_root
+            temp_dir = os.path.join(export_root, "03_photos_cropped_temp")
+            output_dir = dir_edited if (dir_edited and os.path.isdir(dir_edited)) else os.path.join(export_root, "04_photos_edited")
+            os.makedirs(output_dir, exist_ok=True)
+
+            try:
+                from timemark_engine.fast_update_timemark import fast_update
+            except ImportError:
+                sys.path.insert(0, ENGINE_DIR)
+                from fast_update_timemark import fast_update
+
+            from pathlib import Path
+            res_code = fast_update(
+                schedule_path=Path(sched_path),
+                export_dir=Path(input_dir),
+                temp_dir=Path(temp_dir),
+                edited_dir=Path(output_dir),
+                force=force,
+                include_time=include_time
+            )
+
+            # Invalidate cache foto agar data segar langsung tampil
+            _TIMEMARK_PHOTOS_CACHE.clear()
+
+            if res_code == 0:
+                self._json({
+                    "ok": True,
+                    "message": "Fast Update Timemark berhasil diterapkan ke seluruh foto aset."
+                })
+            else:
+                self._json({
+                    "ok": False,
+                    "error": f"Fast update selesai dengan kode {res_code}."
+                }, 500)
+        except Exception as e:
+            _log(f"Fast update error: {e}")
+            import traceback
+            traceback.print_exc()
+            self._json({"ok": False, "error": str(e)}, 500)
 
 
     def _handle_timemark_photos(self, parsed):
@@ -2621,10 +2857,27 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             "tim": tim
                         }
                     else:
-                        asset_dict[key]["edited_dir"] = root
-                        asset_dict[key]["edited_files"] = f_set
-                        if tim:
-                            asset_dict[key]["tim"] = tim
+                        # Prioritaskan folder editan yang memiliki meta manualEdit atau Tim_1
+                        prev_dir = asset_dict[key].get("edited_dir") or ""
+                        replace_edited = False
+                        if not prev_dir:
+                            replace_edited = True
+                        elif "meta.json" in f_set:
+                            try:
+                                with open(os.path.join(root, "meta.json"), "r", encoding="utf-8", errors="ignore") as _mf_test:
+                                    _m_test = json.load(_mf_test)
+                                    if any(isinstance(v, dict) and v.get("manualEdit") for v in _m_test.values()):
+                                        replace_edited = True
+                            except Exception:
+                                pass
+                        if not replace_edited and "tim_1" in root.lower() and "tim_1" not in prev_dir.lower():
+                            replace_edited = True
+
+                        if replace_edited:
+                            asset_dict[key]["edited_dir"] = root
+                            asset_dict[key]["edited_files"] = f_set
+                            if tim:
+                                asset_dict[key]["tim"] = tim
 
             # 3. Baca daftar kolase yang telah dipotong dari cropped_collages.json atau manifest
             cropped_set = set()
@@ -2737,6 +2990,11 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     raw_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(raw_path))}&t={url_timestamp}" if has_raw else None
                     edited_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(edited_path))}&t={url_timestamp}" if has_edited else None
 
+                    clean_name = f"{os.path.splitext(p_name)[0]}.clean.jpg"
+                    has_clean = clean_name in edited_files
+                    clean_path = os.path.join(edited_dir, clean_name) if has_clean else None
+                    clean_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(clean_path))}&t={url_timestamp}" if has_clean else None
+
                     rel_p = f"{station}/{category}/{detail}/{p_name}".replace("\\", "/")
                     has_temp = rel_p.lower() in temp_cropped_set
                     temp_photo_path = os.path.join(temp_cropped_root, station, category, detail, p_name) if has_temp else None
@@ -2762,6 +3020,8 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         "name": p_name,
                         "rawUrl": raw_url,
                         "editedUrl": edited_url,
+                        "cleanUrl": clean_url,
+                        "hasClean": has_clean,
                         "tempUrl": temp_url,
                         "croppedUrl": temp_url,
                         "timeUrl": None,
@@ -2775,7 +3035,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                         "isCollage": is_collage,
                         "hasBackup": has_backup,
                         "meta": p_meta,
-                        "url": edited_url if has_edited else (temp_url if has_temp else raw_url)
+                        "url": (clean_url if has_clean else edited_url) if has_edited else (temp_url if has_temp else raw_url)
                     })
 
                 has_any_edited = any(p["hasEdited"] for p in photos)
@@ -2800,8 +3060,13 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 })
 
             if not assets and os.path.isdir(folder):
-                assets = scan_deep_photo_subfolders(folder)
-            assets.sort(key=lambda a: (0 if a.get("hasEdited") else (1 if a.get("photos") else 2), a.get("station", ""), a.get("category", ""), a.get("detail", "")))
+                deep_res = scan_deep_photo_subfolders(folder)
+                assets = deep_res[0] if isinstance(deep_res, (list, tuple)) else deep_res
+            if isinstance(assets, (list, tuple)):
+                assets = list(assets)
+                assets.sort(key=lambda a: (0 if a.get("hasEdited") else (1 if a.get("photos") else 2), a.get("station", ""), a.get("category", ""), a.get("detail", "")))
+            else:
+                assets = []
 
             resp_data = {
                 "ok": True,
@@ -3062,7 +3327,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             base_dir = data.get("baseExportDir") or data.get("folder") or ""
             raw_rel = data.get("rawRelPath") or data.get("assetRelPath") or ""
             photo_name = data.get("photoName") or ""
-            detector = data.get("detector") or "google_vision"
+            detector = data.get("detector") or "paddle_ocr"
             tim_group = data.get("timGroup", "Tim_1")
             custom_date = data.get("dateText", "").strip()
 
@@ -3127,6 +3392,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
 
             def _process_one_fname(fname):
                 stem = os.path.splitext(fname)[0]
@@ -3147,52 +3416,79 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 args = [
                     "--input", in_cand,
                     "--single-out", out_target,
-                    "--detector", detector
+                    "--detector", detector,
+                    "--ignore-manual"
                 ]
                 if p_date:
                     args.extend(["--date", p_date])
                 elif os.path.isfile(schedule_file):
                     args.extend(["--schedule", schedule_file])
 
-                cmd = make_script_cmd("edit_timemark_ide1.py", args)
-                proc = subprocess.run(
-                    cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-                )
+                # Jalur Cepat via Resident AI Worker (~0.7s - 1.5s per foto)
+                used_daemon = False
+                try:
+                    import urllib.request
+                    daemon_payload = {
+                        "image_path": in_cand,
+                        "output_path": out_target,
+                        "date": p_date,
+                        "detector": detector,
+                        "ignore_manual": True
+                    }
+                    d_req = urllib.request.Request(
+                        f"http://127.0.0.1:{_RESIDENT_DAEMON_PORT}/process_image",
+                        data=json.dumps(daemon_payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"}
+                    )
+                    with urllib.request.urlopen(d_req, timeout=25.0) as d_resp:
+                        if d_resp.status == 200:
+                            d_res = json.loads(d_resp.read().decode("utf-8"))
+                            if d_res.get("ok"):
+                                used_daemon = True
+                                _log(f"[Resident Daemon] Berhasil memproses {fname} dalam {d_res.get('duration_sec', 0)}s")
+                except Exception as de:
+                    _log(f"[Resident Daemon] Warning: daemon gagal untuk {fname}: {de}")
+                    used_daemon = False
+
+                # Fallback ke subproses standar jika daemon tidak merespons
+                if not used_daemon:
+                    cmd = make_script_cmd("edit_timemark_ide1.py", args)
+                    proc = subprocess.run(
+                        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                    )
 
                 if os.path.isfile(out_target):
-                    flat_target = os.path.join(photos_edited, asset_rel, fname)
-                    if os.path.abspath(flat_target) != os.path.abspath(out_target):
-                        try:
-                            os.makedirs(os.path.dirname(flat_target), exist_ok=True)
-                            shutil.copy2(out_target, flat_target)
-                        except Exception:
-                            pass
+                    stem = os.path.splitext(fname)[0]
+                    clean_src = os.path.join(os.path.dirname(out_target), f"{stem}.clean.jpg")
+                    meta_src = os.path.join(os.path.dirname(out_target), "meta.json")
                     for alt_t in ["", "Tim_1", "Tim_2", "Tim_3", "Tim_4"]:
-                        ao = os.path.join(photos_edited, alt_t, asset_rel, fname) if alt_t else os.path.join(photos_edited, asset_rel, fname)
-                        if os.path.abspath(ao) != os.path.abspath(out_target):
+                        target_dir = os.path.join(photos_edited, alt_t, asset_rel) if alt_t else os.path.join(photos_edited, asset_rel)
+                        if os.path.abspath(target_dir) != os.path.abspath(os.path.dirname(out_target)):
                             try:
-                                os.makedirs(os.path.dirname(ao), exist_ok=True)
-                                shutil.copy2(out_target, ao)
+                                os.makedirs(target_dir, exist_ok=True)
+                                shutil.copy2(out_target, os.path.join(target_dir, fname))
+                                if os.path.isfile(clean_src):
+                                    shutil.copy2(clean_src, os.path.join(target_dir, f"{stem}.clean.jpg"))
+                                if os.path.isfile(meta_src):
+                                    shutil.copy2(meta_src, os.path.join(target_dir, "meta.json"))
                             except Exception:
                                 pass
+                    out_target_url = f"/api/timemark/photo-file?path={urllib.parse.quote(out_target)}&t={int(time.time())}"
                     return fname, True, {
                         "dateText": p_date,
                         "detector": detector,
                         "timestamp": time.time(),
-                        "out_target": out_target
+                        "out_target": out_target,
+                        "outputUrl": out_target_url
                     }
                 return fname, False, None
 
             processed = 0
             meta_saved = {}
-            if len(target_fnames) > 1:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(target_fnames), 3)) as executor:
-                    results = list(executor.map(_process_one_fname, target_fnames))
-            else:
-                results = [_process_one_fname(target_fnames[0])]
-
-            for fname, success, m_info in results:
+            # Proses sekuensial (max_workers=1) untuk menjaga GPU VRAM 3GB tetap stabil dan mencegah tabrakan alokasi CUDA
+            for fname in target_fnames:
+                fname, success, m_info = _process_one_fname(fname)
                 if success:
                     processed += 1
                     if m_info:
@@ -3200,47 +3496,48 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
 
             final_returned_meta = {}
             if meta_saved:
-                meta_dirs = {os.path.join(photos_edited, tim_group, asset_rel)}
-                for alt_t in ["", "Tim_1", "Tim_2", "Tim_3", "Tim_4"]:
-                    ad = os.path.join(photos_edited, alt_t, asset_rel) if alt_t else os.path.join(photos_edited, asset_rel)
-                    if os.path.isdir(ad):
-                        meta_dirs.add(ad)
+                with _PROCESS_SINGLE_LOCK:
+                    meta_dirs = {os.path.join(photos_edited, tim_group, asset_rel)}
+                    for alt_t in ["", "Tim_1", "Tim_2", "Tim_3", "Tim_4"]:
+                        ad = os.path.join(photos_edited, alt_t, asset_rel) if alt_t else os.path.join(photos_edited, asset_rel)
+                        if os.path.isdir(ad):
+                            meta_dirs.add(ad)
 
-                primary_meta_file = os.path.join(photos_edited, tim_group, asset_rel, "meta.json")
-                if os.path.isfile(primary_meta_file):
-                    try:
-                        with open(primary_meta_file, "r", encoding="utf-8") as mf:
-                            final_returned_meta = json.load(mf)
-                    except Exception:
-                        final_returned_meta = {}
-
-                for fname, m_dict in meta_saved.items():
-                    if fname not in final_returned_meta:
-                        final_returned_meta[fname] = {}
-                    final_returned_meta[fname].update(m_dict)
-
-                for target_meta_dir in meta_dirs:
-                    meta_file = os.path.join(target_meta_dir, "meta.json")
-                    curr_meta = {}
-                    if os.path.isfile(meta_file):
+                    primary_meta_file = os.path.join(photos_edited, tim_group, asset_rel, "meta.json")
+                    if os.path.isfile(primary_meta_file):
                         try:
-                            with open(meta_file, "r", encoding="utf-8") as mf:
-                                curr_meta = json.load(mf)
+                            with open(primary_meta_file, "r", encoding="utf-8") as mf:
+                                final_returned_meta = json.load(mf)
+                        except Exception:
+                            final_returned_meta = {}
+
+                    for fname, m_dict in meta_saved.items():
+                        if fname not in final_returned_meta:
+                            final_returned_meta[fname] = {}
+                        final_returned_meta[fname].update(m_dict)
+
+                    for target_meta_dir in meta_dirs:
+                        meta_file = os.path.join(target_meta_dir, "meta.json")
+                        curr_meta = {}
+                        if os.path.isfile(meta_file):
+                            try:
+                                with open(meta_file, "r", encoding="utf-8") as mf:
+                                    curr_meta = json.load(mf)
+                            except Exception:
+                                pass
+                        for fname, m_dict in final_returned_meta.items():
+                            if fname not in curr_meta:
+                                curr_meta[fname] = {}
+                            curr_meta[fname].update(m_dict)
+                        try:
+                            with open(meta_file, "w", encoding="utf-8") as mf:
+                                json.dump(curr_meta, mf, indent=2, ensure_ascii=False)
                         except Exception:
                             pass
-                    for fname, m_dict in final_returned_meta.items():
-                        if fname not in curr_meta:
-                            curr_meta[fname] = {}
-                        curr_meta[fname].update(m_dict)
-                    try:
-                        with open(meta_file, "w", encoding="utf-8") as mf:
-                            json.dump(curr_meta, mf, indent=2, ensure_ascii=False)
-                    except Exception:
-                        pass
 
             if processed > 0:
                 _invalidate_timemark_photos_cache()
-                detector_title = "Google AI Vision" if detector == "google_vision" else "Metode Biasa (HSV)"
+                detector_title = "LaMa AI (Hapus Teks)" if detector in ("paddle_ocr", "lama_ai") else ("Google AI Vision" if detector == "google_vision" else "Metode Biasa (HSV)")
                 
                 # Cari preview file dari out_target yang berhasil dibuat
                 preview_file = None
@@ -3293,7 +3590,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             x_pos = data.get("xPos")
             apply_to_folder = data.get("applyToFolder", True)
             tim_group = data.get("timGroup", "Tim_1")
-            detector = data.get("detector") or "google_vision"
+            detector = data.get("detector") or "paddle_ocr"
 
             if not raw_rel:
                 self._json({"ok": False, "error": "rawRelPath wajib diisi."}, 400)
@@ -3359,58 +3656,76 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 sub_env["PYTHONUNBUFFERED"] = "1"
                 sub_env["PYTHONIOENCODING"] = "utf-8"
 
+                save_only = data.get("saveOnly", False)
+                bake = data.get("bake", False)
                 processed_count = 0
                 for fname in target_fnames:
                     in_cand = os.path.join(src_folder, fname)
                     out_target = os.path.join(dst_folder, fname)
+                    stem = os.path.splitext(fname)[0]
 
-                    if not os.path.isfile(in_cand):
-                        if os.path.isfile(out_target):
-                            in_cand = out_target
-                        else:
-                            continue
+                    clean_cand = os.path.join(dst_folder, f"{stem}.clean.jpg")
+                    if not os.path.isfile(clean_cand):
+                        cand_s_clean = os.path.join(src_folder, f"{stem}.clean.jpg")
+                        if os.path.isfile(cand_s_clean):
+                            clean_cand = cand_s_clean
 
-                    cmd = make_script_cmd("edit_timemark_ide1.py", [
-                        "--input", in_cand,
-                        "--single-out", out_target,
-                        "--detector", detector,
-                        "--no-time"
-                    ])
-                    if date_text:
-                        cmd.extend(["--date", date_text])
-                    if y_pos is not None and str(y_pos) != "":
-                        cmd.extend(["--y-override", str(y_pos)])
-                    if x_pos is not None and str(x_pos) != "":
-                        cmd.extend(["--x-override", str(x_pos)])
-
-                    res = subprocess.run(
-                        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
-                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-                    )
-                    if res.returncode != 0:
-                        err_out = res.stderr.strip() or res.stdout.strip() or "Proses override timemark gagal"
-                        _log(f"Manual edit error on {in_cand}: {err_out}")
-                        self._json({"ok": False, "error": err_out}, 500)
-                        return
-
-                    unedit_f = out_target + ".unedited"
-                    if os.path.isfile(unedit_f):
-                        try:
-                            os.remove(unedit_f)
-                        except Exception:
-                            pass
-
-                    if os.path.isfile(out_target):
+                    if save_only:
+                        # Non-destructive virtual layer (Ide User): simpan koordinat ke meta.json murni (<1 ms)
                         processed_count += 1
-                        dst_meta[fname] = {
-                            "stage": "stage_manual_override",
-                            "detector": detector,
-                            "dateText": date_text,
-                            "updatedAt": datetime.now().isoformat(),
-                            "xPos": int(x_pos) if x_pos is not None else 14,
-                            "yPos": int(y_pos) if y_pos is not None else 220,
-                            "needCorrection": False
-                        }
+                    elif bake and os.path.isfile(clean_cand):
+                        # Fast-path in-memory stamp tanpa subprocess
+                        if _stamp_clean_photo_direct(clean_cand, out_target, date_text, x_pos, y_pos):
+                            processed_count += 1
+                    else:
+                        if not os.path.isfile(in_cand):
+                            if os.path.isfile(out_target):
+                                in_cand = out_target
+                            else:
+                                continue
+
+                        cmd = make_script_cmd("edit_timemark_ide1.py", [
+                            "--input", in_cand,
+                            "--single-out", out_target,
+                            "--detector", detector,
+                            "--no-time"
+                        ])
+                        if date_text:
+                            cmd.extend(["--date", date_text])
+                        if y_pos is not None and str(y_pos) != "":
+                            cmd.extend(["--y-override", str(y_pos)])
+                        if x_pos is not None and str(x_pos) != "":
+                            cmd.extend(["--x-override", str(x_pos)])
+
+                        res = subprocess.run(
+                            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                        )
+                        if res.returncode != 0:
+                            err_out = res.stderr.strip() or res.stdout.strip() or "Proses override timemark gagal"
+                            _log(f"Manual edit error on {in_cand}: {err_out}")
+                            self._json({"ok": False, "error": err_out}, 500)
+                            return
+
+                        unedit_f = out_target + ".unedited"
+                        if os.path.isfile(unedit_f):
+                            try:
+                                os.remove(unedit_f)
+                            except Exception:
+                                pass
+
+                        if os.path.isfile(out_target):
+                            processed_count += 1
+
+                    dst_meta[fname] = {
+                        "stage": "stage_manual_override",
+                        "detector": detector,
+                        "dateText": date_text,
+                        "updatedAt": datetime.now().isoformat(),
+                        "xPos": int(x_pos) if x_pos is not None else 14,
+                        "yPos": int(y_pos) if y_pos is not None else 220,
+                        "needCorrection": False
+                    }
 
                 try:
                     with open(dst_meta_path, "w", encoding="utf-8") as dmf:
@@ -3475,27 +3790,26 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
+
+            save_only = data.get("saveOnly", False)
+            bake = data.get("bake", False)
+            dates_per_photo = data.get("datesPerPhoto") or {}
 
             meta_saved = {}
             last_out_target = None
             for fname in target_fnames:
                 stem = os.path.splitext(fname)[0]
-                if not apply_to_folder:
+                if dates_per_photo and fname in dates_per_photo:
+                    p_date = str(dates_per_photo[fname]).strip()
+                elif not apply_to_folder:
                     # Edit tunggal foto ini saja (misal khusus foto kedua 50.jpg): gunakan date_text langsung
                     p_date = date_text
                 else:
                     p_date = calc_photo_date(date_text, stem)
-
-                # 1. Cari file input mentah
-                in_cand = None
-                for cand in [
-                    os.path.join(photos_export, asset_rel, fname),
-                    os.path.join(photos_export, "Tim_1", asset_rel, fname),
-                    os.path.join(photos_export, "Tim_2", asset_rel, fname)
-                ]:
-                    if os.path.isfile(cand):
-                        in_cand = cand
-                        break
 
                 # 2. Tentukan target output di photos_edited (prioritaskan folder yang sudah ada)
                 out_target = None
@@ -3515,68 +3829,133 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     else:
                         out_target = os.path.join(photos_edited, asset_rel, fname)
 
-                # Jika in_cand belum ketemu, gunakan foto yang sudah ada
-                if not in_cand:
-                    if out_target and os.path.isfile(out_target):
-                        in_cand = out_target
-                    else:
-                        continue
-
                 os.makedirs(os.path.dirname(out_target), exist_ok=True)
+                clean_target = os.path.join(os.path.dirname(out_target), f"{stem}.clean.jpg")
+                if not os.path.isfile(clean_target):
+                    for cand_c in [
+                        os.path.join(photos_edited, asset_rel, f"{stem}.clean.jpg"),
+                        os.path.join(photos_edited, "Tim_1", asset_rel, f"{stem}.clean.jpg"),
+                        os.path.join(photos_edited, "Tim_2", asset_rel, f"{stem}.clean.jpg"),
+                        os.path.join(photos_export, asset_rel, f"{stem}.clean.jpg")
+                    ]:
+                        if os.path.isfile(cand_c):
+                            clean_target = cand_c
+                            break
 
-                cmd = make_script_cmd("edit_timemark_ide1.py", [
-                    "--input", in_cand,
-                    "--single-out", out_target,
-                    "--detector", detector
-                ])
-                if p_date:
-                    cmd.extend(["--date", p_date])
-                if y_pos is not None and str(y_pos) != "":
-                    cmd.extend(["--y-override", str(y_pos)])
-                if x_pos is not None and str(x_pos) != "":
-                    cmd.extend(["--x-override", str(x_pos)])
+                if save_only:
+                    # Jalur Virtual / Non-destructive (Ide User): simpan koordinat murni tanpa sentuh pixel (<1 ms)
+                    last_out_target = out_target
+                elif bake and os.path.isfile(clean_target):
+                    # Fast-path stamping langsung dari clean base tanpa subprocess
+                    _stamp_clean_photo_direct(clean_target, out_target, p_date, x_pos, y_pos)
+                    last_out_target = out_target
+                elif not save_only:
+                    # 1. Cari file input mentah
+                    in_cand = None
+                    for cand in [
+                        os.path.join(photos_export, asset_rel, fname),
+                        os.path.join(photos_export, "Tim_1", asset_rel, fname),
+                        os.path.join(photos_export, "Tim_2", asset_rel, fname)
+                    ]:
+                        if os.path.isfile(cand):
+                            in_cand = cand
+                            break
 
-                res_run = subprocess.run(
-                    cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-                )
+                    # Jika in_cand belum ketemu, gunakan foto yang sudah ada
+                    if not in_cand:
+                        if out_target and os.path.isfile(out_target):
+                            in_cand = out_target
+                        else:
+                            continue
 
-                if not os.path.isfile(out_target):
-                    err_msg = res_run.stderr.strip() or res_run.stdout.strip() or "Gagal membuat berkas timemark hasil edit."
-                    _log(f"Manual edit failed on {out_target}: {err_msg}")
-                    self._json({"ok": False, "error": err_msg}, 500)
-                    return
+                    cmd = make_script_cmd("edit_timemark_ide1.py", [
+                        "--input", in_cand,
+                        "--single-out", out_target,
+                        "--detector", detector
+                    ])
+                    if p_date:
+                        cmd.extend(["--date", p_date])
+                    if y_pos is not None and str(y_pos) != "":
+                        cmd.extend(["--y-override", str(y_pos)])
+                    if x_pos is not None and str(x_pos) != "":
+                        cmd.extend(["--x-override", str(x_pos)])
 
-                last_out_target = out_target
+                    res_run = subprocess.run(
+                        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                    )
 
-                # Jika ada duplikasi di path tanpa Tim_1 atau dengan Tim_1, sinkronkan
+                    if not os.path.isfile(out_target):
+                        err_msg = res_run.stderr.strip() or res_run.stdout.strip() or "Gagal membuat berkas timemark hasil edit."
+                        _log(f"Manual edit failed on {out_target}: {err_msg}")
+                        self._json({"ok": False, "error": err_msg}, 500)
+                        return
+
+                    last_out_target = out_target
+
+                # Cari koordinat xPos dan yPos yang sudah ada dari seluruh subfolder Tim
+                cand_meta_dirs = [
+                    os.path.dirname(out_target),
+                    os.path.join(photos_edited, asset_rel),
+                    os.path.join(photos_edited, "Tim_1", asset_rel),
+                    os.path.join(photos_edited, "Tim_2", asset_rel),
+                    os.path.join(photos_edited, "Tim_3", asset_rel),
+                    os.path.join(photos_edited, "Tim_4", asset_rel),
+                ]
+                ex_item = {}
+                for cmd_dir in cand_meta_dirs:
+                    emf_p = os.path.join(cmd_dir, "meta.json")
+                    if os.path.isfile(emf_p):
+                        try:
+                            with open(emf_p, "r", encoding="utf-8") as emf:
+                                cand_data = json.load(emf).get(fname, {})
+                                if cand_data:
+                                    if not ex_item:
+                                        ex_item = cand_data
+                                    # Jika menemukan yPos yang spesifik (bukan sekadar fallback 220), gunakan ini
+                                    if cand_data.get("yPos") and cand_data.get("yPos") != 220:
+                                        ex_item = cand_data
+                                        break
+                        except Exception:
+                            pass
+
+                final_y = int(y_pos) if (y_pos is not None and str(y_pos) != "") else ex_item.get("yPos", 220)
+                final_x = int(x_pos) if (x_pos is not None and str(x_pos) != "") else ex_item.get("xPos", 14)
+
+                # Jika ada duplikasi di seluruh folder Tim_1..Tim_4 dan root, sinkronkan file gambarnya
                 alt_outs = [
                     os.path.join(photos_edited, asset_rel, fname),
                     os.path.join(photos_edited, "Tim_1", asset_rel, fname),
-                    os.path.join(photos_edited, "Tim_2", asset_rel, fname)
+                    os.path.join(photos_edited, "Tim_2", asset_rel, fname),
+                    os.path.join(photos_edited, "Tim_3", asset_rel, fname),
+                    os.path.join(photos_edited, "Tim_4", asset_rel, fname)
                 ]
                 for ao in alt_outs:
-                    if ao != out_target:
+                    ao_clean = os.path.join(os.path.dirname(ao), f"{stem}.clean.jpg")
+                    if os.path.isfile(ao_clean):
+                        _stamp_clean_photo_direct(ao_clean, ao, p_date, final_x, final_y)
+                    elif not save_only and os.path.isfile(out_target) and ao != out_target and os.path.isdir(os.path.dirname(ao)):
                         try:
-                            os.makedirs(os.path.dirname(ao), exist_ok=True)
                             shutil.copy2(out_target, ao)
                         except Exception:
                             pass
 
                 meta_saved[fname] = {
+                    **ex_item,
                     "dateText": p_date,
-                    "yPos": int(y_pos) if (y_pos is not None and str(y_pos) != "") else 220,
-                    "xPos": int(x_pos) if (x_pos is not None and str(x_pos) != "") else 14,
+                    "yPos": final_y,
+                    "xPos": final_x,
                     "manualEdit": True,
-                    "detector": detector,
-                    "timestamp": time.time()
+                    "detector": detector or ex_item.get("detector", "paddle_ocr"),
+                    "timestamp": time.time(),
+                    "updatedAt": datetime.now().isoformat()
                 }
 
             if meta_saved:
-                # Simpan meta.json di folder output
+                # Simpan meta.json di SEMUA folder Tim yang memuat folder aset ini
                 meta_dirs = {os.path.dirname(out_target)}
                 for ao in alt_outs:
-                    if os.path.isfile(ao):
+                    if os.path.isdir(os.path.dirname(ao)):
                         meta_dirs.add(os.path.dirname(ao))
 
                 for target_meta_dir in meta_dirs:
@@ -3630,7 +4009,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             base_dir = data.get("baseExportDir") or data.get("folder") or ""
             source_rel = data.get("sourceRel") or ""
             target_rel = data.get("targetRel") or ""
-            detector = data.get("detector") or "google_vision"
+            detector = data.get("detector") or "paddle_ocr"
 
             if not source_rel or not target_rel:
                 self._json({"ok": False, "error": "sourceRel dan targetRel wajib diisi."}, 400)
@@ -3687,6 +4066,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
 
             for file_p, rel_p in [(src_file, norm_src), (tgt_file, norm_tgt)]:
                 # Ambil date.txt jika ada
@@ -3755,7 +4138,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
 
             base_dir = data.get("baseExportDir") or data.get("folder") or ""
             rel = (data.get("rel") or "").replace("\\", "/").strip("/")
-            detector = data.get("detector") or "google_vision"
+            detector = data.get("detector") or "paddle_ocr"
 
             if not rel:
                 self._json({"ok": False, "error": "Parameter rel wajib diisi."}, 400)
@@ -3907,6 +4290,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
 
             # Cari semua target folder aset yang sudah ada di 04_photos_edited (Tim_1/Tim_2/Tim_3/Tim_4/root)
             existing_targets = []
@@ -4005,7 +4392,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             source_dir = data.get("sourceDir") or ""
             target_dir = data.get("targetDir") or ""
             date_text = (data.get("dateText") or "").strip()
-            detector = data.get("detector") or "google_vision"
+            detector = data.get("detector") or "paddle_ocr"
             folders = data.get("folders") or []
 
             if not source_dir or not os.path.isdir(source_dir):
@@ -4029,6 +4416,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
 
             src_root, src_raw, _ = _resolve_photo_directories(source_dir)
             if not os.path.isdir(src_raw) and os.path.isdir(source_dir):
@@ -4200,6 +4591,39 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
 
 
 
+    def _handle_timemark_bake_stamp(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            data = json.loads(body) if body else {}
+
+            base_dir = data.get("baseExportDir") or data.get("folder") or ""
+            raw_rel = data.get("rawRelPath") or data.get("assetRelPath") or ""
+
+            export_root, _, photos_edited = _resolve_photo_directories(base_dir)
+            norm_rel = raw_rel.replace("\\", "/").strip("/")
+            parts = norm_rel.split("/")
+            asset_rel = "/".join(parts[:-1]) if norm_rel.lower().endswith(".jpg") else norm_rel
+
+            stamped_total = 0
+            for cand_dir in [
+                os.path.join(photos_edited, asset_rel),
+                os.path.join(photos_edited, "Tim_1", asset_rel),
+                os.path.join(photos_edited, "Tim_2", asset_rel)
+            ]:
+                if os.path.isdir(cand_dir):
+                    stamped_total += _ensure_asset_photos_stamped(cand_dir)
+
+            _invalidate_timemark_photos_cache()
+            self._json({
+                "ok": True,
+                "message": f"Berhasil menempelkan tanggal ke {stamped_total} foto fisik JPG!" if stamped_total > 0 else "Foto sudah siap dan bertanggal.",
+                "stampedCount": stamped_total
+            })
+        except Exception as e:
+            _log(f"Bake stamp error: {e}")
+            self._json({"ok": False, "error": str(e)}, 500)
+
     def _handle_timemark_remerge_single(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -4213,6 +4637,21 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             merged_dir = data.get("mergedDir") or ""
 
             export_root, _, photos_edited = _resolve_photo_directories(base_dir)
+
+            # Pastikan seluruh foto editan ter-stamp dari clean base sebelum digabung ke PDF
+            cand_asset_dirs = []
+            if raw_rel:
+                norm_rel = raw_rel.replace("\\", "/").strip("/")
+                parts = norm_rel.split("/")
+                a_rel = "/".join(parts[:-1]) if norm_rel.lower().endswith(".jpg") else norm_rel
+                cand_asset_dirs.extend([
+                    os.path.join(photos_edited, a_rel),
+                    os.path.join(photos_edited, "Tim_1", a_rel),
+                    os.path.join(photos_edited, "Tim_2", a_rel)
+                ])
+            for ad in cand_asset_dirs:
+                if os.path.isdir(ad):
+                    _ensure_asset_photos_stamped(ad)
 
             if not target_dir or not os.path.isdir(target_dir):
                 cand_targets = [
@@ -4267,25 +4706,51 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
 
-            cmd = make_script_cmd("merge_pdf_foto.py", [
-                "--input", target_dir,
-                "--photos", photos_edited,
-                "--output", merged_dir,
-                "--file", pdf_name
-            ])
+            # Ambil semua berkas PDF target yang relevan (jika ada lebih dari 1 target PDF)
+            pdf_names_to_merge = data.get("pdfNames") or ([pdf_name] if pdf_name else [])
+            if not pdf_names_to_merge and pdf_name:
+                pdf_names_to_merge = [pdf_name]
 
-            res = subprocess.run(
-                cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-            )
-
+            last_res = None
             out_file_path = ""
-            for r, d, files in os.walk(merged_dir):
-                d[:] = [x for x in d if x.lower() not in ("backups", "backup", "_temp_merged")]
-                if pdf_name in files:
-                    out_file_path = os.path.join(r, pdf_name)
-                    break
+            for single_pdf in pdf_names_to_merge:
+                cmd = make_script_cmd("merge_pdf_foto.py", [
+                    "--input", target_dir,
+                    "--photos", photos_edited,
+                    "--output", merged_dir,
+                    "--file", single_pdf,
+                    "--split-multi-asset"
+                ])
+
+                res = subprocess.run(
+                    cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                )
+                last_res = res
+
+                # Cari berkas hasil merge di merged_dir
+                cur_out = ""
+                for r, d, files in os.walk(merged_dir):
+                    d[:] = [x for x in d if x.lower() not in ("backups", "backup", "_temp_merged")]
+                    if single_pdf in files:
+                        cur_out = os.path.join(r, single_pdf)
+                        break
+
+                if cur_out:
+                    out_file_path = cur_out
+                    # Sinkronkan kembali ke posisi berkas asli di folder sumber (target_dir) jika ada
+                    orig_target = os.path.join(target_dir, single_pdf)
+                    if os.path.isfile(orig_target):
+                        try:
+                            shutil.copy2(cur_out, orig_target)
+                            _log(f"Synchronized merged PDF to source target: {orig_target}")
+                        except Exception as e_sync:
+                            _log(f"Notice synchronizing merged PDF to target_dir: {e_sync}")
 
             file_url = f"/api/timemark/photo-file?path={urllib.parse.quote(os.path.abspath(out_file_path))}" if out_file_path else ""
 
@@ -4294,10 +4759,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 "ok": True,
                 "success": True,
                 "status": "ok",
-                "pdfName": pdf_name,
+                "pdfName": pdf_names_to_merge[0] if pdf_names_to_merge else pdf_name,
                 "outputPath": out_file_path,
                 "fileUrl": file_url,
-                "details": res.stdout[-400:] if res.stdout else ""
+                "details": last_res.stdout[-400:] if (last_res and last_res.stdout) else ""
             })
         except Exception as e:
             _log(f"Remerge single error: {e}")
@@ -4383,6 +4848,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
 
             cmd = make_script_cmd("edit_timemark_ide1.py", [
                 "--input", target_photo,
@@ -4470,6 +4939,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
 
             cmd = make_script_cmd("edit_timemark_ide1.py", [
                 "--input", target_photo,
@@ -4555,6 +5028,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
 
             cmd = make_script_cmd("correct_serat_optik_cores.py", [
                 "--folders", folder,
@@ -4627,6 +5104,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             sub_env = os.environ.copy()
             sub_env["PYTHONUNBUFFERED"] = "1"
             sub_env["PYTHONIOENCODING"] = "utf-8"
+            sub_env["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+            sub_env["OMP_WAIT_POLICY"] = "PASSIVE"
+            sub_env["KMP_BLOCKTIME"] = "0"
+            sub_env["OMP_NUM_THREADS"] = "1"
 
             cmd = make_script_cmd("audit_and_correct_personnel.py", [
                 "--folder", folder,
@@ -4901,6 +5382,10 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
 
     def _handle_select_folder(self):
         global _selected_folder
+        if not _dialog_lock.acquire(blocking=False):
+            # Dialog pemilihan sudah terbuka di proses lain, abaikan panggilan ganda
+            self._json({"path": None, "name": None, "folder": None, "busy": True})
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
             if length > 0:
@@ -4914,8 +5399,16 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             _log(f"Folder selection error: {e}")
             self._json({"error": str(e)}, 500)
+        finally:
+            try:
+                _dialog_lock.release()
+            except Exception:
+                pass
 
     def _handle_select_file(self):
+        if not _dialog_lock.acquire(blocking=False):
+            self._json({"path": None, "name": None, "busy": True})
+            return
         try:
             fpath = _pick_file_native()
             if fpath:
@@ -4925,14 +5418,27 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             _log(f"File selection error: {e}")
             self._json({"error": str(e)}, 500)
+        finally:
+            try:
+                _dialog_lock.release()
+            except Exception:
+                pass
 
     def _handle_select_files(self):
+        if not _dialog_lock.acquire(blocking=False):
+            self._json({"paths": [], "items": [], "busy": True})
+            return
         try:
             fpaths = _pick_files_native()
             self._json({"paths": fpaths, "items": [{"path": p, "name": os.path.basename(p)} for p in fpaths]})
         except Exception as e:
             _log(f"Multi-file selection error: {e}")
             self._json({"error": str(e)}, 500)
+        finally:
+            try:
+                _dialog_lock.release()
+            except Exception:
+                pass
 
     def _handle_date_changer_scan(self):
         try:
@@ -5640,6 +6146,8 @@ def main():
     _log(f"Tesseract: {TESSERACT_CMD} exists={os.path.exists(TESSERACT_CMD)}")
     _log(f"Poppler: {POPPLER_DIR} exists={os.path.exists(POPPLER_DIR)}")
     _init_persistent_storage()
+    # Pre-warm AI Worker (LaMa on GPU VRAM + PaddleOCR in RAM) di latar belakang
+    threading.Thread(target=_start_timemark_resident_daemon, daemon=True).start()
     
     if not os.path.isdir(DIST_DIR):
         msg = f"Build not found at {DIST_DIR}"
@@ -5681,6 +6189,7 @@ def main():
         _log(traceback.format_exc())
         print(f"CRASH: {e}")
     finally:
+        _stop_timemark_resident_daemon()
         global _storage_lock_fd
         if _storage_lock_fd is not None:
             try:

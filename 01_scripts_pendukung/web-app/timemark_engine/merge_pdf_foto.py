@@ -800,13 +800,25 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
 
         found = False
         candidates = get_identifier_candidates(identifier)
-        if loc_id and loc_id not in candidates:
+        if loc_id:
+            loc_cands = get_identifier_candidates(loc_id)
             if split_multi_asset:
                 # Prioritaskan folder foto nama spesifik aset (misal: 'OTB 1 ER BOGOR'),
-                # dan jadikan loc_id ('ER SINYAL BOO') hanya sebagai cadangan di akhir
-                candidates.append(loc_id)
+                # dan jadikan variasi loc_id ('JPL 28 BOO', 'ER SINYAL BOO') sebagai cadangan di akhir
+                for lc in loc_cands:
+                    if lc not in candidates:
+                        candidates.append(lc)
             else:
-                candidates.insert(0, loc_id)
+                for lc in reversed(loc_cands):
+                    if lc not in candidates:
+                        candidates.insert(0, lc)
+
+        # Fallback tambahan: variasi lokasi / identifier dari nama berkas PDF target
+        fn_loc = extract_location_from_filename(pdf_path.name) or extract_identifier(pdf_path.name, category)
+        if fn_loc:
+            for fc in get_identifier_candidates(fn_loc):
+                if fc not in candidates:
+                    candidates.append(fc)
 
         def _check_folder_photos(folder: Path):
             f0, f50, f100 = folder / "0.jpg", folder / "50.jpg", folder / "100.jpg"
@@ -1026,11 +1038,11 @@ def process_pdf(pdf_path: Path, photos_dir: Path, output_dir: Path,
         return f"skipped: {out_pdf_path.name} sudah ada (overwrite=off)"
     
     try:
-        doc.save(str(out_pdf_path))
+        doc.save(str(out_pdf_path), garbage=4, deflate=True, clean=True)
     except Exception as save_err:
         try:
             temp_out = out_pdf_path.with_name(f"{out_pdf_path.stem}_tmp_{os.getpid()}{out_pdf_path.suffix}")
-            doc.save(str(temp_out))
+            doc.save(str(temp_out), garbage=4, deflate=True, clean=True)
             doc.close()
             temp_out.replace(out_pdf_path)
         except Exception:
@@ -1394,6 +1406,36 @@ def main():
         return 1
 
     ensure_dir(output_dir)
+
+    # Deferred Stamping: Pastikan seluruh foto clean base ter-stamp ke foto target sesuai koordinat meta.json
+    try:
+        from edit_timemark_ide1 import draw_textbox, BOX_HEIGHT_RATIO, BOX_WIDTH_RATIO
+        for clean_p in photos_dir.rglob("*.clean.jpg"):
+            stem = clean_p.stem.replace(".clean", "")
+            target_p = clean_p.parent / f"{stem}.jpg"
+            meta_p = clean_p.parent / "meta.json"
+            if meta_p.exists():
+                try:
+                    m_data = json.loads(meta_p.read_text(encoding="utf-8"))
+                    p_info = m_data.get(f"{stem}.jpg", {})
+                    d_text = p_info.get("dateText", "")
+                    if d_text:
+                        yp = p_info.get("yPos", 220)
+                        xp = p_info.get("xPos", 14)
+                        with Image.open(clean_p) as _cim:
+                            _cim = _cim.convert("RGB")
+                            _w, _h = _cim.size
+                            _y1 = int((yp / 300.0) * _h) if yp <= 300 else yp
+                            _x1 = int((xp / 300.0) * _w) if xp <= 300 else xp
+                            _bh = max(10, int(_h * BOX_HEIGHT_RATIO))
+                            _bw = max(20, int(_w * BOX_WIDTH_RATIO))
+                            _box = (_x1, _y1, min(_w, _x1 + _bw), min(_h, _y1 + _bh))
+                            _out = draw_textbox(_cim, _box, d_text, no_bg=True)
+                            _out.save(target_p, quality=95, subsampling=0)
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     EXCLUDE_DIRS = {"backups", "backup", "_temp_merged", "05_pdf_merged", "03_export_foto", "03_photos_export", "04_photos_edited", "04_foto_edited", ".git", "node_modules"}
     EXCLUDE_LOWER = {x.lower() for x in EXCLUDE_DIRS}

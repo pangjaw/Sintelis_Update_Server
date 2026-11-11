@@ -30,7 +30,7 @@ if res_npm_b.returncode != 0:
     print("[ERROR] npm run build gagal!")
     sys.exit(1)
 
-# 1. Clean old exe in dist
+# 1. Clean old exe in dist & build directory
 dist_exe = os.path.join(WEBAPP_DIR, "dist", "SintelisUtility.exe")
 if os.path.exists(dist_exe):
     try:
@@ -38,6 +38,25 @@ if os.path.exists(dist_exe):
         print("[1/4] Berkas exe lama di dist/ berhasil dibersihkan.")
     except Exception as e:
         print("[WARN] Gagal menghapus exe lama:", e)
+
+build_dir = os.path.join(WEBAPP_DIR, "build")
+if os.path.exists(build_dir):
+    try:
+        def _on_rm_error(func, path, exc_info):
+            import stat
+            try:
+                os.chmod(path, stat.S_IWRITE)
+                func(path)
+            except Exception:
+                pass
+
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(build_dir, onexc=lambda fn, p, err: _on_rm_error(fn, p, err))
+        else:
+            shutil.rmtree(build_dir, onerror=_on_rm_error)
+        print("[1/4] Direktori cache build/ lama berhasil dibersihkan.")
+    except Exception as e:
+        print("[WARN] Gagal membersihkan direktori build lama:", e)
 
 # 2. PyInstaller build
 print("[2/4] Menjalankan PyInstaller compile (mohon tunggu ~60-90s)...")

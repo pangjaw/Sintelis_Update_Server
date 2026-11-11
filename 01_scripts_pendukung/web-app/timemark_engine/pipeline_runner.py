@@ -177,7 +177,7 @@ def run_cmd(cmd_list, step_key, step_name, start_pct=0.0, end_pct=100.0):
         add_log("error", f"✗ Galat pada {step_name}: {e}")
         return False
 
-def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode="dual", overwrite_original=False, detector="google_vision", split_multi_asset=False, include_time=True, custom_schedule_file=None):
+def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selected_steps, mode="dual", overwrite_original=False, detector="paddle_ocr", split_multi_asset=False, include_time=True, custom_schedule_file=None):
     with _state_lock:
         state["running"] = True
         state["cancelled"] = False
@@ -375,8 +375,9 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
             with _state_lock:
                 state["current_step"] = 4
                 state["progress"] = int((step_idx - 1) / total_steps * 100)
-            chosen_detector = detector if detector in ("google_vision", "guide") else "google_vision"
-            add_log("info", f"🔍 Detektor Timemark: {'Google Cloud Vision AI' if chosen_detector == 'google_vision' else 'Metode Biasa (HSV Garis Panduan)'}")
+            chosen_detector = detector if detector in ("paddle_ocr", "lama_ai", "google_vision", "guide") else "paddle_ocr"
+            det_label = 'LaMa AI (Hapus Teks)' if chosen_detector in ('paddle_ocr', 'lama_ai') else ('Google Cloud Vision AI' if chosen_detector == 'google_vision' else 'Metode Biasa (HSV Garis Panduan)')
+            add_log("info", f"🔍 Detektor Timemark: {det_label}")
             step4_args = [
                 "--input", raw_photos_dir,
                 "--output", edited_photos_dir,
@@ -388,7 +389,8 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
             cmd = make_cmd("edit_timemark_ide1.py", step4_args)
             s_pct = (step_idx - 1) / total_steps * 100.0
             e_pct = step_idx / total_steps * 100.0
-            ok = run_cmd(cmd, "step4", f"Step 4: Edit Watermark Timemark Foto ({'AI Vision' if chosen_detector == 'google_vision' else 'HSV'})", s_pct, e_pct)
+            det_short = 'LaMa AI' if chosen_detector in ('paddle_ocr', 'lama_ai') else ('AI Vision' if chosen_detector == 'google_vision' else 'HSV')
+            ok = run_cmd(cmd, "step4", f"Step 4: Edit Watermark Timemark Foto ({det_short})", s_pct, e_pct)
             if not ok:
                 return
 
@@ -504,7 +506,7 @@ def _execute_pipeline_task(source_dir, target_dir, export_dir, merged_dir, selec
         with _state_lock:
             state["running"] = False
 
-def start_pipeline(source_dir, target_dir=None, export_dir=None, merged_dir=None, selected_steps=None, mode="dual", overwrite_original=False, detector="google_vision", split_multi_asset=False, include_time=True, custom_schedule_file=None):
+def start_pipeline(source_dir, target_dir=None, export_dir=None, merged_dir=None, selected_steps=None, mode="dual", overwrite_original=False, detector="paddle_ocr", split_multi_asset=False, include_time=True, custom_schedule_file=None):
     steps_list = selected_steps if isinstance(selected_steps, list) else ["1", "1.5", "2", "3", "4", "5"]
 
     if mode == "single":

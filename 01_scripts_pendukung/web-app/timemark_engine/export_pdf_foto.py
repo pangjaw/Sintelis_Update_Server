@@ -834,8 +834,9 @@ def identifier_output_dir(root: Path, btp: str, category: str, identifier: str) 
 def extract_all_funclocs(page_text: str) -> list[str]:
     """Extract ALL Funcloc lines from page 1 text (for multi-funcloc detection).
     Handles line-wrapped asset identifiers (e.g. 'SIN11782 : SINYAL MUKA \nMJ20 CLT').
+    Tolerates OCR typo characters (e.g. 'O'/'o' for 0, 'I'/'l' for 1 in 'JPL1O526').
     """
-    FCL_PREFIX = r'(?:TRA|TLK|TWR|INB|CDA|JPL|CTC|OTB|GEN|BNR|SIN|WSL|AXL)\d{4,}'
+    FCL_PREFIX = r'(?:TRA|TLK|TWR|INB|CDA|JPL|CTC|OTB|GEN|BNR|SIN|WSL|AXL)[0-9OIlBS\d]{3,}'
     STOP_PREFIX = re.compile(
         r'^(?:LOKASI|DISETUJUI|DIKETAHUI|TANGGAL|PERIODE|DILAKSANAKAN|NO\b|ITEM\b|NOMOR\s+ASET|STE\b|PERAWATAN\b|PEMERIKSAAN\b|FOTO\b|POWERED\b|:)',
         re.I
@@ -848,9 +849,11 @@ def extract_all_funclocs(page_text: str) -> list[str]:
         if re.search(FCL_PREFIX + r'\s*:', line, re.I):
             combined = line
             # Jika baris berikutnya adalah lanjutan nama aset yang terpotong baris (seperti 'MJ20 CLT')
+            # Catatan: Baris lanjutan nama aset tidak pernah memuat tanda ':'
             if i + 1 < len(raw_lines):
                 nxt = raw_lines[i + 1]
                 if (not re.search(FCL_PREFIX + r'\s*:', nxt, re.I)
+                        and ':' not in nxt
                         and not STOP_PREFIX.search(nxt)
                         and len(nxt) <= 35):
                     combined = f"{combined} {nxt}"
