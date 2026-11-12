@@ -3490,7 +3490,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     parts = [p for p in rel.split("/") if p and p != "."]
                     if not parts or len(parts) < 2:
                         continue
-                    if dirs and not photo_files:
+                    if not photo_files:
                         continue
                     detail = parts[-1]
                     category = parts[-2] if len(parts) >= 2 else "ASET"
@@ -3514,21 +3514,41 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                             "tim": tim
                         }
                     else:
-                        # Prioritaskan folder editan yang memiliki meta manualEdit atau Tim_1
+                        # Prioritaskan folder editan yang punya foto aktual, manualEdit, atau mtime terbaru
                         prev_dir = asset_dict[key].get("edited_dir") or ""
+                        prev_files = asset_dict[key].get("edited_files") or set()
+                        prev_has_photos = any(pf in prev_files for pf in ("0.jpg", "50.jpg", "100.jpg"))
                         replace_edited = False
-                        if not prev_dir:
+                        if not prev_dir or not prev_has_photos:
                             replace_edited = True
-                        elif "meta.json" in f_set:
-                            try:
-                                with open(os.path.join(root, "meta.json"), "r", encoding="utf-8", errors="ignore") as _mf_test:
-                                    _m_test = json.load(_mf_test)
-                                    if any(isinstance(v, dict) and v.get("manualEdit") for v in _m_test.values()):
+                        else:
+                            cur_manual = False
+                            prev_manual = False
+                            if "meta.json" in f_set:
+                                try:
+                                    with open(os.path.join(root, "meta.json"), "r", encoding="utf-8", errors="ignore") as _mf_test:
+                                        _m_test = json.load(_mf_test)
+                                        cur_manual = any(isinstance(v, dict) and v.get("manualEdit") for v in _m_test.values())
+                                except Exception:
+                                    pass
+                            if "meta.json" in prev_files:
+                                try:
+                                    with open(os.path.join(prev_dir, "meta.json"), "r", encoding="utf-8", errors="ignore") as _mf_prev:
+                                        _m_prev = json.load(_mf_prev)
+                                        prev_manual = any(isinstance(v, dict) and v.get("manualEdit") for v in _m_prev.values())
+                                except Exception:
+                                    pass
+                            if cur_manual and not prev_manual:
+                                replace_edited = True
+                            elif cur_manual == prev_manual:
+                                try:
+                                    cur_mtime = max(os.path.getmtime(os.path.join(root, pf)) for pf in photo_files)
+                                    prev_pfs = [pf for pf in ("0.jpg", "50.jpg", "100.jpg") if pf in prev_files]
+                                    prev_mtime = max(os.path.getmtime(os.path.join(prev_dir, pf)) for pf in prev_pfs) if prev_pfs else 0.0
+                                    if cur_mtime > prev_mtime:
                                         replace_edited = True
-                            except Exception:
-                                pass
-                        if not replace_edited and "tim_1" in root.lower() and "tim_1" not in prev_dir.lower():
-                            replace_edited = True
+                                except Exception:
+                                    pass
 
                         if replace_edited:
                             asset_dict[key]["edited_dir"] = root
@@ -6806,8 +6826,36 @@ def main():
         min_size=(1000, 600),
     )
     _log("Window created, binding events...")
-    webview.windows[0].events.minimized += on_minimized
-    webview.windows[0].events.restored += on_restored
+    win = webview.windows[0]
+    win.events.minimized += on_minimized
+    win.events.restored += on_restored
+
+    def _on_loaded_bind_drop():
+        try:
+            from webview.dom import DOMEventHandler
+
+            def _on_native_drop(e):
+                try:
+                    files = (e or {}).get("dataTransfer", {}).get("files", [])
+                    paths = [
+                        f.get("pywebviewFullPath")
+                        for f in files
+                        if isinstance(f, dict) and f.get("pywebviewFullPath")
+                    ]
+                    if paths:
+                        win.evaluate_js(
+                            f"window.dispatchEvent(new CustomEvent('sintelis-native-drop', {{ detail: {{ paths: {json.dumps(paths)} }} }}));"
+                        )
+                except Exception:
+                    pass
+
+            win.dom.document.events.drop += DOMEventHandler(
+                _on_native_drop, prevent_default=False, stop_propagation=False
+            )
+        except Exception as ex:
+            _log(f"Native drop bind skipped: {ex}")
+
+    win.events.loaded += _on_loaded_bind_drop
     _log("Events bound. Starting webview...")
     webview_storage = _get_safe_webview_storage()
     try:

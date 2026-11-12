@@ -229,22 +229,41 @@ export default function PersonnelChangerSubTab() {
   };
 
   // 9. Drag & Drop
+  const processDroppedPaths = useCallback(async (rawPaths) => {
+    const clean = (rawPaths || []).filter(Boolean);
+    if (clean.length === 0) return;
+    const pdfPaths = clean.filter(p => p.toLowerCase().endsWith('.pdf'));
+    const dirPaths = clean.filter(p => !p.toLowerCase().endsWith('.pdf'));
+    if (pdfPaths.length > 0) {
+      await handleScanPaths(pdfPaths);
+    }
+    for (const dirP of dirPaths) {
+      await handleScanPaths([], dirP);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onNativeDrop = (ev) => {
+      const paths = ev?.detail?.paths || [];
+      if (paths.length > 0) {
+        processDroppedPaths(paths);
+      }
+    };
+    window.addEventListener('sintelis-native-drop', onNativeDrop);
+    return () => window.removeEventListener('sintelis-native-drop', onNativeDrop);
+  }, [processDroppedPaths]);
+
   const handleDrop = useCallback(async (e) => {
     e.preventDefault();
     e.stopPropagation();
     const droppedFiles = Array.from(e.dataTransfer.files || []).filter(f => f.name.toLowerCase().endsWith('.pdf'));
     if (droppedFiles.length === 0) return;
 
-    const paths = droppedFiles.map(f => f.path).filter(Boolean);
+    const paths = droppedFiles.map(f => f.pywebviewFullPath || f.path).filter(Boolean);
     if (paths.length > 0) {
-      await handleScanPaths(paths);
-    } else {
-      setFeedback({
-        type: 'warn',
-        text: 'Pilih file menggunakan tombol "Pilih Berkas PDF" untuk akses path langsung di aplikasi desktop.'
-      });
+      await processDroppedPaths(paths);
     }
-  }, []);
+  }, [processDroppedPaths]);
 
   const handleDragOver = (e) => {
     e.preventDefault();

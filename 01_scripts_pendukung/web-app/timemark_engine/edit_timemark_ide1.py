@@ -104,15 +104,53 @@ def _read_manual_meta(asset_dir: Path, photo_name: str) -> dict:
         return {}
 
 
-def parse_date_text(text: str) -> datetime:
-    """Parse Indonesian date text like 'Kamis, Jan 09 2025' or 'Kamis, Jan 09 2025 07:00'."""
-    m = re.match(r'\w+, (\w+) (\d{2}) (\d{4})(?: (\d{2}):(\d{2}))?', text)
+def parse_date_text(text: str) -> datetime | None:
+    """Parse date text like 'Kamis, Jan 09 2025 [07:00]', '28 Mei 2025 [07:00]', '28-05-2025', or '2025-05-28'."""
+    s = (text or "").strip()
+    if not s:
+        return None
+    month_map = {
+        "jan": 1, "januari": 1, "january": 1,
+        "feb": 2, "februari": 2, "febuari": 2, "february": 2,
+        "mar": 3, "maret": 3, "march": 3,
+        "apr": 4, "april": 4,
+        "mei": 5, "may": 5,
+        "jun": 6, "juni": 6, "june": 6,
+        "jul": 7, "juli": 7, "july": 7,
+        "agu": 8, "agt": 8, "aug": 8, "agustus": 8, "august": 8,
+        "sep": 9, "sept": 9, "september": 9,
+        "okt": 10, "oct": 10, "oktober": 10, "october": 10,
+        "nov": 11, "november": 11,
+        "des": 12, "dec": 12, "desember": 12, "december": 12,
+    }
+    # 1. 'Kamis, Jan 09 2025 [07:00]'
+    m = re.match(r'^\w+,\s*([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})(?:\s+(\d{2}):(\d{2}))?$', s)
     if m:
-        month = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"Jun":6,
-                  "Jul":7,"Agu":8,"Agt":8,"Aug":8,"Sep":9,"Okt":10,"Nov":11,"Des":12}.get(m.group(1), 1)
-        return datetime(int(m.group(3)), month, int(m.group(2)),
-                        int(m.group(4)) if m.group(4) else 7,
-                        int(m.group(5)) if m.group(5) else 0)
+        mon = month_map.get(m.group(1).lower())
+        if mon:
+            return datetime(int(m.group(3)), mon, int(m.group(2)),
+                            int(m.group(4)) if m.group(4) else 7,
+                            int(m.group(5)) if m.group(5) else 0)
+    # 2. '28 Mei 2025 [07:00]' (with optional leading weekday)
+    m2 = re.match(r'^(?:\w+,\s*)?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:\s+(\d{2}):(\d{2}))?$', s)
+    if m2:
+        mon = month_map.get(m2.group(2).lower())
+        if mon:
+            return datetime(int(m2.group(3)), mon, int(m2.group(1)),
+                            int(m2.group(4)) if m2.group(4) else 7,
+                            int(m2.group(5)) if m2.group(5) else 0)
+    # 3. '28-05-2025 [07:00]' or '28/05/2025 [07:00]'
+    m3 = re.match(r'^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(\d{2}):(\d{2}))?$', s)
+    if m3:
+        return datetime(int(m3.group(3)), int(m3.group(2)), int(m3.group(1)),
+                        int(m3.group(4)) if m3.group(4) else 7,
+                        int(m3.group(5)) if m3.group(5) else 0)
+    # 4. '2025-05-28 [07:00]'
+    m4 = re.match(r'^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?', s)
+    if m4:
+        return datetime(int(m4.group(1)), int(m4.group(2)), int(m4.group(3)),
+                        int(m4.group(4)) if m4.group(4) else 7,
+                        int(m4.group(5)) if m4.group(5) else 0)
     return None
 
 
@@ -2073,6 +2111,29 @@ def main(override_args=None):
     else:
         all_jpgs = list(input_dir.rglob("*.jpg"))
 
+    # Reset per-aset di semua folder Tim_1..Tim_4 pada 04_photos_edited untuk aset yang diproses ulang
+    if not args.single_out and not args.clear_output and input_dir.is_dir() and all_jpgs and output_dir.exists():
+        _reset_asset_rels = set()
+        for _jpg_p in all_jpgs:
+            try:
+                _rel_p = _jpg_p.relative_to(input_dir)
+                _p_parts = _rel_p.parts
+                if len(_p_parts) >= 4:
+                    _reset_asset_rels.add(asset_output_dir(Path(""), _p_parts[-4], _p_parts[-3], _p_parts[-2]))
+                elif len(_p_parts) == 3:
+                    _reset_asset_rels.add(asset_output_dir(Path(""), "", _p_parts[0], _p_parts[1]))
+            except Exception:
+                pass
+        _reset_count = 0
+        for _asset_rel in _reset_asset_rels:
+            for _tim_dir in ("Tim_1", "Tim_2", "Tim_3", "Tim_4", ""):
+                _target_sub = (output_dir / _tim_dir / _asset_rel) if _tim_dir else (output_dir / _asset_rel)
+                if _target_sub.exists():
+                    shutil.rmtree(_target_sub, ignore_errors=True)
+                    _reset_count += 1
+        if _reset_count:
+            print(f"[INFO] Reset {_reset_count} folder aset lama di 04_photos_edited (lintas Tim) sebelum rerun Step 4.", flush=True)
+
     cand_logs_dir = (input_dir.parent / "logs") if input_dir.is_dir() else Path("logs")
     logs_for_collages = cand_logs_dir if (cand_logs_dir / "cropped_collages.json").exists() else Path("logs")
     cropped_collages_set = load_cropped_collages_manifest(logs_dir=str(logs_for_collages))
@@ -2185,6 +2246,7 @@ def main(override_args=None):
                         timemark_text = format_timemark(photo_dt)
                         dst_dir = output_dir / f"Tim_{tim_n}" / asset_output_dir(Path(""), btp, category, identifier)
                     else:
+                        print(f"  │   ├── ⚠️ [WARN] Dilewati ({rel.parent}): date.txt tidak terbaca ('{folder_date}')", flush=True)
                         missing_dates.append({"folder": str(rel.parent), "btp": btp, "category": category, "identifier": identifier, "reason": "date.txt unreadable"})
                         skipped += 1
                         continue
@@ -2482,7 +2544,13 @@ def main(override_args=None):
         "stages_file": "logs/edit_stages.xlsx" if stage_details else None,
         "missing_dates_file": "logs/missing_dates.xlsx" if missing_dates else None
     }
+    if total_all_jpgs == 0:
+        print(f"⚠️ [WARN] Tidak ada berkas foto .jpg ditemukan di: {input_dir}", flush=True)
+    print(f"📊 Ringkasan Step 4: {ok} berhasil, {skipped} dilewati, {failed} gagal.", flush=True)
     print(f"__SUMMARY__:{json.dumps(summary)}", flush=True)
+    if total_all_jpgs > 0 and ok == 0 and (failed > 0 or bool(missing_dates)):
+        print(f"❌ [ERROR] Step 4 gagal memproses seluruh foto ({skipped} dilewati, {failed} gagal). Menghentikan pipeline agar tidak lanjut ke Step 5.", flush=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

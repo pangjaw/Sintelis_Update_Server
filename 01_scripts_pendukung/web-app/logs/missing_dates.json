@@ -1,1255 +1,198 @@
 [
   {
-    "folder": "BTP JAK\\PTPP\\GENTANIK JPL 01 BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 1 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PTPP",
-    "identifier": "GENTANIK JPL 01 BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 1 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTPP\\GENTANIK JPL 26N CLT-BJD",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 1 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PTPP",
-    "identifier": "GENTANIK JPL 26N CLT-BJD",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 1 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTPP\\GENTANIK JPL 27 BOO-CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 1 ER TELKOM BOGOR",
     "btp": "BTP JAK",
-    "category": "PTPP",
-    "identifier": "GENTANIK JPL 27 BOO-CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 1 ER TELKOM BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTPP\\GENTANIK JPL 28 BOO-CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 10 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PTPP",
-    "identifier": "GENTANIK JPL 28 BOO-CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 10 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTPP\\JPL 27 BOO-CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 10 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PTPP",
-    "identifier": "JPL 27 BOO-CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 10 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTPP\\PESAWAT TELEPON JPL 01 BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 11 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PTPP",
-    "identifier": "PESAWAT TELEPON JPL 01 BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 11 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTPP\\PESAWAT TELEPON JPL 26N BJD-CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 11 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PTPP",
-    "identifier": "PESAWAT TELEPON JPL 26N BJD-CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 11 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTPP\\PESAWAT TELEPON JPL 27 BOO-CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 12 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PTPP",
-    "identifier": "PESAWAT TELEPON JPL 27 BOO-CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 12 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTPP\\PESAWAT TELEPON JPL 28 BOO-CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 12 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PTPP",
-    "identifier": "PESAWAT TELEPON JPL 28 BOO-CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 12 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTLS\\SENTRAL TOKA LIM 1 BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 13 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PTLS",
-    "identifier": "SENTRAL TOKA LIM 1 BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 13 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTLS\\TOWER RADIO BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 2 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PTLS",
-    "identifier": "TOWER RADIO BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 2 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTDS\\PESAWAT TELEPON ER SINYAL CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 2 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PTDS",
-    "identifier": "PESAWAT TELEPON ER SINYAL CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 2 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTDS\\PESAWAT TELEPON WARTA KA CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 2 ER TELKOM BOGOR",
     "btp": "BTP JAK",
-    "category": "PTDS",
-    "identifier": "PESAWAT TELEPON WARTA KA CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 2 ER TELKOM BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTDS\\PESAWAT TOKA CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 3 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PTDS",
-    "identifier": "PESAWAT TOKA CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 3 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTDS\\VOICE LOGGER WARTA KA CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 3 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PTDS",
-    "identifier": "VOICE LOGGER WARTA KA CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 3 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTDS\\WS DIGITAL S26 BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 3 ER TELKOM BOGOR",
     "btp": "BTP JAK",
-    "category": "PTDS",
-    "identifier": "WS DIGITAL S26 BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 3 ER TELKOM BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTDS\\WS DIGITAL S26 CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 4 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PTDS",
-    "identifier": "WS DIGITAL S26 CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 4 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTDS\\WS S23 BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 4 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PTDS",
-    "identifier": "WS S23 BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 4 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTDS\\WS TAIT S26 BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 5 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PTDS",
-    "identifier": "WS TAIT S26 BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 5 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PTDS\\WS TAIT S26 CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 5 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PTDS",
-    "identifier": "WS TAIT S26 CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 5 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PDSE\\BANGUNAN ER SINYAL BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 6 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER SINYAL BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 6 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PDSE\\BANGUNAN ER SINYAL CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 6 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER SINYAL CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 6 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PDSE\\BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 7 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 7 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PDSE\\CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 7 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 7 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PDSE\\DATA LOGGER BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 8 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "DATA LOGGER BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 8 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PDSE\\DATA LOGGER CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 8 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "DATA LOGGER CLT",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 8 ER CILEBUT",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PDSE\\INTERLOCKING ELEKTRIK SIL-02 (HIMA) BOO",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 9 ER BOGOR",
     "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "INTERLOCKING ELEKTRIK SIL-02 (HIMA) BOO",
+    "category": "SERAT OPTIK",
+    "identifier": "OTB 9 ER BOGOR",
     "reason": "date.txt unreadable"
   },
   {
-    "folder": "BTP JAK\\PDSE\\INTERLOCKING ELEKTRIK SIL-02 (HIMA) CLT",
+    "folder": "BTP JAK\\SERAT OPTIK\\OTB 9 ER CILEBUT",
     "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "INTERLOCKING ELEKTRIK SIL-02 (HIMA) CLT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\PDSE\\PANEL PELAYANAN VDU 1 BOO",
-    "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 1 BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\PDSE\\PANEL PELAYANAN VDU 1 CLT",
-    "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 1 CLT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\PDSE\\PANEL PELAYANAN VDU 2 BOO",
-    "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 2 BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\PDSE\\PANEL PELAYANAN VDU 2 CLT",
-    "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 2 CLT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\PDSE\\PERALATAN BLOK BOO - BOP",
-    "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK BOO - BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\PDSE\\PERALATAN BLOK BOO - CLT",
-    "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK BOO - CLT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\PDSE\\PERALATAN BLOK CLT - BJD",
-    "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK CLT - BJD",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\PDSE\\PERALATAN BLOK CLT - BOO",
-    "btp": "BTP JAK",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK CLT - BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\CATUDAYA\\BATTERE BANK ER RADIO BOO",
-    "btp": "BTP JAK",
-    "category": "CATUDAYA",
-    "identifier": "BATTERE BANK ER RADIO BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\CATUDAYA\\BATTERE BANK ER SINYAL BOO",
-    "btp": "BTP JAK",
-    "category": "CATUDAYA",
-    "identifier": "BATTERE BANK ER SINYAL BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\CATUDAYA\\BATTERE ER SINYAL CLT",
-    "btp": "BTP JAK",
-    "category": "CATUDAYA",
-    "identifier": "BATTERE ER SINYAL CLT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\CATUDAYA\\GENSET ER RADIO BOO",
-    "btp": "BTP JAK",
-    "category": "CATUDAYA",
-    "identifier": "GENSET ER RADIO BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\CATUDAYA\\GENSET ER SINYAL BOO",
-    "btp": "BTP JAK",
-    "category": "CATUDAYA",
-    "identifier": "GENSET ER SINYAL BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\CATUDAYA\\GENSET ER SINYAL CLT",
-    "btp": "BTP JAK",
-    "category": "CATUDAYA",
-    "identifier": "GENSET ER SINYAL CLT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\CATUDAYA\\UPS ER RADIO BOO",
-    "btp": "BTP JAK",
-    "category": "CATUDAYA",
-    "identifier": "UPS ER RADIO BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\CATUDAYA\\UPS ER SINYAL BOO",
-    "btp": "BTP JAK",
-    "category": "CATUDAYA",
-    "identifier": "UPS ER SINYAL BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP JAK\\CATUDAYA\\UPS ER SINYAL CLT",
-    "btp": "BTP JAK",
-    "category": "CATUDAYA",
-    "identifier": "UPS ER SINYAL CLT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 1 ER BATU TULIS",
-    "btp": "BTP BD",
     "category": "SERAT OPTIK",
-    "identifier": "OTB 1 ER BATU TULIS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 1 ER BOGOR PALEDANG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 1 ER BOGOR PALEDANG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 1 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 1 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 1 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 1 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 1 ER MASENG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 1 ER MASENG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 1 ER TELKOM BATU TULIS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 1 ER TELKOM BATU TULIS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 1 ER TELKOM CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 1 ER TELKOM CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 1 ER TELKOM CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 1 ER TELKOM CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 1 ER TELKOM MASENG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 1 ER TELKOM MASENG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 10 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 10 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 10 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 10 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 11 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 11 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 11 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 11 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 12 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 12 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 12 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 12 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 2 ER BATU TULIS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 2 ER BATU TULIS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 2 ER BOGOR PALEDANG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 2 ER BOGOR PALEDANG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 2 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 2 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 2 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 2 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 2 ER MASENG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 2 ER MASENG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 2 ER TELKOM BATU TULIS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 2 ER TELKOM BATU TULIS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 2 ER TELKOM CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 2 ER TELKOM CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 2 ER TELKOM CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 2 ER TELKOM CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 2 ER TELKOM MASENG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 2 ER TELKOM MASENG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 3 ER BATU TULIS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 3 ER BATU TULIS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 3 ER BOGOR PALEDANG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 3 ER BOGOR PALEDANG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 3 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 3 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 3 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 3 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 3 ER MASENG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 3 ER MASENG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 3 ER TELKOM BATU TULIS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 3 ER TELKOM BATU TULIS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 3 ER TELKOM CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 3 ER TELKOM CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 3 ER TELKOM CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 3 ER TELKOM CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 3 ER TELKOM MASENG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 3 ER TELKOM MASENG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 4 ER BATU TULIS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 4 ER BATU TULIS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 4 ER BOGOR PALEDANG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 4 ER BOGOR PALEDANG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 4 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 4 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 4 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 4 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 4 ER MASENG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 4 ER MASENG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 5 ER BATU TULIS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 5 ER BATU TULIS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 5 ER BOGOR PALEDANG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 5 ER BOGOR PALEDANG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 5 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 5 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 5 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 5 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 5 ER MASENG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 5 ER MASENG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 6 ER BATU TULIS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 6 ER BATU TULIS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 6 ER BOGOR PALEDANG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 6 ER BOGOR PALEDANG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 6 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 6 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 6 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 6 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 6 ER MASENG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 6 ER MASENG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 7 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 7 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 7 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 7 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 8 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 8 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 8 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 8 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 9 ER CIGOMBONG",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 9 ER CIGOMBONG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\SERAT OPTIK\\OTB 9 ER CIOMAS",
-    "btp": "BTP BD",
-    "category": "SERAT OPTIK",
-    "identifier": "OTB 9 ER CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTPP\\GENTANIK JPL 11 BTT",
-    "btp": "BTP BD",
-    "category": "PTPP",
-    "identifier": "GENTANIK JPL 11 BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTPP\\GENTANIK JPL 15 MSG - CCR",
-    "btp": "BTP BD",
-    "category": "PTPP",
-    "identifier": "GENTANIK JPL 15 MSG - CCR",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTPP\\GENTANIK JPL 16 MSG - CCR",
-    "btp": "BTP BD",
-    "category": "PTPP",
-    "identifier": "GENTANIK JPL 16 MSG - CCR",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTPP\\PESAWAT TELEPON JPL 11 BTT",
-    "btp": "BTP BD",
-    "category": "PTPP",
-    "identifier": "PESAWAT TELEPON JPL 11 BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTPP\\PESAWAT TELEPON JPL 15 MSG - CCR",
-    "btp": "BTP BD",
-    "category": "PTPP",
-    "identifier": "PESAWAT TELEPON JPL 15 MSG - CCR",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTPP\\PESAWAT TELEPON JPL 16 MSG - CCR",
-    "btp": "BTP BD",
-    "category": "PTPP",
-    "identifier": "PESAWAT TELEPON JPL 16 MSG - CCR",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTLS\\COS",
-    "btp": "BTP BD",
-    "category": "PTLS",
-    "identifier": "COS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTLS\\MULTIPLEX BTT",
-    "btp": "BTP BD",
-    "category": "PTLS",
-    "identifier": "MULTIPLEX BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTLS\\MULTIPLEX CS",
-    "btp": "BTP BD",
-    "category": "PTLS",
-    "identifier": "MULTIPLEX CS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTLS\\MULTIPLEX RADIO CIOMAS",
-    "btp": "BTP BD",
-    "category": "PTLS",
-    "identifier": "MULTIPLEX RADIO CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTLS\\SENTRAL TELEPON ANTAR STASIUN BTT",
-    "btp": "BTP BD",
-    "category": "PTLS",
-    "identifier": "SENTRAL TELEPON ANTAR STASIUN BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTLS\\TOWER RADIO CIOMAS",
-    "btp": "BTP BD",
-    "category": "PTLS",
-    "identifier": "TOWER RADIO CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\PESAWAT TELEPON ER IB CGB",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "PESAWAT TELEPON ER IB CGB",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\PESAWAT TELEPON ER IB COS",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "PESAWAT TELEPON ER IB COS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\PESAWAT TELEPON ER MSG",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "PESAWAT TELEPON ER MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\PESAWAT TELEPON ER RADIO CIOMAS",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "PESAWAT TELEPON ER RADIO CIOMAS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\PESAWAT TELEPON WARTA KA MSG",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "PESAWAT TELEPON WARTA KA MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\PESAWAT TOKA CGB",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "PESAWAT TOKA CGB",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\PESAWAT TOKA MSG",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "PESAWAT TOKA MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\RADIO_COS",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "RADIO_COS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\SENTRANIK PPKA BOP",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "SENTRANIK PPKA BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\SENTRANIK PPKA BTT",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "SENTRANIK PPKA BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\VOICE LOGGER WARTA KA BOP",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "VOICE LOGGER WARTA KA BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\VOICE LOGGER WARTA KA BTT",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "VOICE LOGGER WARTA KA BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\WS S23 BOP",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "WS S23 BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PTDS\\WS S23 BTT",
-    "btp": "BTP BD",
-    "category": "PTDS",
-    "identifier": "WS S23 BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BANGUNAN ER IB SINYAL CGB",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER IB SINYAL CGB",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BANGUNAN ER IB SINYAL COS",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER IB SINYAL COS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BANGUNAN ER RADIO COS",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER RADIO COS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BANGUNAN ER SINYAL BOP",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER SINYAL BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BANGUNAN ER SINYAL BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER SINYAL BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BANGUNAN ER SINYAL MSG",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER SINYAL MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BANGUNAN ER TELKOM BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER TELKOM BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BANGUNAN ER TELKOM CGB",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER TELKOM CGB",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BANGUNAN ER TELKOM MSG",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BANGUNAN ER TELKOM MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BOP",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\CGB",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "CGB",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\COS",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "COS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\DATA LOGGER BOP",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "DATA LOGGER BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\DATA LOGGER BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "DATA LOGGER BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\DATA LOGGER MSG",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "DATA LOGGER MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\INTERLOCKING ELEKTRIK SIL-02 (HIMA) BOP",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "INTERLOCKING ELEKTRIK SIL-02 (HIMA) BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\INTERLOCKING ELEKTRIK SIL-02 (HIMA) BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "INTERLOCKING ELEKTRIK SIL-02 (HIMA) BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\INTERLOCKING ELEKTRIK SIL-02 (HIMA) MSG",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "INTERLOCKING ELEKTRIK SIL-02 (HIMA) MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\INTERMEDIATE BLOK SIL SAFE 4000 CGB",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "INTERMEDIATE BLOK SIL SAFE 4000 CGB",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\INTERMEDIATE BLOK SIL SAFE 4000 COS",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "INTERMEDIATE BLOK SIL SAFE 4000 COS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\MSG",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PANEL PELAYANAN VDU 1 BOP",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 1 BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PANEL PELAYANAN VDU 1 BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 1 BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PANEL PELAYANAN VDU 1 MSG",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 1 MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PANEL PELAYANAN VDU 2 BOP",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 2 BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PANEL PELAYANAN VDU 2 BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 2 BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PANEL PELAYANAN VDU 2 MSG",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU 2 MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PANEL PELAYANAN VDU BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PANEL PELAYANAN VDU BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PERALATAN BLOK BOP-BOO",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK BOP-BOO",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PERALATAN BLOK BOP-BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK BOP-BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PERALATAN BLOK BTT - BOP",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK BTT - BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PERALATAN BLOK BTT - MSG",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK BTT - MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PERALATAN BLOK MSG-BTT",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK MSG-BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\PERALATAN BLOK MSG-CCR",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "PERALATAN BLOK MSG-CCR",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\PDSE\\RADIO_COS",
-    "btp": "BTP BD",
-    "category": "PDSE",
-    "identifier": "RADIO_COS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\BATTERE BANK ER RADIO CS",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "BATTERE BANK ER RADIO CS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\BATTERE BANK ER SINYAL BOP",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "BATTERE BANK ER SINYAL BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\BATTERE ER SINYAL BTT",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "BATTERE ER SINYAL BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\BATTERE ER SINYAL CGB",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "BATTERE ER SINYAL CGB",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\BATTERE ER SINYAL CS",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "BATTERE ER SINYAL CS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\BATTERE ER SINYAL MSG",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "BATTERE ER SINYAL MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\GENSET ER RADIO CS",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "GENSET ER RADIO CS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\GENSET ER SINYAL BOP",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "GENSET ER SINYAL BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\GENSET ER SINYAL BTT",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "GENSET ER SINYAL BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\GENSET ER SINYAL CGB",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "GENSET ER SINYAL CGB",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\GENSET ER SINYAL CS",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "GENSET ER SINYAL CS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\GENSET ER SINYAL MSG",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "GENSET ER SINYAL MSG",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\UPS ER RADIO CS",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "UPS ER RADIO CS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\UPS ER SINYAL BOP",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "UPS ER SINYAL BOP",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\UPS ER SINYAL BTT",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "UPS ER SINYAL BTT",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\UPS ER SINYAL CGB",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "UPS ER SINYAL CGB",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\UPS ER SINYAL CS",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "UPS ER SINYAL CS",
-    "reason": "date.txt unreadable"
-  },
-  {
-    "folder": "BTP BD\\CATUDAYA\\UPS ER SINYAL MSG",
-    "btp": "BTP BD",
-    "category": "CATUDAYA",
-    "identifier": "UPS ER SINYAL MSG",
+    "identifier": "OTB 9 ER CILEBUT",
     "reason": "date.txt unreadable"
   }
 ]
