@@ -4159,16 +4159,18 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     stem = os.path.splitext(fname)[0]
                     clean_src = os.path.join(os.path.dirname(out_target), f"{stem}.clean.jpg")
                     meta_src = os.path.join(os.path.dirname(out_target), "meta.json")
+                    # Hanya sinkronkan ke folder Tim lain yang SUDAH ADA secara fisik (jangan membuat folder Tim baru secara paksa)
                     for alt_t in ["", "Tim_1", "Tim_2", "Tim_3", "Tim_4"]:
                         target_dir = os.path.join(photos_edited, alt_t, asset_rel) if alt_t else os.path.join(photos_edited, asset_rel)
-                        if os.path.abspath(target_dir) != os.path.abspath(os.path.dirname(out_target)):
+                        parent_tim_dir = os.path.join(photos_edited, alt_t) if alt_t else photos_edited
+                        if os.path.isdir(parent_tim_dir) and os.path.abspath(target_dir) != os.path.abspath(os.path.dirname(out_target)):
                             try:
-                                os.makedirs(target_dir, exist_ok=True)
-                                shutil.copy2(out_target, os.path.join(target_dir, fname))
-                                if os.path.isfile(clean_src):
-                                    shutil.copy2(clean_src, os.path.join(target_dir, f"{stem}.clean.jpg"))
-                                if os.path.isfile(meta_src):
-                                    shutil.copy2(meta_src, os.path.join(target_dir, "meta.json"))
+                                if os.path.isdir(target_dir):
+                                    shutil.copy2(out_target, os.path.join(target_dir, fname))
+                                    if os.path.isfile(clean_src):
+                                        shutil.copy2(clean_src, os.path.join(target_dir, f"{stem}.clean.jpg"))
+                                    if os.path.isfile(meta_src):
+                                        shutil.copy2(meta_src, os.path.join(target_dir, "meta.json"))
                             except Exception:
                                 pass
                     out_target_url = f"/api/timemark/photo-file?path={urllib.parse.quote(out_target)}&t={int(time.time())}"
@@ -5672,15 +5674,14 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
             )
 
-            # Sinkronkan ke path alternatif (tanpa Tim_1 jika ada)
+            # Sinkronkan ke path alternatif jika folder tersebut sudah ada (tanpa membuat folder baru)
             alt_outs = [
                 os.path.join(photos_edited, asset_rel, photo_name),
                 os.path.join(photos_edited, "Tim_1", asset_rel, photo_name),
                 os.path.join(photos_edited, "Tim_2", asset_rel, photo_name)
             ]
             for ao in alt_outs:
-                if ao != out_target:
-                    os.makedirs(os.path.dirname(ao), exist_ok=True)
+                if ao != out_target and os.path.isdir(os.path.dirname(ao)):
                     try:
                         shutil.copy2(out_target, ao)
                     except Exception:
@@ -6842,16 +6843,18 @@ def main():
                         for f in files
                         if isinstance(f, dict) and f.get("pywebviewFullPath")
                     ]
+                    _log(f"[DND] drop event files={len(files)} paths={paths}")
                     if paths:
                         win.evaluate_js(
                             f"window.dispatchEvent(new CustomEvent('sintelis-native-drop', {{ detail: {{ paths: {json.dumps(paths)} }} }}));"
                         )
-                except Exception:
-                    pass
+                except Exception as ex_drop:
+                    _log(f"[DND] drop handler error: {ex_drop}")
 
             win.dom.document.events.drop += DOMEventHandler(
-                _on_native_drop, prevent_default=False, stop_propagation=False
+                _on_native_drop, prevent_default=True, stop_propagation=False
             )
+            _log("[DND] Native drop handler bound on document.")
         except Exception as ex:
             _log(f"Native drop bind skipped: {ex}")
 

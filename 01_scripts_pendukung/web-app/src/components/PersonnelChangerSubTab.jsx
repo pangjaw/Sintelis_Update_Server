@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 
-export default function PersonnelChangerSubTab() {
+export default function PersonnelChangerSubTab({ isActive = true }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -23,7 +23,56 @@ export default function PersonnelChangerSubTab() {
   const [customNoSc, setCustomNoSc] = useState('');
 
   // Target Personil yang akan dimasukkan ke PDF (Urutan menentukan Baris 1, 2, 3...)
+  // Mendukung mode global ('__ALL__') maupun khusus per tanggal ('DD-MM-YYYY')
   const [targetEmployees, setTargetEmployees] = useState([]);
+  const [targetEmployeesByDate, setTargetEmployeesByDate] = useState({});
+  const [activeDateKey, setActiveDateKey] = useState('__ALL__');
+
+  const uniqueDates = useMemo(() => {
+    const counts = new Map();
+    items.forEach(it => {
+      const d = (it.date || '').trim();
+      if (d && d !== '-') {
+        counts.set(d, (counts.get(d) || 0) + 1);
+      }
+    });
+    return Array.from(counts.entries()).map(([date, count]) => ({
+      date,
+      count,
+      hasCustom: (targetEmployeesByDate[date] || []).length > 0
+    }));
+  }, [items, targetEmployeesByDate]);
+
+  useEffect(() => {
+    if (activeDateKey !== '__ALL__' && !uniqueDates.some(d => d.date === activeDateKey)) {
+      setActiveDateKey('__ALL__');
+    }
+  }, [uniqueDates, activeDateKey]);
+
+  const activeTargetList = useMemo(() => {
+    if (activeDateKey === '__ALL__') return targetEmployees;
+    return targetEmployeesByDate[activeDateKey] || [];
+  }, [activeDateKey, targetEmployees, targetEmployeesByDate]);
+
+  const updateActiveTargetList = useCallback((updater) => {
+    if (activeDateKey === '__ALL__') {
+      setTargetEmployees(prev => (typeof updater === 'function' ? updater(prev) : updater));
+    } else {
+      setTargetEmployeesByDate(prev => {
+        const cur = prev[activeDateKey] || [];
+        const next = typeof updater === 'function' ? updater(cur) : updater;
+        return { ...prev, [activeDateKey]: next };
+      });
+    }
+  }, [activeDateKey]);
+
+  const getEffectiveEmployees = useCallback((item) => {
+    const d = (item?.date || '').trim();
+    if (d && d !== '-' && (targetEmployeesByDate[d] || []).length > 0) {
+      return targetEmployeesByDate[d];
+    }
+    return targetEmployees;
+  }, [targetEmployees, targetEmployeesByDate]);
 
   // 1. Ambil data profil pegawai saat komponen dimuat
   const fetchPegawaiProfiles = async () => {
@@ -73,14 +122,14 @@ export default function PersonnelChangerSubTab() {
     if (!person || !person.nama) return;
     const cleanName = person.nama.trim().toUpperCase();
     
-    // Cek apakah sudah ada di target
-    const already = targetEmployees.some(e => e.nama.toUpperCase() === cleanName);
+    // Cek apakah sudah ada di target aktif
+    const already = activeTargetList.some(e => e.nama.toUpperCase() === cleanName);
     if (already) {
       setFeedback({ type: 'info', text: `ℹ️ ${cleanName} sudah ada dalam daftar Target Personil.` });
       return;
     }
 
-    setTargetEmployees(prev => [
+    updateActiveTargetList(prev => [
       ...prev,
       {
         nama: cleanName,
@@ -103,12 +152,12 @@ export default function PersonnelChangerSubTab() {
     const cleanSc = customNoSc.trim().toUpperCase();
 
     // Cek duplikasi
-    if (targetEmployees.some(e => e.nama.toUpperCase() === cleanName)) {
+    if (activeTargetList.some(e => e.nama.toUpperCase() === cleanName)) {
       alert(`Pegawai dengan nama ${cleanName} sudah ada dalam target!`);
       return;
     }
 
-    setTargetEmployees(prev => [
+    updateActiveTargetList(prev => [
       ...prev,
       {
         nama: cleanName,
@@ -126,7 +175,7 @@ export default function PersonnelChangerSubTab() {
   // 5. Reorder & Hapus Target Personil
   const handleMoveUp = (index) => {
     if (index <= 0) return;
-    setTargetEmployees(prev => {
+    updateActiveTargetList(prev => {
       const copy = [...prev];
       const temp = copy[index - 1];
       copy[index - 1] = copy[index];
@@ -136,8 +185,8 @@ export default function PersonnelChangerSubTab() {
   };
 
   const handleMoveDown = (index) => {
-    if (index >= targetEmployees.length - 1) return;
-    setTargetEmployees(prev => {
+    if (index >= activeTargetList.length - 1) return;
+    updateActiveTargetList(prev => {
       const copy = [...prev];
       const temp = copy[index + 1];
       copy[index + 1] = copy[index];
@@ -147,7 +196,7 @@ export default function PersonnelChangerSubTab() {
   };
 
   const handleRemoveTarget = (index) => {
-    setTargetEmployees(prev => prev.filter((_, i) => i !== index));
+    updateActiveTargetList(prev => prev.filter((_, i) => i !== index));
   };
 
   // Handler Pindai Input Path Manual (SSH/Web friendly)
@@ -243,6 +292,7 @@ export default function PersonnelChangerSubTab() {
   }, []);
 
   useEffect(() => {
+    if (!isActive) return;
     const onNativeDrop = (ev) => {
       const paths = ev?.detail?.paths || [];
       if (paths.length > 0) {
@@ -251,11 +301,10 @@ export default function PersonnelChangerSubTab() {
     };
     window.addEventListener('sintelis-native-drop', onNativeDrop);
     return () => window.removeEventListener('sintelis-native-drop', onNativeDrop);
-  }, [processDroppedPaths]);
+  }, [isActive, processDroppedPaths]);
 
   const handleDrop = useCallback(async (e) => {
     e.preventDefault();
-    e.stopPropagation();
     const droppedFiles = Array.from(e.dataTransfer.files || []).filter(f => f.name.toLowerCase().endsWith('.pdf'));
     if (droppedFiles.length === 0) return;
 
@@ -267,7 +316,6 @@ export default function PersonnelChangerSubTab() {
 
   const handleDragOver = (e) => {
     e.preventDefault();
-    e.stopPropagation();
   };
 
   // 10. Seleksi Baris
@@ -290,6 +338,10 @@ export default function PersonnelChangerSubTab() {
   };
 
   const selectedCount = useMemo(() => items.filter(i => i.selected).length, [items]);
+  const allSelectedHaveTargets = useMemo(() => {
+    const sel = items.filter(i => i.selected);
+    return sel.length > 0 && sel.every(i => getEffectiveEmployees(i).length > 0);
+  }, [items, getEffectiveEmployees]);
 
   // 11. Eksekusi Pengubahan Personil PDF
   const handleExecute = async () => {
@@ -298,8 +350,9 @@ export default function PersonnelChangerSubTab() {
       alert('Silakan pilih minimal 1 berkas PDF yang akan diubah personilnya!');
       return;
     }
-    if (targetEmployees.length === 0) {
-      alert('Silakan tentukan minimal 1 personil target (pilih dari profil atau tambahkan pegawai kustom)!');
+    const missingTargets = selectedItems.filter(i => getEffectiveEmployees(i).length === 0);
+    if (missingTargets.length > 0) {
+      alert(`Masih ada ${missingTargets.length} berkas terpilih yang belum memiliki personil target (atur pada "Semua Tanggal (Default)" atau per tanggalnya)!`);
       return;
     }
 
@@ -311,7 +364,10 @@ export default function PersonnelChangerSubTab() {
 
     try {
       const payload = {
-        items: selectedItems.map(i => ({ path: i.path })),
+        items: selectedItems.map(i => ({
+          path: i.path,
+          employees: getEffectiveEmployees(i).map(e => ({ nama: e.nama, no_sc: e.no_sc, nipp: e.nipp }))
+        })),
         employees: targetEmployees.map(e => ({ nama: e.nama, no_sc: e.no_sc, nipp: e.nipp }))
       };
 
@@ -328,14 +384,13 @@ export default function PersonnelChangerSubTab() {
           resultMap[r.path] = r;
         });
 
-        const newTargetStr = targetEmployees.map(e => e.nama).join(', ');
-
         setItems(prev => prev.map(i => {
           const r = resultMap[i.path];
           if (r) {
+            const appliedStr = getEffectiveEmployees(i).map(e => e.nama).join(', ');
             return {
               ...i,
-              personnel_str: r.ok ? newTargetStr : i.personnel_str,
+              personnel_str: r.ok ? appliedStr : i.personnel_str,
               execution_status: r.ok ? 'success' : 'error',
               error_msg: r.error
             };
@@ -768,20 +823,96 @@ export default function PersonnelChangerSubTab() {
             maxHeight: '360px'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               🎯 Target Personil Formulir (Halaman 1)
             </span>
             <span style={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600 }}>
-              {targetEmployees.length} Personil Terpilih
+              {activeTargetList.length} Personil Terpilih
+              {activeDateKey !== '__ALL__' ? ` • Tgl ${activeDateKey}` : ''}
             </span>
           </div>
+
+          {uniqueDates.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setActiveDateKey('__ALL__')}
+                style={{
+                  padding: '0.25rem 0.55rem',
+                  fontSize: '0.725rem',
+                  fontWeight: 600,
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  border: activeDateKey === '__ALL__' ? '1px solid var(--accent)' : '1px solid var(--border-color)',
+                  background: activeDateKey === '__ALL__' ? 'rgba(255, 115, 0, 0.16)' : 'var(--bg-secondary)',
+                  color: activeDateKey === '__ALL__' ? 'var(--accent)' : 'var(--text-secondary)'
+                }}
+              >
+                🌐 Semua Tanggal (Default)
+              </button>
+              {uniqueDates.map(d => (
+                <button
+                  key={d.date}
+                  type="button"
+                  onClick={() => setActiveDateKey(d.date)}
+                  style={{
+                    padding: '0.25rem 0.55rem',
+                    fontSize: '0.725rem',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    border: activeDateKey === d.date
+                      ? '1px solid var(--accent)'
+                      : (d.hasCustom ? '1px solid #22c55e' : '1px solid var(--border-color)'),
+                    background: activeDateKey === d.date
+                      ? 'rgba(255, 115, 0, 0.16)'
+                      : (d.hasCustom ? 'rgba(34, 197, 94, 0.12)' : 'var(--bg-secondary)'),
+                    color: activeDateKey === d.date
+                      ? 'var(--accent)'
+                      : (d.hasCustom ? '#22c55e' : 'var(--text-secondary)')
+                  }}
+                  title={d.hasCustom ? 'Tanggal ini sudah memiliki set personil khusus' : 'Klik untuk atur personil khusus tanggal ini'}
+                >
+                  📅 {d.date} ({d.count}){d.hasCustom ? ' ✓' : ''}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeDateKey !== '__ALL__' && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '6px', padding: '0.35rem 0.6rem' }}>
+              <span style={{ fontSize: '0.725rem', color: '#38bdf8' }}>
+                Mengatur personil khusus tanggal <strong>{activeDateKey}</strong>
+              </span>
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                {targetEmployees.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTargetEmployeesByDate(prev => ({ ...prev, [activeDateKey]: targetEmployees.map(e => ({ ...e })) }))}
+                    style={{ padding: '0.2rem 0.45rem', fontSize: '0.7rem', borderRadius: '4px', cursor: 'pointer', background: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                  >
+                    📋 Salin Default
+                  </button>
+                )}
+                {activeTargetList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTargetEmployeesByDate(prev => { const cp = { ...prev }; delete cp[activeDateKey]; return cp; })}
+                    style={{ padding: '0.2rem 0.45rem', fontSize: '0.7rem', borderRadius: '4px', cursor: 'pointer', background: 'var(--bg-card)', border: '1px solid var(--border-color)', color: '#ef4444' }}
+                  >
+                    ↺ Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             Urutan daftar di bawah ini akan langsung menjadi <strong>Baris 1, Baris 2, Baris 3</strong> pada kolom <em>"DILAKSANAKAN OLEH"</em> lembar pemeriksaan.
           </span>
 
-          {targetEmployees.length === 0 ? (
+          {activeTargetList.length === 0 ? (
             <div
               style={{
                 flex: 1,
@@ -797,14 +928,16 @@ export default function PersonnelChangerSubTab() {
                 fontSize: '0.8rem'
               }}
             >
-              Belum ada personil target yang dipilih.
+              {activeDateKey !== '__ALL__' && targetEmployees.length > 0
+                ? `Tanggal ${activeDateKey} saat ini mengikuti Default (${targetEmployees.map(e => e.nama).join(', ')}).`
+                : 'Belum ada personil target yang dipilih.'}
               <span style={{ fontSize: '0.725rem', marginTop: '0.25rem' }}>
                 Klik tombol <strong>"+ Masukkan"</strong> dari Base Data di sebelah kiri atau ketik nama pada form kustom.
               </span>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {targetEmployees.map((emp, idx) => (
+              {activeTargetList.map((emp, idx) => (
                 <div
                   key={`target_${idx}`}
                   style={{
@@ -861,15 +994,15 @@ export default function PersonnelChangerSubTab() {
                     <button
                       type="button"
                       onClick={() => handleMoveDown(idx)}
-                      disabled={idx === targetEmployees.length - 1}
+                      disabled={idx === activeTargetList.length - 1}
                       title="Pindahkan baris ke bawah"
                       style={{
                         padding: '0.2rem 0.45rem',
                         background: 'transparent',
                         border: '1px solid var(--border-color)',
                         borderRadius: '4px',
-                        cursor: idx === targetEmployees.length - 1 ? 'not-allowed' : 'pointer',
-                        color: idx === targetEmployees.length - 1 ? 'var(--text-muted)' : 'var(--text-primary)',
+                        cursor: idx === activeTargetList.length - 1 ? 'not-allowed' : 'pointer',
+                        color: idx === activeTargetList.length - 1 ? 'var(--text-muted)' : 'var(--text-primary)',
                         fontSize: '0.75rem'
                       }}
                     >
@@ -923,14 +1056,14 @@ export default function PersonnelChangerSubTab() {
 
           <button
             onClick={handleExecute}
-            disabled={processing || selectedCount === 0 || targetEmployees.length === 0}
+            disabled={processing || selectedCount === 0 || !allSelectedHaveTargets}
             style={{
               padding: '0.6rem 1.4rem',
-              background: (processing || selectedCount === 0 || targetEmployees.length === 0) ? 'var(--bg-secondary)' : 'var(--accent)',
-              color: (processing || selectedCount === 0 || targetEmployees.length === 0) ? 'var(--text-muted)' : '#ffffff',
+              background: (processing || selectedCount === 0 || !allSelectedHaveTargets) ? 'var(--bg-secondary)' : 'var(--accent)',
+              color: (processing || selectedCount === 0 || !allSelectedHaveTargets) ? 'var(--text-muted)' : '#ffffff',
               border: 'none',
               borderRadius: '7px',
-              cursor: (processing || selectedCount === 0 || targetEmployees.length === 0) ? 'not-allowed' : 'pointer',
+              cursor: (processing || selectedCount === 0 || !allSelectedHaveTargets) ? 'not-allowed' : 'pointer',
               fontSize: '0.875rem',
               fontWeight: 700,
               display: 'flex',
@@ -1002,14 +1135,18 @@ export default function PersonnelChangerSubTab() {
                     />
                   </th>
                   <th style={{ padding: '0.6rem 0.75rem' }}>Nama Berkas PDF</th>
-                  <th style={{ padding: '0.6rem 0.75rem', width: '110px' }}>Tanggal</th>
+                  <th style={{ padding: '0.6rem 0.75rem', width: '115px' }}>Tanggal</th>
                   <th style={{ padding: '0.6rem 0.75rem' }}>Personil Terbaca Saat Ini</th>
+                  <th style={{ padding: '0.6rem 0.75rem' }}>Personil Target Baru</th>
                   <th style={{ padding: '0.6rem 0.75rem', width: '130px' }}>Status</th>
                   <th style={{ padding: '0.6rem 0.75rem', width: '40px', textAlign: 'center' }}>Aksi</th>
                 </tr>
               </thead>
               <tbody style={{ divideY: '1px solid var(--border-color)' }}>
-                {items.map((item, idx) => (
+                {items.map((item, idx) => {
+                  const effEmps = getEffectiveEmployees(item);
+                  const hasDateOverride = !!(item.date && item.date !== '-' && (targetEmployeesByDate[item.date] || []).length > 0);
+                  return (
                   <tr
                     key={item.path || idx}
                     style={{
@@ -1031,10 +1168,37 @@ export default function PersonnelChangerSubTab() {
                       {item.filename}
                     </td>
                     <td style={{ padding: '0.55rem 0.75rem', color: 'var(--text-secondary)' }}>
-                      {item.date}
+                      {item.date && item.date !== '-' ? (
+                        <button
+                          type="button"
+                          onClick={() => setActiveDateKey(item.date)}
+                          style={{
+                            padding: '0.15rem 0.45rem',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            border: activeDateKey === item.date ? '1px solid var(--accent)' : '1px solid var(--border-color)',
+                            background: hasDateOverride ? 'rgba(34, 197, 94, 0.12)' : 'var(--bg-secondary)',
+                            color: hasDateOverride ? '#22c55e' : 'var(--text-secondary)'
+                          }}
+                          title="Klik untuk atur personil khusus tanggal ini"
+                        >
+                          {item.date}
+                        </button>
+                      ) : (item.date || '-')}
                     </td>
                     <td style={{ padding: '0.55rem 0.75rem', color: 'var(--text-secondary)' }}>
                       {item.personnel_str || '-'}
+                    </td>
+                    <td style={{ padding: '0.55rem 0.75rem', fontSize: '0.78rem' }}>
+                      {effEmps.length > 0 ? (
+                        <span style={{ color: hasDateOverride ? '#22c55e' : 'var(--accent)', fontWeight: 600 }}>
+                          {effEmps.map(e => e.nama).join(', ')}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Belum diatur</span>
+                      )}
                     </td>
                     <td style={{ padding: '0.55rem 0.75rem' }}>
                       {item.execution_status === 'processing' && (
@@ -1069,7 +1233,8 @@ export default function PersonnelChangerSubTab() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -72,6 +72,7 @@ Skrip akan secara otomatis:
 ## 🔗 Tautan Navigasi Vault
 - [[Architecture|Arsitektur Sistem]]
 - [[Update_SOP|SOP 6 Aturan Emas Pembaruan]]
+- [[Notes/Daily/2026-11-13|Log Pembaruan: Reset Per-Aset Folder 04, Native Drag & Drop WebView2, Personil Beda Tanggal, & Fix Duplikasi Tim]]
 - [[Notes/Daily/2026-10-18|Log Pembaruan & Fix Bug v1.8.4 – v1.8.7 (Personil, Alias 2025, Audit PTLS, Font Ganti Tanggal)]]
 - [[Notes/Daily/2026-10-17|Log Ekspor Foto PDSE/PTDS/PTLS & Auto-Crop Kolase v1.8.0]]
 - [[Notes/Daily/2026-10-16|Log Pemindahan & Penataan Direktori]]

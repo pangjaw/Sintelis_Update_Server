@@ -770,7 +770,7 @@ export default function App() {
 
       {/* Ubah Tanggal Tab View (Persisted in DOM) */}
       <div style={{ display: mainTab === 'ubah_tanggal' ? 'flex' : 'none', flexDirection: 'column', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
-        <DateChangerPanel />
+        <DateChangerPanel isActive={mainTab === 'ubah_tanggal'} />
       </div>
 
       {/* Audit Aset Tab View (Standalone Full Page) */}

@@ -49,7 +49,7 @@ function computePreviewFilename(origName, newDateStr) {
   return `${name}_${dmyDash}${ext}`;
 }
 
-export default function DateChangerPanel() {
+export default function DateChangerPanel({ isActive = true }) {
   const [activeSubTab, setActiveSubTab] = useState('date'); // 'date' | 'personnel'
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -161,7 +161,7 @@ export default function DateChangerPanel() {
   }, []);
 
   useEffect(() => {
-    if (activeSubTab !== 'date') return;
+    if (!isActive || activeSubTab !== 'date') return;
     const onNativeDrop = (ev) => {
       const paths = ev?.detail?.paths || [];
       if (paths.length > 0) {
@@ -170,11 +170,10 @@ export default function DateChangerPanel() {
     };
     window.addEventListener('sintelis-native-drop', onNativeDrop);
     return () => window.removeEventListener('sintelis-native-drop', onNativeDrop);
-  }, [activeSubTab, processDroppedPaths]);
+  }, [isActive, activeSubTab, processDroppedPaths]);
 
   const handleDrop = useCallback(async (e) => {
     e.preventDefault();
-    e.stopPropagation();
     const droppedFiles = Array.from(e.dataTransfer.files || []).filter(f => f.name.toLowerCase().endsWith('.pdf'));
     if (droppedFiles.length === 0) return;
 
@@ -187,7 +186,6 @@ export default function DateChangerPanel() {
 
   const handleDragOver = (e) => {
     e.preventDefault();
-    e.stopPropagation();
   };
 
   // 5. Terapkan Master Date ke Semua Berkas Terpilih
@@ -330,7 +328,7 @@ export default function DateChangerPanel() {
       </div>
 
       {activeSubTab === 'personnel' ? (
-        <PersonnelChangerSubTab />
+        <PersonnelChangerSubTab isActive={isActive && activeSubTab === 'personnel'} />
       ) : (
         <div
           onDrop={handleDrop}

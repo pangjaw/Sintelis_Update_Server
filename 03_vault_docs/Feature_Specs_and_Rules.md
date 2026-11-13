@@ -615,13 +615,34 @@ Ketika opsi *Bagi Foto & Jam Sesuai Jumlah Baris Aset* (`split_multi_asset`) akt
 
 ### 21.1 Aturan Pemindaian Perangkat (Hardware Profiling)
 Aplikasi dan AI Agent wajib mendukung fleksibilitas instalasi di berbagai lingkungan PC (laptop dinas, PC kantor, PC server) dengan opsi setup:
-1. **Opsi 1 (NVIDIA GPU / CUDA 11.8)**: Pilihan utama untuk PC ber-GPU NVIDIA (GTX 1050 atau lebih baru). Memproses foto ~0.7s - 1.2s per foto.
-2. **Opsi 2 (Non-NVIDIA GPU / DirectML)**: Untuk GPU AMD Radeon, Intel Arc, Intel Iris Xe melalui DirectX 12. Kecepatan ~1.2s - 2.5s per foto.
-3. **Opsi 3 (CPU RAM Only)**: Untuk PC kantor standar tanpa GPU dedicated. Menggunakan RAM sistem dan optimasi multi-core CPU.
+1. **Opsi 1 (NVIDIA GPU / CUDA 11.8)**: Pilihan utama untuk PC ber-GPU NVIDIA (GTX 1050 atau lebih baru). Memproses foto ~0.7s - 1.2s per foto dengan `onnxruntime-gpu==1.18.0`.
+2. **Opsi 2 (CPU & RAM Saja / PC Standar & GPU Non-NVIDIA AMD/Intel)**: Untuk PC kantor standar tanpa GPU dedicated atau PC ber-GPU AMD/Intel. Kecepatan ~3.5s - 7.0s per foto dengan `onnxruntime==1.18.0`.
+   > [!WARNING] Catatan Status DirectML:
+   > Operator Fast Fourier Convolution (FFC) pada model LaMa Inpainting memiliki operasi tensor frekuensi yang belum didukung oleh shader HLSL DirectX 12 DirectML (akan crash dengan galat `DmlExecutionProvider 80070057`). Oleh karena itu, kode aktual di `edit_timemark_ide1.py` dan `timemark_resident_service.py` secara baku disetel `providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']`. Jangan menambahkan `DmlExecutionProvider` untuk LaMa tanpa pengujian stabilitas menyeluruh.
 
 Skrip pemindaian dan instalasi otomatis tersedia di `01_scripts_pendukung/setup_ai_hardware.py`.
 
 ### 21.2 Pencegahan Kebocoran Memori & Bloat PDF (Garbage Collection)
 1. **PDF Saving Standard**: Setiap operasi simpan dokumen PDF di `merge_pdf_foto.py` wajib menyertakan flag `garbage=4, deflate=True, clean=True`. Hal ini mencegah penumpukan objek gambar lama (*orphaned XObjects*) yang menyebabkan dokumen membengkak hingga puluhan atau ratusan megabyte.
 2. **OpenMP & CPU Threading**: Lingkungan subprocess runtime selalu mengekspor `OMP_WAIT_POLICY=PASSIVE` dan `KMP_BLOCKTIME=0` untuk memastikan proses inferensi tidak memakan CPU di latar belakang saat idle.
+
+---
+
+## 22. LOGIKA EDIT & MANAJEMEN FOTO TERAKHIR (NOVEMBER 2026)
+
+### 22.1 Isolasi Reset Per-Aset di Folder 04 (`04_photos_edited`)
+Pada saat user menjalankan ulang (*rerun*) Step 4 untuk satu aset/kategori tertentu (misal hanya `SERAT OPTIK`), skrip `edit_timemark_ide1.py` mengumpulkan seluruh folder aset dari `all_jpgs` di `03_export_foto`. Sebelum memproses ulang, sistem menghapus folder aset lama tersebut di seluruh subfolder tim (`Tim_1` s.d `Tim_4` dan root) pada `04_photos_edited`. Dengan begitu:
+- Aset yang sedang diproses ulang bersih dari meta/foto lama antar-tim.
+- Kategori dan aset lain di `04_photos_edited` tetap utuh (tidak di-reset total).
+
+### 22.2 Mencegah Pembuatan Folder Duplikat `Tim_1`..`Tim_4` Secara Otomatis
+Pada fungsi sinkronisasi backend (`_handle_timemark_process_single` dan `_handle_timemark_replace_photo` di `run_desktop_webview.py`), penyalinan file ke folder tim alternatif (`alt_outs`) hanya dieksekusi jika folder tim tersebut sudah ada secara fisik sebelumnya (`os.path.isdir(target_dir)`). Perintah `os.makedirs(target_dir, exist_ok=True)` dihapus agar folder tim kosong tidak terbuat secara paksa pada proyek dengan struktur direktori direct (tanpa pembagian tim).
+
+### 22.3 Native Drag & Drop pada WebView2
+- **Backend:** `run_desktop_webview.py` mengikat `win.dom.document.events.drop += DOMEventHandler(_on_native_drop, prevent_default=True, stop_propagation=False)`. Mengatur `prevent_default=True` wajib dilakukan agar WebView2 mengizinkan pembacaan `pywebviewFullPath` saat file PDF atau folder di-drop dari Windows Explorer, lalu memancarkan event `sintelis-native-drop`.
+- **Frontend Gating:** Prop `isActive` diteruskan berjenjang dari `App.jsx` -> `DateChangerPanel.jsx` (`isActive && activeSubTab === 'date'`) -> `PersonnelChangerSubTab.jsx` (`isActive && activeSubTab === 'personnel'`). Event listener hanya merespons saat tab/sub-tab aktif agar berkas tidak salah masuk ke sub-tab lain.
+
+### 22.4 Personil Beda Tanggal di "Ubah Personil & No. SC"
+Tab `PersonnelChangerSubTab.jsx` mendukung konfigurasi personil berbeda per tanggal. User dapat memilih pill `🌐 Semua Tanggal (Default)` atau memilih tanggal spesifik `📅 DD-MM-YYYY` untuk mengeset personil khusus tanggal tersebut. Backend `/api/personnel-changer/apply` menerima payload array `items` yang berisi daftar `employees` per berkas PDF.
+
 
