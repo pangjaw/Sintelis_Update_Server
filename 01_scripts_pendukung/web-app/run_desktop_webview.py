@@ -73,6 +73,9 @@ def _find_gpu_python():
     return sys.executable
 
 def make_script_cmd(script_name, script_args):
+    # meta.json lama masih membawa "guide"; sudah dibuang dari CLI, jadi jatuhkan ke paddle_ocr
+    script_args = ["paddle_ocr" if a == "guide" and i and script_args[i - 1] == "--detector" else a
+                   for i, a in enumerate(script_args)]
     is_frozen = getattr(sys, 'frozen', False)
     if is_frozen:
         return [sys.executable, "--run-script", os.path.basename(script_name)] + script_args
@@ -5529,7 +5532,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     "--input", target_photo,
                     "--single-out", out_target,
                     "--date", date_text,
-                    "--detector", "guide"
+                    "--detector", "paddle_ocr"
                 ])
                 subprocess.run(cmd, capture_output=True, text=True, env=sub_env, cwd=BASE_DIR, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
 
@@ -5568,7 +5571,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             cmd = make_script_cmd("edit_timemark_ide1.py", [
                 "--input", target_photo,
                 "--y-override", str(y_override),
-                "--detector", "guide"
+                "--detector", "paddle_ocr"
             ])
             subprocess.run(
                 cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=sub_env, cwd=BASE_DIR,
@@ -5659,7 +5662,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
             cmd = make_script_cmd("edit_timemark_ide1.py", [
                 "--input", target_photo,
                 "--single-out", out_target,
-                "--detector", "guide",
+                "--detector", "paddle_ocr",
                 "--ignore-manual"
             ])
             if date_text:
@@ -5709,7 +5712,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
                     "xPos": final_x,
                     "yPos": final_y,
                     "manualEdit": True,
-                    "detector": "guide",
+                    "detector": "paddle_ocr",
                     "timestamp": time.time()
                 }
                 try:

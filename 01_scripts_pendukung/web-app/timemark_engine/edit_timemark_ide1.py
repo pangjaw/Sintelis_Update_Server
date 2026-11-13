@@ -1666,6 +1666,10 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
     arr_orig = np.array(img_orig)
 
     eff_detector = detector or CURRENT_DETECTOR
+    # meta.json lama masih membawa "guide"; detector itu sudah dibuang, jadi jatuhkan ke paddle_ocr.
+    if eff_detector not in ("paddle_ocr", "lama_ai", "google_vision"):
+        eff_detector = "paddle_ocr"
+    ocr_failed = False
 
     # Prioritas 1: Override manual (dari UI / parameter CLI) -> Bypass semua deteksi
     if y_override is not None:
@@ -1721,38 +1725,9 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
                     initial_box = p_box
                     initial_stage = p_stage
                 else:
-                    # Cek konsensus koordinat dari foto saudara (0.jpg / 100.jpg) dalam folder aset yang sama
-                    sibling_box = None
-                    try:
-                        p_dir = actual_input_path.parent
-                        for sib_name in ("0.txt", "100.txt", "50.txt"):
-                            sib_txt = p_dir / sib_name
-                            if sib_txt.exists() and sib_txt != actual_input_path.with_suffix(".txt"):
-                                sib_b = _read_yolo_label(actual_input_path.with_name(sib_name.replace(".txt", ".jpg")), (w, h))
-                                if sib_b is not None:
-                                    sibling_box = sib_b
-                                    break
-                        if sibling_box is None:
-                            meta_cand = output_path.parent / "meta.json"
-                            if meta_cand.exists():
-                                with open(meta_cand, "r", encoding="utf-8") as mf:
-                                    mdata = json.load(mf)
-                                for s_key in ("0.jpg", "100.jpg", "50.jpg"):
-                                    if s_key in mdata and mdata[s_key].get("yPos"):
-                                        sy = int(round((mdata[s_key]["yPos"] / 300.0) * h))
-                                        sx = int(round((mdata[s_key].get("xPos", 14) / 300.0) * w))
-                                        sb_w = int(w * BOX_WIDTH_RATIO)
-                                        sb_h = int(h * BOX_HEIGHT_RATIO)
-                                        sibling_box = (sx, sy, min(w, sx + sb_w), min(h, sy + sb_h))
-                                        break
-                    except Exception:
-                        pass
-
-                    if sibling_box is not None:
-                        initial_box = sibling_box
-                        initial_stage = "stage_consensus_sibling"
-                    else:
-                        initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+                    # OCR gagal → tidak ada deteksi guide/consensus. Foto di-skip & ditandai.
+                    initial_box, initial_stage = None, "stage_fallback"
+                    ocr_failed = True
             elif eff_detector == "google_vision":
                 gv_box, gv_stage = detect_timemark_via_google_vision(actual_input_path, w, h, arr_orig=arr_orig, is_collage=is_collage)
                 if gv_box is not None:
@@ -1772,8 +1747,8 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
                         if line:
                             action = line
                     if action == "continue_guide":
-                        print("  │   ├── ⚠️ [FALLBACK] Beralih ke Metode Biasa (Garis Panduan Merah)", flush=True)
-                        CURRENT_DETECTOR = "guide"
+                        print("  │   ├── ⚠️ [FALLBACK] Beralih ke deteksi OCR (PaddleOCR)", flush=True)
+                        CURRENT_DETECTOR = "paddle_ocr"
                         initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
                     else:
                         print("  │   ├── 🛑 [STOP] Proses dihentikan pengguna karena kuota Google Vision habis.", flush=True)
@@ -1816,21 +1791,18 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
 
             box, stage = initial_box, initial_stage
             # Simpan hasil deteksi ke 0.txt / 50.txt / 100.txt untuk dipakai otomatis di kemudian hari
-            guide_for_label = _detect_guideline_for_label(arr_orig, w, h, is_collage)
-            if guide_for_label is not None:
-                _write_yolo_label(image_path, (w, h), guide_for_label)
-            elif stage != "stage_fallback" and box is not None:
+            if stage != "stage_fallback" and box is not None:
                 _write_yolo_label(image_path, (w, h), box)
 
     detector_meta = {
         "stage": initial_stage,
-        "textboxBox": list(initial_box),
+        "textboxBox": list(initial_box) if initial_box else None,
         "imageSize": [w, h],
         "detectedAt": datetime.now().isoformat(timespec="seconds")
     }
 
     # ── Fallback: no date detected → copy as-is, no edit (only for non-cropped photos) ──
-    if stage == "stage_fallback" and not is_collage and actual_input_path == image_path:
+    if stage == "stage_fallback" and (ocr_failed or (not is_collage and actual_input_path == image_path)):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(actual_input_path, output_path)
         if y_override is not None or x_override is not None:
@@ -1851,7 +1823,8 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
             if pname not in folder_meta:
                 folder_meta[pname] = {}
             folder_meta[pname]["stage"] = "stage_fallback_skipped"
-            folder_meta[pname]["detector"] = "guide"
+            folder_meta[pname]["ocrFailed"] = bool(eff_detector in ("paddle_ocr", "lama_ai"))
+            folder_meta[pname]["detector"] = "paddle_ocr" if eff_detector in ("paddle_ocr", "lama_ai") else "guide"
             folder_meta[pname]["dateText"] = timemark_text
             folder_meta[pname]["updatedAt"] = datetime.now().isoformat()
             folder_meta[pname]["xPos"] = 14
@@ -2062,7 +2035,7 @@ def main(override_args=None):
         parser.add_argument("--red-mask", action="store_true", help="Run with Red Mask HSV priority")
         parser.add_argument("--cyan-mask", action="store_true", help="Run with Cyan Mask HSV priority")
         parser.add_argument("--custom-mask", action="store_true", help="Run with Custom Mask HSV priority")
-        parser.add_argument("--detector", choices=["paddle_ocr", "lama_ai", "google_vision", "guide"], default="paddle_ocr", help="Detection method: paddle_ocr/lama_ai (default), google_vision, or guide")
+        parser.add_argument("--detector", choices=["paddle_ocr", "lama_ai", "google_vision"], default="paddle_ocr", help="Detection method: paddle_ocr/lama_ai (default) or google_vision")
         parser.add_argument("--no-time", action="store_true", help="Format watermark tanggal saja tanpa jam (HH:MM)")
         parser.add_argument("--ignore-manual", action="store_true", help="Abaikan koreksi manual sebelumnya dan deteksi ulang posisi via detektor")
         args = parser.parse_args()

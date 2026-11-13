@@ -447,7 +447,6 @@ function BatchTimemarkEditorModal({
               >
                 <option value="paddle_ocr">LaMa AI (Hapus Teks)</option>
                 <option value="google_vision">Google Vision AI (Inpainting Bersih)</option>
-                <option value="guide">Metode Garis Panduan (Guide HSV)</option>
               </select>
             </div>
 
@@ -747,6 +746,7 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
   const [selectedStation, setSelectedStation] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState(''); // '' | 'ocrfailed'
 
   // UI View Size & Fullscreen Preview & Interactive Modal
   const [cardSize, setCardSize] = useState('besar'); // 'standar' (220px) | 'besar' (300px) | 'ekstra' (380px)
@@ -913,9 +913,10 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
         const hay = `${a.station} ${a.category} ${a.detail || a.identifier} ${a.relDir} ${a.tim || ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
+      if (selectedStatus === 'ocrfailed' && !(a.photos || []).some(p => (p.outputMeta || p.meta)?.ocrFailed)) return false;
       return true;
     });
-  }, [assets, selectedStation, selectedCategory, searchQuery]);
+  }, [assets, selectedStation, selectedCategory, searchQuery, selectedStatus]);
 
   // Pagination states for high-performance gallery rendering
   const [pageSize, setPageSize] = useState(15);
@@ -1276,6 +1277,16 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
                   width: '160px'
                 }}
               />
+
+              {/* Filter Status (Gagal Ocr) */}
+              <select
+                value={selectedStatus}
+                onChange={e => setSelectedStatus(e.target.value)}
+                style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
+              >
+                <option value="">Semua Status</option>
+                <option value="ocrfailed">⚠️ Gagal Ocr</option>
+              </select>
 
               {/* Ukuran Tampilan Kartu Foto */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: 'var(--bg-primary)', padding: '0.15rem 0.35rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
@@ -1841,6 +1852,11 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
                                   <span style={{ color: '#10b981', fontSize: '0.68rem', fontWeight: 800, background: 'rgba(16, 185, 129, 0.15)', padding: '1px 6px', borderRadius: '3px' }}>
                                     ✓ Hasil Ekspor
                                   </span>
+                                  {(p.outputMeta || p.meta)?.ocrFailed && (
+                                    <span style={{ color: '#f87171', fontSize: '0.68rem', fontWeight: 800, background: 'rgba(248, 113, 113, 0.15)', padding: '1px 6px', borderRadius: '3px' }}>
+                                      ⚠️ Gagal Ocr
+                                    </span>
+                                  )}
                                 </div>
 
                                 {/* Thumbnail Box Output dengan Kotak Geser Posisi Langsung */}
@@ -2090,7 +2106,6 @@ export default function BatchDateEditorPanel({ defaultSourceDir = '' }) {
               >
                 <option value="paddle_ocr">LaMa AI (Hapus Teks)</option>
                 <option value="google_vision">Google Vision AI (Inpainting Bersih)</option>
-                <option value="guide">Garis Panduan Oranye / HSV Fallback</option>
               </select>
             </div>
 

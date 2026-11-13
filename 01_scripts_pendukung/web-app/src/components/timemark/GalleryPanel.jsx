@@ -1084,25 +1084,6 @@ function TimemarkEditorModal({
                 >
                   <span>✨</span> Google Vision AI
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setDetector('guide')}
-                  style={{
-                    padding: '0.35rem 0.75rem',
-                    borderRadius: '6px',
-                    border: detector === 'guide' ? '1px solid #0284c7' : '1px solid var(--border-color)',
-                    background: detector === 'guide' ? 'rgba(2, 132, 199, 0.2)' : 'var(--bg-card)',
-                    color: detector === 'guide' ? '#38bdf8' : 'var(--text-secondary)',
-                    fontWeight: detector === 'guide' ? 800 : 500,
-                    fontSize: '0.75rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.3rem'
-                  }}
-                >
-                  <span>🎨</span> Metode Biasa (HSV)
-                </button>
               </div>
             </div>
             
@@ -1809,6 +1790,8 @@ export default function GalleryPanel({ exportDir, targetDir = '', onPickFolder, 
       const photoCount = (a.photos || []).length;
       if (selectedStatus === 'complete' && photoCount < 3) return false;
       if (selectedStatus === 'incomplete' && photoCount >= 3) return false;
+      // 5. Filter Gagal Ocr
+      if (selectedStatus === 'ocrfailed' && !(a.photos || []).some(p => p?.meta?.ocrFailed)) return false;
 
       // 5. Search Query
       if (searchQuery.trim()) {
@@ -2417,6 +2400,7 @@ export default function GalleryPanel({ exportDir, targetDir = '', onPickFolder, 
               <option value="">📊 Status Kelengkapan</option>
               <option value="complete">✓ Lengkap (3 Foto)</option>
               <option value="incomplete">⚠ Belum Lengkap (&lt; 3)</option>
+              <option value="ocrfailed">⚠️ Gagal Ocr</option>
             </select>
 
             {/* 5. Sumber */}
@@ -2748,6 +2732,15 @@ export default function GalleryPanel({ exportDir, targetDir = '', onPickFolder, 
                               {isManual && (
                                 <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid #f59e0b', fontWeight: 600 }}>
                                   Manual (Y:{photoObj.meta.yPos})
+                                </span>
+                              )}
+
+                              {photoObj?.meta?.ocrFailed && (
+                                <span
+                                  style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(248, 113, 113, 0.2)', color: '#f87171', border: '1px solid #ef4444', fontWeight: 700 }}
+                                  title="PaddleOCR tidak menemukan teks timemark. Foto disalin apa adanya dan dilewati."
+                                >
+                                  ⚠️ Gagal Ocr
                                 </span>
                               )}
 

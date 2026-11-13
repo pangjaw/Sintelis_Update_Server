@@ -27,6 +27,7 @@ tmp_uploads/
 Thumbs.db
 
 # Local Cache & Secrets
+.hermes/
 .env
 .env.local
 audit_personnel_cache.json

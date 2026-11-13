@@ -374,7 +374,7 @@ def _run_pipeline_unit(
         with _state_lock:
             state["current_step"] = 4
             state["progress"] = int(round(s_pct))
-        chosen_detector = detector if detector in ("paddle_ocr", "lama_ai", "google_vision", "guide") else "paddle_ocr"
+        chosen_detector = detector if detector in ("paddle_ocr", "lama_ai", "google_vision") else "paddle_ocr"
         det_label = 'LaMa AI (Hapus Teks)' if chosen_detector in ('paddle_ocr', 'lama_ai') else ('Google Cloud Vision AI' if chosen_detector == 'google_vision' else 'Metode Biasa (HSV Garis Panduan)')
         add_log("info", f"🔍 Detektor Timemark: {det_label}")
         step4_args = [

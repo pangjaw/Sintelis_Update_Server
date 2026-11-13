@@ -55,8 +55,6 @@ def run_step4_auto(rel_path: str, mode: str, detector: str = "paddle_ocr"):
         cmd = [sys.executable, "--run-script", str(script), "--input", str(folder_abs)]
         if detector == "google_vision":
             cmd.extend(["--detector", "google_vision"])
-        elif detector == "guide":
-            cmd.extend(["--detector", "guide"])
         if SCHEDULE_PATH.exists():
             cmd.extend(["--schedule", str(SCHEDULE_PATH)])
 
@@ -244,7 +242,7 @@ def main():
     parser.add_argument("--source", help="Source relative path in 03_photos_export (required for swap)")
     parser.add_argument("--image", help="Path to new image file (required for replace)")
     parser.add_argument("--mode", default="tanggal", choices=["tanggal", "jam", "koordinat"], help="Active pipeline mode")
-    parser.add_argument("--detector", default="paddle_ocr", choices=["paddle_ocr", "google_vision", "guide"], help="Timemark detector to use")
+    parser.add_argument("--detector", default="paddle_ocr", choices=["paddle_ocr", "google_vision"], help="Timemark detector to use")
 
     args = parser.parse_args()
 
