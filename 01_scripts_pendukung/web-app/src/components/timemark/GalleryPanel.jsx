@@ -41,6 +41,18 @@ const getDetectorInfo = (det) => {
       shadow: '0 2px 6px rgba(16, 185, 129, 0.4)'
     };
   }
+  if (det === 'timpa_tanggal') {
+    return {
+      label: 'Timpa Tanggal',
+      shortLabel: 'Timpa',
+      icon: '🎯',
+      gradient: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+      btnBg: 'rgba(2, 132, 199, 0.2)',
+      btnColor: '#38bdf8',
+      border: '1px solid #0284c7',
+      shadow: '0 2px 6px rgba(2, 132, 199, 0.4)'
+    };
+  }
   if (det === 'google_vision') {
     return {
       label: 'Google AI Vision',
@@ -724,7 +736,7 @@ function TimemarkEditorModal({
       }
       setMsg({
         type: 'success',
-        text: `✓ Foto berhasil diproses menggunakan ${detector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa (HSV)'}!`
+        text: `✓ Foto berhasil diproses menggunakan ${detector === 'paddle_ocr' ? 'LaMa AI' : (detector === 'google_vision' ? 'Vision AI' : 'Timpa')}!`
       });
       if (onSaved) onSaved({ targetKey: rawRelPath, xPos: Number(updatedX), yPos: Number(updatedY), dateText: dateText.trim(), applyToFolder, outputUrl: data.outputUrl });
     } catch (err) {
@@ -903,7 +915,7 @@ function TimemarkEditorModal({
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <span style={{ fontSize: '0.68rem', background: detector === 'google_vision' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(2, 132, 199, 0.2)', color: detector === 'google_vision' ? '#c084fc' : '#38bdf8', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, border: `1px solid ${detector === 'google_vision' ? '#a855f7' : '#0284c7'}` }}>
-                    {detector === 'google_vision' ? '✨ Vision AI' : '🎨 HSV'}
+                    {detector === 'google_vision' ? '✨ Vision AI' : '🎯 Timpa'}
                   </span>
                   <span style={{ fontSize: '0.7rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
                     X:{xPos}px · Y:{yPos}px
@@ -1021,7 +1033,7 @@ function TimemarkEditorModal({
                       }}
                     >
                       <span>{processingAuto ? '⏳' : detector === 'google_vision' ? '✨' : '⚡'}</span>
-                      <span>{processingAuto ? 'Memproses...' : `Jalankan Timemark Sekarang (${detector === 'google_vision' ? 'Google AI Vision' : 'HSV'})`}</span>
+                      <span>{processingAuto ? 'Memproses...' : `Jalankan Timemark Sekarang (${detector === 'paddle_ocr' ? 'LaMa AI' : (detector === 'google_vision' ? 'Google AI Vision' : 'Timpa Tanggal')})`}</span>
                     </button>
                   </div>
                 )}
@@ -1029,7 +1041,7 @@ function TimemarkEditorModal({
                 {processingAuto && (
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#4ade80', zIndex: 30, gap: '0.4rem' }}>
                     <span style={{ fontSize: '1.75rem', animation: 'spin 1s linear infinite' }}>⏳</span>
-                    <strong style={{ fontSize: '0.8rem' }}>Memproses Timemark ({detector === 'paddle_ocr' ? 'LaMa AI' : (detector === 'google_vision' ? 'Vision AI' : 'HSV')})...</strong>
+                    <strong style={{ fontSize: '0.8rem' }}>Memproses Timemark ({detector === 'paddle_ocr' ? 'LaMa AI' : (detector === 'google_vision' ? 'Vision AI' : 'Timpa')})...</strong>
                   </div>
                 )}
               </div>
@@ -1250,10 +1262,10 @@ function TimemarkEditorModal({
                 gap: '0.4rem',
                 boxShadow: detector === 'google_vision' ? '0 2px 10px rgba(147, 51, 234, 0.4)' : '0 2px 10px rgba(2, 132, 199, 0.4)'
               }}
-              title={`Jalankan proses deteksi otomatis dengan ${detector === 'google_vision' ? 'Google AI Vision' : 'Metode Biasa (HSV)'}`}
+              title={`Jalankan proses deteksi otomatis dengan ${detector === 'paddle_ocr' ? 'LaMa AI' : (detector === 'google_vision' ? 'Google AI Vision' : 'Timpa Tanggal')}`}
             >
               <span>{processingAuto ? '⏳' : detector === 'google_vision' ? '✨' : '⚡'}</span>
-              <span>{processingAuto ? 'Memproses...' : `⚡ Proses ${detector === 'google_vision' ? 'AI Vision' : 'HSV'}`}</span>
+              <span>{processingAuto ? 'Memproses...' : `⚡ Proses ${detector === 'paddle_ocr' ? 'LaMa AI' : (detector === 'google_vision' ? 'AI Vision' : 'Timpa')}`}</span>
             </button>
 
             <button
@@ -1324,7 +1336,7 @@ export default function GalleryPanel({ exportDir, targetDir = '', onPickFolder, 
   const [cardSize, setCardSize] = useState('large'); // 'normal' | 'large'
   const [photoViewOverrides, setPhotoViewOverrides] = useState({}); // { [targetKey]: 'edited' | 'raw' }
   const [sourceTypeFilter, setSourceTypeFilter] = useState('all'); // 'timemark' | 'export' | 'all'
-  const [activeDetector, setActiveDetector] = useState('paddle_ocr'); // 'google_vision' | 'guide'
+  const [activeDetector, setActiveDetector] = useState('paddle_ocr'); // 'paddle_ocr' | 'timpa_tanggal' | 'google_vision'
 
   // Filter States
   const [selectedFile, setSelectedFile] = useState('');
@@ -2276,7 +2288,7 @@ export default function GalleryPanel({ exportDir, targetDir = '', onPickFolder, 
               {[
                 { id: 'paddle_ocr', label: 'LaMa AI (Hapus Teks)', color: '#10b981' },
                 { id: 'google_vision', label: '✨ Vision AI', color: '#a855f7' },
-                { id: 'guide', label: '🎯 HSV', color: '#0284c7' }
+                { id: 'timpa_tanggal', label: '🎯 Timpa Tanggal', color: '#0284c7' }
               ].map(d => (
                 <button
                   key={d.id}
@@ -2293,7 +2305,7 @@ export default function GalleryPanel({ exportDir, targetDir = '', onPickFolder, 
                     cursor: 'pointer',
                     transition: 'all 0.15s'
                   }}
-                  title={d.id === 'google_vision' ? 'Deteksi Google Cloud Vision AI' : 'Deteksi garis warna HSV'}
+                  title={d.id === 'google_vision' ? 'Deteksi Google Cloud Vision AI' : d.id === 'timpa_tanggal' ? 'Deteksi tanggal lama via PaddleOCR lalu timpa' : 'Deteksi garis warna HSV'}
                 >
                   {d.label}
                 </button>

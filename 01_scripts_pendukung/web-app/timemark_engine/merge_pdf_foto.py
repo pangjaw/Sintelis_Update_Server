@@ -1618,6 +1618,9 @@ def main(override_args=None):
                 try:
                     m_data = json.loads(meta_p.read_text(encoding="utf-8"))
                     p_info = m_data.get(f"{stem}.jpg", {})
+                    # Timpa Tanggal sudah ditempel fisik; .clean.jpg warisan tidak boleh menimpanya.
+                    if p_info.get("detector") == "timpa_tanggal":
+                        continue
                     d_text = p_info.get("dateText", "")
                     if d_text:
                         yp = p_info.get("yPos", 220)

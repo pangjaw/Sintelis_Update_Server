@@ -374,8 +374,8 @@ def _run_pipeline_unit(
         with _state_lock:
             state["current_step"] = 4
             state["progress"] = int(round(s_pct))
-        chosen_detector = detector if detector in ("paddle_ocr", "lama_ai", "google_vision") else "paddle_ocr"
-        det_label = 'LaMa AI (Hapus Teks)' if chosen_detector in ('paddle_ocr', 'lama_ai') else ('Google Cloud Vision AI' if chosen_detector == 'google_vision' else 'Metode Biasa (HSV Garis Panduan)')
+        chosen_detector = detector if detector in ("paddle_ocr", "lama_ai", "google_vision", "timpa_tanggal") else "paddle_ocr"
+        det_label = 'LaMa AI (Hapus Teks)' if chosen_detector in ('paddle_ocr', 'lama_ai') else ('Google Cloud Vision AI' if chosen_detector == 'google_vision' else 'Timpa Tanggal (OCR + Box)')
         add_log("info", f"🔍 Detektor Timemark: {det_label}")
         step4_args = [
             "--input", unit_raw_dir,
@@ -386,7 +386,7 @@ def _run_pipeline_unit(
         if not include_time:
             step4_args.append("--no-time")
         cmd = _make_engine_cmd("edit_timemark_ide1.py", step4_args)
-        det_short = 'LaMa AI' if chosen_detector in ('paddle_ocr', 'lama_ai') else ('AI Vision' if chosen_detector == 'google_vision' else 'HSV')
+        det_short = 'LaMa AI' if chosen_detector in ('paddle_ocr', 'lama_ai') else ('AI Vision' if chosen_detector == 'google_vision' else 'Timpa Tanggal')
         ok = run_cmd(cmd, "step4", f"{label_prefix}Step 4: Edit Watermark Timemark Foto ({det_short})", s_pct, e_pct)
         if not ok:
             return False

@@ -62,9 +62,10 @@ def detect(img_path):
             clean_txt = item["text"]
             if DATE_RE.search(clean_txt) and not SKIP_RE.search(clean_txt) and '°' not in clean_txt and not re.search(r'^\s*[-+]?\d{1,3}\.\d+', clean_txt):
                 # Cari segmen lain di baris horizontal yang sama (misal "senin:" di sebelah kiri tanggal)
+                # ponytail: proportional thresholds — h*0.004..h*0.06 height, h*0.02 merge, w*0.006 min width
                 same_row = [
                     other for other in parsed_lines
-                    if abs(other["y_mid"] - item["y_mid"]) <= 7.0 and not SKIP_RE.search(other["text"]) and not re.search(r'^\s*[-+]?\d{1,3}\.\d+', other["text"])
+                    if abs(other["y_mid"] - item["y_mid"]) <= h * 0.02 and not SKIP_RE.search(other["text"]) and not re.search(r'^\s*[-+]?\d{1,3}\.\d+', other["text"])
                 ]
                 min_x = min(other["x1"] for other in same_row)
                 min_y = min(other["y1"] for other in same_row)
@@ -75,7 +76,7 @@ def detect(img_path):
                 y1 = max(0, int(min_y))
                 x2 = min(w, int(max_x))
                 y2 = min(h, int(max_y))
-                if (x2 - x1) >= 20 and 7 <= (y2 - y1) <= 60:
+                if (x2 - x1) >= w * 0.006 and h * 0.004 <= (y2 - y1) <= h * 0.06:
                     merged_text = " ".join([other["text"] for other in sorted(same_row, key=lambda o: o["x1"])])
                     
                     # Hitung skor kualitas kecocokan tanggal Timemark

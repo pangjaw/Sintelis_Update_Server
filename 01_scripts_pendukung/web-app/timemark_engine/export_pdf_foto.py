@@ -13,7 +13,13 @@ if hasattr(sys.stdout, 'reconfigure'):
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
-import pdfplumber
+# pdfplumber hanya untuk CLI folder mode — lazy import agar tidak crash kalau pdfplumber belum terpasang
+try:
+    import pdfplumber
+except ImportError as e:
+    print(f"[ERROR] Modul 'pdfplumber' tidak ditemukan. Install dulu: pip install pdfplumber", file=sys.stderr)
+    sys.exit(1)
+
 import logging
 from pypdf import PdfReader
 from openpyxl import Workbook, load_workbook

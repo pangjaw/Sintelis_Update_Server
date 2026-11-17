@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-edit_timemark_ide1.py — Versi baru: HSV Orange Isolation + Fixed-offset Stage 1c
-- Hapus Stage 1, 1b, 2, 3, 4, consensus pre-scan
-- Hanya: HSV isolate -> find_red_guide -> fixed offset dari guide top-right
-- Fallback: get_text_box() jika tidak ada guide
+edit_timemark_ide1.py — Deteksi tanggal via PaddleOCR / Google Vision
+- Detektor tanggal tidak memakai rantai HSV; Step 1.5 collage guide ada di auto_crop_collages.py
+- Timpa Tanggal menulis tanggal fisik dengan renderer blur/pill.
 """
 
 import argparse
@@ -1223,23 +1222,7 @@ def find_guide_by_mask_direct(arr_orig: np.ndarray, mask_type: str = "red"):
     return (best_x, y1, best_x, y2)
 
 
-def _detect_guideline_for_label(arr: np.ndarray, w: int, h: int, is_collage: bool = False):
-    """Return the actual pixel guideline used for YOLO capture, if present."""
-    if is_collage:
-        guide = find_collage_custom_guide(arr, y_start=0)
-        if guide is not None:
-            return tuple(map(int, guide))
-    guide = find_red_guide(arr, y_start=0)
-    if guide is not None:
-        return tuple(map(int, guide))
-    y_bot = int(h * 0.54)
-    guide = find_cyan_guide_inverted(arr[y_bot:, :], y_start=0)
-    if guide is not None:
-        return int(guide[0]), y_bot + int(guide[1]), int(guide[2]), y_bot + int(guide[3])
-    guide = find_custom1_hsv_guide(arr[y_bot:, :], y_start=0)
-    if guide is not None:
-        return int(guide[0]), y_bot + int(guide[1]), int(guide[2]), y_bot + int(guide[3])
-    return None
+
 
 
 def _write_yolo_label(image_path: Path, image_size: tuple[int, int], guide):
@@ -1527,29 +1510,7 @@ def detect_timemark_via_google_vision(image_path: Path, w: int, h: int, arr_orig
         max_x = max(b[2] for b in same_line)
         max_y = max(b[3] for b in same_line)
 
-        # Smart Guide Alignment: check if guide exists and aligns with top endpoint gy1
-        found_guide = None
-        if arr_orig is not None:
-            if is_collage:
-                found_guide = find_collage_custom_guide(arr_orig, y_start=0)
-            if found_guide is None:
-                found_guide = find_red_guide(arr_orig, y_start=0)
-            if found_guide is None:
-                y_bot = int(h * 0.54)
-                found_guide = find_cyan_guide_inverted(arr_orig[y_bot:, :], y_start=0) or find_custom1_hsv_guide(arr_orig[y_bot:, :], y_start=0)
-                if found_guide:
-                    found_guide = (found_guide[0], y_bot + found_guide[1], found_guide[2], y_bot + found_guide[3])
-
-        if found_guide:
-            gx1, gy1, gx2, gy2 = found_guide
-            y_center = (min_y + max_y) // 2
-            # Beside guide: expand left boundary if Vision missed leftmost word
-            if abs(y_center - gy1) <= int(h * 0.15) or y_center >= gy1 - 10:
-                if min_x > gx2 + 10:
-                    min_x = gx2 + 6
-            elif y_center < gy1 - 10:
-                # Text above guide
-                min_x = min(min_x, gx1)
+        # Vision bbox uses OCR coordinates directly; no HSV guide alignment.
 
         box_h = max(16, int(h * BOX_HEIGHT_RATIO))
         old_w = (max_x - min_x) + 6
@@ -1641,7 +1602,7 @@ CURRENT_DETECTOR = "paddle_ocr"
 
 
 # ─── Process Single Image ───
-def process_image(image_path: Path, output_path: Path, timemark_text: str, y_override: int | None = None, x_override: int | None = None, schedule_lookup=None, asset_key=None, consensus_gy1: int | None = None, is_collage: bool = False, mask_mode: str | None = None, detector: str = "paddle_ocr", ignore_manual: bool = False) -> str:
+def process_image(image_path: Path, output_path: Path, timemark_text: str, y_override: int | None = None, x_override: int | None = None, schedule_lookup=None, asset_key=None, consensus_gy1: int | None = None, is_collage: bool = False, detector: str = "paddle_ocr", ignore_manual: bool = False) -> str:
     global CURRENT_DETECTOR
     actual_input_path = image_path
     if "03_photos_export" in str(image_path) or "03_export_foto" in str(image_path):
@@ -1667,7 +1628,7 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
 
     eff_detector = detector or CURRENT_DETECTOR
     # meta.json lama masih membawa "guide"; detector itu sudah dibuang, jadi jatuhkan ke paddle_ocr.
-    if eff_detector not in ("paddle_ocr", "lama_ai", "google_vision"):
+    if eff_detector not in ("paddle_ocr", "lama_ai", "google_vision", "timpa_tanggal"):
         eff_detector = "paddle_ocr"
     ocr_failed = False
 
@@ -1700,21 +1661,10 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
         if actual_input_path != image_path:
             _write_yolo_label(actual_input_path, (w, h), box)
 
-    # Prioritas 2: Mode Mask Eksplisit (Pixel Inspector)
-    elif mask_mode is not None:
-        guide = find_guide_by_mask_direct(arr_orig, mask_mode)
-        if guide is not None:
-            box = place_textbox_fixed_offset(guide, w, h)
-            stage = f"stage_pixel_inspector_{mask_mode}"
-            _write_yolo_label(image_path, (w, h), guide)
-        else:
-            box, stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
-        initial_box, initial_stage = box, stage
-
-    # Prioritas 3: Deteksi otomatis (Google Vision / HSV Guide / OCR)
+    # Prioritas 2: Deteksi otomatis (Google Vision / PaddleOCR)
     else:
         if True:
-            if eff_detector in ("paddle_ocr", "lama_ai"):
+            if eff_detector in ("paddle_ocr", "lama_ai", "timpa_tanggal"):
                 p_box, p_stage = detect_timemark_via_paddle_ocr(actual_input_path, w, h)
                 if p_box is not None:
                     # Snapping px1 to standard margin (14px) prevents duplicate day name
@@ -1725,9 +1675,37 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
                     initial_box = p_box
                     initial_stage = p_stage
                 else:
-                    # OCR gagal → tidak ada deteksi guide/consensus. Foto di-skip & ditandai.
-                    initial_box, initial_stage = None, "stage_fallback"
-                    ocr_failed = True
+                    # OCR gagal → coba box saudara (.txt dulu, lalu meta.json) sebelum skip
+                    sibling_box = None
+                    try:
+                        p_dir = actual_input_path.parent
+                        for sib_name in ("0.txt", "100.txt", "50.txt"):
+                            sib_txt = p_dir / sib_name
+                            if sib_txt.exists() and sib_txt != actual_input_path.with_suffix(".txt"):
+                                sib_b = _read_yolo_label(actual_input_path.with_name(sib_name.replace(".txt", ".jpg")), (w, h))
+                                if sib_b is not None:
+                                    sibling_box = sib_b
+                                    break
+                        if sibling_box is None:
+                            meta_cand = output_path.parent / "meta.json"
+                            if meta_cand.exists():
+                                with open(meta_cand, "r", encoding="utf-8") as mf:
+                                    mdata = json.load(mf)
+                                for s_key in ("0.jpg", "100.jpg", "50.jpg"):
+                                    if s_key in mdata and mdata[s_key].get("yPos"):
+                                        sy = int(round((mdata[s_key]["yPos"] / 300.0) * h))
+                                        sx = int(round((mdata[s_key].get("xPos", 14) / 300.0) * w))
+                                        sb_w = int(w * BOX_WIDTH_RATIO)
+                                        sb_h = int(h * BOX_HEIGHT_RATIO)
+                                        sibling_box = (sx, sy, min(w, sx + sb_w), min(h, sy + sb_h))
+                                        break
+                    except Exception:
+                        pass
+                    if sibling_box is not None:
+                        initial_box, initial_stage = sibling_box, "stage_consensus_sibling"
+                    else:
+                        initial_box, initial_stage = None, "stage_fallback"
+                        ocr_failed = True
             elif eff_detector == "google_vision":
                 gv_box, gv_stage = detect_timemark_via_google_vision(actual_input_path, w, h, arr_orig=arr_orig, is_collage=is_collage)
                 if gv_box is not None:
@@ -1738,18 +1716,23 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
                         "type": "quota_exceeded",
                         "message": "Kuota Google Cloud Vision telah habis atau penagihan dinonaktifkan."
                     }), flush=True)
-                    action = "continue_guide"
+                    action = "continue_ocr"
                     if sys.stdin.isatty():
-                        ans = input("\n[PAUSE] Kuota Google Vision habis. Lanjutkan dengan Metode Biasa (Garis Merah)? [Y/n]: ").strip().lower()
-                        action = "stop" if ans == "n" else "continue_guide"
+                        ans = input("\n[PAUSE] Kuota Google Vision habis. Lanjutkan dengan PaddleOCR? [Y/n]: ").strip().lower()
+                        action = "stop" if ans == "n" else "continue_ocr"
                     else:
                         line = sys.stdin.readline().strip()
                         if line:
                             action = line
-                    if action == "continue_guide":
-                        print("  │   ├── ⚠️ [FALLBACK] Beralih ke deteksi OCR (PaddleOCR)", flush=True)
+                    if action == "continue_ocr":
+                        print("  │   ├── ⚠️ [FALLBACK] Beralih ke PaddleOCR", flush=True)
                         CURRENT_DETECTOR = "paddle_ocr"
-                        initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+                        p_box, p_stage = detect_timemark_via_paddle_ocr(actual_input_path, w, h)
+                        if p_box is not None:
+                            initial_box, initial_stage = p_box, p_stage
+                        else:
+                            initial_box, initial_stage = None, "stage_fallback"
+                            ocr_failed = True
                     else:
                         print("  │   ├── 🛑 [STOP] Proses dihentikan pengguna karena kuota Google Vision habis.", flush=True)
                         sys.exit(42)
@@ -1785,9 +1768,13 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
                         initial_box = sibling_box
                         initial_stage = "stage_consensus_sibling"
                     else:
-                        initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+                        p_box, p_stage = detect_timemark_via_paddle_ocr(actual_input_path, w, h)
+                        initial_box, initial_stage = (p_box, p_stage) if p_box is not None else (None, "stage_fallback")
+                        ocr_failed = p_box is None
             else:
-                initial_box, initial_stage = locate_date_box(arr_orig, w, h, consensus_gy1=consensus_gy1, is_collage=is_collage)
+                p_box, p_stage = detect_timemark_via_paddle_ocr(actual_input_path, w, h)
+                initial_box, initial_stage = (p_box, p_stage) if p_box is not None else (None, "stage_fallback")
+                ocr_failed = p_box is None
 
             box, stage = initial_box, initial_stage
             # Simpan hasil deteksi ke 0.txt / 50.txt / 100.txt untuk dipakai otomatis di kemudian hari
@@ -1823,8 +1810,8 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
             if pname not in folder_meta:
                 folder_meta[pname] = {}
             folder_meta[pname]["stage"] = "stage_fallback_skipped"
-            folder_meta[pname]["ocrFailed"] = bool(eff_detector in ("paddle_ocr", "lama_ai"))
-            folder_meta[pname]["detector"] = "paddle_ocr" if eff_detector in ("paddle_ocr", "lama_ai") else "guide"
+            folder_meta[pname]["ocrFailed"] = bool(eff_detector in ("paddle_ocr", "lama_ai", "timpa_tanggal"))
+            folder_meta[pname]["detector"] = eff_detector if eff_detector in ("paddle_ocr", "lama_ai", "google_vision", "timpa_tanggal") else "paddle_ocr"
             folder_meta[pname]["dateText"] = timemark_text
             folder_meta[pname]["updatedAt"] = datetime.now().isoformat()
             folder_meta[pname]["xPos"] = 14
@@ -1912,6 +1899,9 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
         # Teks baru TIDAK ditempel ke file JPG saat proses LaMa, melainkan ditampilkan
         # sebagai layer virtual di UI dan baru akan ditempelkan secara fisik saat 'Merge PDF' atau klik 'Tempel Tanggal'.
         img_out = img_erased
+    elif eff_detector == "timpa_tanggal":
+        # Timpa Tanggal: tanpa diffuse_fill; blur + pill hitam menutup teks lama.
+        img_out = draw_textbox(Image.fromarray(arr_orig), box, timemark_text, no_bg=False)
     else:
         # Mode Non-LaMa (Google Vision / HSV): Pertahankan alur legacy
         arr_work = arr_orig.copy()
@@ -1960,7 +1950,7 @@ def process_image(image_path: Path, output_path: Path, timemark_text: str, y_ove
         if pname not in folder_meta:
             folder_meta[pname] = {}
         folder_meta[pname]["stage"] = stage
-        folder_meta[pname]["detector"] = "paddle_ocr" if stage == "stage_paddle_ocr" else ("google_vision" if stage == "stage_google_vision" else "guide")
+        folder_meta[pname]["detector"] = eff_detector if eff_detector in ("paddle_ocr", "lama_ai", "google_vision", "timpa_tanggal") else ("paddle_ocr" if stage == "stage_paddle_ocr" else "google_vision")
         folder_meta[pname]["dateText"] = timemark_text
         folder_meta[pname]["updatedAt"] = datetime.now().isoformat()
         norm_x = int(round((box[0] / float(w)) * 300)) if w > 0 else box[0]
@@ -2002,11 +1992,10 @@ def _collect_folder_consensus(input_dir: Path, all_jpgs: list[Path]) -> dict[tup
             continue
         try:
             img = Image.open(src).convert('RGB')
-            arr = np.array(img)
-            guide = find_red_guide(arr)
-            if guide:
-                gx1, gy1, gx2, gy2 = guide
-                folder_guides[fkey].append(gy1)
+            p_box, _ = detect_timemark_via_paddle_ocr(src, img.width, img.height)
+            if p_box:
+                folder_guides[fkey].append(p_box[1])
+            continue
         except Exception:
             pass
 
@@ -2032,10 +2021,10 @@ def main(override_args=None):
         parser.add_argument("--single-out", type=Path, help="Force specific single output file path")
         parser.add_argument("--clear-output", action="store_true", help="Clear output folder first")
         parser.add_argument("--tim-filter", type=int, help="Process only schedule entries for this Tim number")
-        parser.add_argument("--red-mask", action="store_true", help="Run with Red Mask HSV priority")
-        parser.add_argument("--cyan-mask", action="store_true", help="Run with Cyan Mask HSV priority")
-        parser.add_argument("--custom-mask", action="store_true", help="Run with Custom Mask HSV priority")
-        parser.add_argument("--detector", choices=["paddle_ocr", "lama_ai", "google_vision"], default="paddle_ocr", help="Detection method: paddle_ocr/lama_ai (default) or google_vision")
+
+
+
+        parser.add_argument("--detector", choices=["paddle_ocr", "lama_ai", "google_vision", "timpa_tanggal"], default="paddle_ocr", help="Detection method: paddle_ocr/lama_ai (default), google_vision, or timpa_tanggal")
         parser.add_argument("--no-time", action="store_true", help="Format watermark tanggal saja tanpa jam (HH:MM)")
         parser.add_argument("--ignore-manual", action="store_true", help="Abaikan koreksi manual sebelumnya dan deteksi ulang posisi via detektor")
         args = parser.parse_args()
@@ -2333,8 +2322,7 @@ def main(override_args=None):
 
         is_coll = str(rel).replace('\\', '/').lower() in cropped_collages_set
         try:
-            mask_mode = "red" if args.red_mask else "cyan" if args.cyan_mask else "custom" if args.custom_mask else None
-            stage = process_image(src, dst, timemark_text, photo_y_override, photo_x_override, schedule_lookup, asset_key, consensus_gy1, is_collage=is_coll, mask_mode=mask_mode, detector=CURRENT_DETECTOR, ignore_manual=getattr(args, 'ignore_manual', False))
+            stage = process_image(src, dst, timemark_text, photo_y_override, photo_x_override, schedule_lookup, asset_key, consensus_gy1, is_collage=is_coll, detector=CURRENT_DETECTOR, ignore_manual=getattr(args, 'ignore_manual', False))
             ok += 1
             if stage in stage_counts:
                 stage_counts[stage] += 1

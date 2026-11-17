@@ -38,6 +38,7 @@ from edit_timemark_ide1 import (
     normalize_schedule_identifier,
     get_font,
     BOX_HEIGHT_RATIO,
+    BOX_WIDTH_RATIO,
 )
 
 
@@ -280,7 +281,8 @@ def fast_update(
             meta_det = (cached_meta.get("detector") or "").strip().lower()
             if req_det in ("paddle_ocr", "lama_ai"):
                 is_lama_mode = True
-            elif req_det in ("guide", "hsv", "google_vision"):
+            elif req_det in ("timpa_tanggal", "guide", "hsv", "google_vision"):
+                # Timpa Tanggal uses physical overlay branch below, never legacy clean-base mode.
                 is_lama_mode = False
             else:
                 is_lama_mode = (meta_det in ("paddle_ocr", "lama_ai")) or (found_clean is not None)
@@ -344,15 +346,21 @@ def fast_update(
                     tw = bbox[2] - bbox[0]
                     pad_x = max(4, int(w * 0.010))
                     fit_w = tw + (2 * pad_x)
-                    x2 = min(w, x1 + fit_w)
-                    box = (x1, y1, x2, y2)
-
-                    arr = np.array(img)
-                    crop = arr[y1:y2, x1:x2]
-                    mask = np.ones((y2 - y1, x2 - x1), dtype=bool)
-                    arr[y1:y2, x1:x2] = diffuse_fill(crop, mask, steps=25)
-                    img_erased = Image.fromarray(arr)
-                    img_out = draw_textbox(img_erased, box, target_text, no_bg=False)
+                    if req_det == "timpa_tanggal":
+                        # Timpa Tanggal: blur/pill covers old date; skip diffuse_fill.
+                        # ponytail: default width is BOX_WIDTH_RATIO; enlarge if old glyphs remain visible.
+                        x2 = min(w, x1 + max(fit_w, int(w * BOX_WIDTH_RATIO)))
+                        box = (x1, y1, x2, y2)
+                        img_out = draw_textbox(img, box, target_text, no_bg=False)
+                    else:
+                        x2 = min(w, x1 + fit_w)
+                        box = (x1, y1, x2, y2)
+                        arr = np.array(img)
+                        crop = arr[y1:y2, x1:x2]
+                        mask = np.ones((y2 - y1, x2 - x1), dtype=bool)
+                        arr[y1:y2, x1:x2] = diffuse_fill(crop, mask, steps=25)
+                        img_erased = Image.fromarray(arr)
+                        img_out = draw_textbox(img_erased, box, target_text, no_bg=False)
                     img_out.save(dest_file, quality=95, subsampling=0)
 
                 # Clean up old location (including .clean.jpg) if Tim group changed
@@ -383,8 +391,8 @@ def fast_update(
                     raw_x = meta_item.get("xPos", raw_x)
                     raw_y = meta_item.get("yPos", raw_y)
                 else:
-                    meta_item["stage"] = cached_meta.get("stage", "stage_fast_update")
-                    meta_item["detector"] = req_det if req_det in ("guide", "google_vision") else cached_meta.get("detector", "cache")
+                    meta_item["stage"] = "stage_timpa_tanggal" if req_det == "timpa_tanggal" else cached_meta.get("stage", "stage_fast_update")
+                    meta_item["detector"] = req_det if req_det in ("timpa_tanggal", "google_vision") else cached_meta.get("detector", "paddle_ocr")
                 meta_item["dateText"] = target_text
                 meta_item["updatedAt"] = datetime.now().isoformat()
                 meta_item["xPos"] = raw_x
@@ -436,7 +444,7 @@ def main():
     parser.add_argument("--force", action="store_true", help="Force re-rendering even if date matches")
     parser.add_argument("--filter", type=str, default=None, help="Filter specific asset name")
     parser.add_argument("--no-time", dest="include_time", action="store_false", default=True, help="Jangan sertakan jam (HH:MM)")
-    parser.add_argument("--detector", type=str, default="auto", help="Detector mode (paddle_ocr, guide, google_vision, auto)")
+    parser.add_argument("--detector", type=str, default="auto", help="Detector mode (paddle_ocr, timpa_tanggal, google_vision, auto)")
     args = parser.parse_args()
 
     from export_pdf_foto import discover_period_workspaces, split_export_base_and_subdir

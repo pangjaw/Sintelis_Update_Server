@@ -20,7 +20,7 @@ export default function TimemarkModule() {
   const [mergedDir, setMergedDir] = useState('');
 
   const [selectedSteps, setSelectedSteps] = useState(['1', '1.5', '2', '3', '4', '5']);
-  const [detector, setDetector] = useState('paddle_ocr'); // 'google_vision' | 'guide'
+  const [detector, setDetector] = useState('timpa_tanggal'); // 'timpa_tanggal' | 'google_vision'
   const [splitMultiAssetRows, setSplitMultiAssetRows] = useState(false);
   const [includeTime, setIncludeTime] = useState(true);
   const [useCustomSchedule, setUseCustomSchedule] = useState(false);
@@ -597,24 +597,24 @@ export default function TimemarkModule() {
                   <button
                     type="button"
                     disabled={pipelineState.running}
-                    onClick={() => setDetector('guide')}
+                    onClick={() => setDetector('timpa_tanggal')}
                     style={{
                       padding: '0.6rem 0.75rem',
                       borderRadius: '8px',
-                      border: detector === 'guide' ? '2px solid #0284c7' : '1px solid var(--border-color)',
-                      background: detector === 'guide' ? 'rgba(2, 132, 199, 0.15)' : 'var(--bg-secondary)',
-                      color: detector === 'guide' ? '#38bdf8' : 'var(--text-secondary)',
+                      border: detector === 'timpa_tanggal' ? '2px solid #0284c7' : '1px solid var(--border-color)',
+                      background: detector === 'timpa_tanggal' ? 'rgba(2, 132, 199, 0.15)' : 'var(--bg-secondary)',
+                      color: detector === 'timpa_tanggal' ? '#38bdf8' : 'var(--text-secondary)',
                       cursor: pipelineState.running ? 'not-allowed' : 'pointer',
                       textAlign: 'left',
                       transition: 'all 0.2s',
-                      boxShadow: detector === 'guide' ? '0 0 12px rgba(2, 132, 199, 0.25)' : 'none'
+                      boxShadow: detector === 'timpa_tanggal' ? '0 0 12px rgba(2, 132, 199, 0.25)' : 'none'
                     }}
                   >
                     <div style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span>🎨</span> Metode Biasa (HSV Panduan)
+                      <span>🎯</span> Timpa Tanggal
                     </div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.3 }}>
-                      Deteksi garis panduan warna merah/oranye klasik
+                      PaddleOCR cari tanggal lama, lalu timpa box blur + teks baru langsung
                     </div>
                   </button>
                 </div>

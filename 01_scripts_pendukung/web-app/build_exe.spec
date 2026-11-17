@@ -63,8 +63,6 @@ a = Analysis(
         'timemark_engine.personnel_changer_engine',
         'timemark_engine.export_schedule_excel',
         'timemark_engine.auto_crop_collages',
-        'timemark_engine.crop_collage_photos',
-        'timemark_engine.crop_single_temp',
         'timemark_engine.audit_and_correct_personnel',
         'timemark_engine.correct_serat_optik_cores',
         'timemark_engine.export_tablo_excel',

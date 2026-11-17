@@ -198,6 +198,8 @@ def _ensure_asset_photos_stamped(asset_folder: str) -> int:
         target_file = os.path.join(asset_folder, p_name)
         if os.path.isfile(clean_file):
             p_info = meta_data.get(p_name, {}) if isinstance(meta_data.get(p_name), dict) else {}
+            if p_info.get("detector") == "timpa_tanggal":
+                continue
             date_text = p_info.get("dateText", "")
             x_pos = p_info.get("xPos", 14)
             y_pos = p_info.get("yPos", 220)
@@ -2877,7 +2879,7 @@ def get_folder_consensus_coordinates(src_folder: str, dst_folder: str, photo_nam
     Mencari koordinat konsensus (xPos, yPos) dari sebuah folder aset berdasarkan:
     1. meta.json di folder tujuan (dst_folder) atau folder sumber (src_folder)
     2. File label YOLO (.txt) di folder sumber
-    3. Analisis guide HSV warna merah (find_red_guide) pada foto-foto yang ada
+    3. Deteksi tanggal via PaddleOCR pada foto-foto yang ada
     """
     # 1. Cek meta.json di dst_folder lalu src_folder
     for meta_path in [os.path.join(dst_folder, "meta.json"), os.path.join(src_folder, "meta.json")]:
@@ -2909,20 +2911,18 @@ def get_folder_consensus_coordinates(src_folder: str, dst_folder: str, photo_nam
             except Exception:
                 pass
 
-    # 3. Cek find_red_guide dari foto-foto di src_folder
+    # 3. Cek deteksi tanggal via PaddleOCR dari foto-foto di src_folder
     try:
-        from timemark_engine.edit_timemark_ide1 import find_red_guide
-        import numpy as np
+        from timemark_engine.edit_timemark_ide1 import detect_timemark_via_paddle_ocr
+        from pathlib import Path
         for p_name in photo_names:
             p_path = os.path.join(src_folder, p_name)
             if os.path.isfile(p_path):
-                img = Image.open(p_path).convert('RGB')
-                guide = find_red_guide(np.array(img))
-                if guide:
-                    gx1, gy1, gx2, gy2 = guide
-                    w, h = img.size
-                    y_calc = int(round((gy1 / h) * 300))
-                    return 14, y_calc
+                with Image.open(p_path) as img:
+                    img = img.convert('RGB')
+                    p_box, _ = detect_timemark_via_paddle_ocr(Path(p_path), img.width, img.height)
+                if p_box:
+                    return 14, int(round((p_box[1] / img.height) * 300))
     except Exception:
         pass
 
@@ -4241,7 +4241,7 @@ class ApiHandler(http.server.SimpleHTTPRequestHandler):
 
             if processed > 0:
                 _invalidate_timemark_photos_cache()
-                detector_title = "LaMa AI (Hapus Teks)" if detector in ("paddle_ocr", "lama_ai") else ("Google AI Vision" if detector == "google_vision" else "Metode Biasa (HSV)")
+                detector_title = "LaMa AI (Hapus Teks)" if detector in ("paddle_ocr", "lama_ai") else ("Google AI Vision" if detector == "google_vision" else "Timpa Tanggal")
                 
                 # Cari preview file dari out_target yang berhasil dibuat
                 preview_file = None
